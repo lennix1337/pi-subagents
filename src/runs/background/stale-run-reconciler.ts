@@ -42,6 +42,8 @@ interface ReconcileAsyncRunOptions {
 	startedRun?: StartedRunMetadata;
 	missingStatusGraceMs?: number;
 	staleAlivePidMs?: number;
+	/** Leaves a still-answering PID alone past its timeout deadline; only the owner session may repair that. */
+	skipDeadlineRepair?: boolean;
 	pidNamespaceScope?: () => string | undefined;
 }
 
@@ -499,7 +501,7 @@ export function reconcileAsyncRun(asyncDir: string, options: ReconcileAsyncRunOp
 		// The runner enforces its own timeout and writes a result, so a run still "running" well past
 		// its deadline lost its runner even when a recycled PID still answers the probe.
 		const deadlineAt = effectiveStatus.deadlineAt;
-		if (deadlineAt !== undefined && now - deadlineAt > DEADLINE_GRACE_MS && now - lastUpdate > DEADLINE_GRACE_MS) {
+		if (!options.skipDeadlineRepair && deadlineAt !== undefined && now - deadlineAt > DEADLINE_GRACE_MS && now - lastUpdate > DEADLINE_GRACE_MS) {
 			const message = `Async runner PID ${effectiveStatus.pid} has not written a result and the run is ${now - deadlineAt}ms past its ${effectiveStatus.timeoutMs ?? "unknown"}ms timeout deadline; stale-run reconciliation marked it failed.`;
 			return writeFailedRepair(asyncDir, effectiveStatus, resultPath, now, message);
 		}
@@ -517,7 +519,9 @@ export function reconcileAsyncRun(asyncDir: string, options: ReconcileAsyncRunOp
  * Closes out "running" runs whose runner is gone, whatever session started them. Session-scoped
  * status skips runs of a previous Pi session, so without this a runner killed with that session
  * stays "running" on disk for every reader until retention reaches it. Each repair still needs
- * the evidence reconcileAsyncRun requires (a dead PID, a passed deadline, or a stale status).
+ * the evidence reconcileAsyncRun requires (a dead PID or a stale status). A passed deadline is not
+ * enough here: another session cannot tell a live runner finishing its timeout result from a lost one,
+ * and the runner would overwrite the terminal state this sweep wrote.
  * Returns the ids it repaired.
  */
 export function reconcileOrphanedAsyncRuns(asyncDirRoot: string, options: ReconcileAsyncRunOptions & { protectedRunIds?: ReadonlySet<string> } = {}): string[] {
@@ -528,7 +532,8 @@ export function reconcileOrphanedAsyncRuns(asyncDirRoot: string, options: Reconc
 		if (isNotFoundError(error)) return [];
 		throw error;
 	}
-	const { protectedRunIds, ...reconcileOptions } = options;
+	const { protectedRunIds, ...callerOptions } = options;
+	const reconcileOptions = { ...callerOptions, skipDeadlineRepair: true };
 	const repaired: string[] = [];
 	for (const entry of entries) {
 		if (!entry.isDirectory() || protectedRunIds?.has(entry.name)) continue;
