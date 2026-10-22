@@ -365,6 +365,78 @@ Worker.
 		}
 	});
 
+	it("resolves explicit thinking against model suffixes and agent fallbacks the way the launch does", async () => {
+		const cwd = path.join(tempDir, "thinking-suffix-repo");
+		fs.mkdirSync(cwd, { recursive: true });
+		writeAgent(path.join(cwd, ".pi", "agents", "plain.md"), `---\nname: plain\ndescription: Plain\nmodel: test/worker\n---\nPlain.\n`);
+		writeAgent(path.join(cwd, ".pi", "agents", "scalar.md"), `---\nname: scalar\ndescription: Scalar fallback\nmodel: test/worker\nthinking: low\n---\nScalar.\n`);
+		writeAgent(path.join(cwd, ".pi", "agents", "cleared.md"), `---\nname: cleared\ndescription: Cleared fallback\nmodel: test/worker\nthinking: false\n---\nCleared.\n`);
+		writeAgent(path.join(cwd, ".pi", "agents", "suffixed.md"), `---\nname: suffixed\ndescription: Suffixed agent model\nmodel: test/worker:high\n---\nSuffixed.\n`);
+		const availableModels = [{ provider: "test", id: "worker", fullId: "test/worker" }];
+		const contractFor = async (input: { agent: string; model?: string; thinking?: string | false; thinkingCeiling?: "xhigh" }) => {
+			const result = await resolveSubagentLaunchContract({ cwd, task: "Inspect", availableModels, ...input });
+			assert.equal(result.ok, true);
+			if (!result.ok) throw new Error(result.message);
+			return result.contract;
+		};
+
+		const suffixWins = await contractFor({ agent: "plain", model: "test/worker:max", thinking: "low" });
+		assert.equal(suffixWins.model, "test/worker:max");
+		assert.equal(suffixWins.thinking, "max");
+		const suffixOverCeiling = await resolveSubagentLaunchContract({ agent: "plain", cwd, task: "Inspect", availableModels, model: "test/worker:max", thinking: "low", thinkingCeiling: "xhigh" });
+		assert.equal(suffixOverCeiling.ok, false);
+		if (!suffixOverCeiling.ok) {
+			assert.equal(suffixOverCeiling.code, "thinking_ceiling");
+			assert.match(suffixOverCeiling.message, /'max' exceeds configured maximum 'xhigh'/u);
+		}
+		const suffixKeepsHigh = await contractFor({ agent: "plain", model: "test/worker:high", thinking: false });
+		assert.equal(suffixKeepsHigh.model, "test/worker:high");
+		assert.equal(suffixKeepsHigh.thinking, "high");
+
+		const falseMeansOff = await contractFor({ agent: "plain", thinking: false });
+		const explicitOff = await contractFor({ agent: "plain", thinking: "off" });
+		assert.equal(falseMeansOff.model, "test/worker:off");
+		assert.equal(falseMeansOff.thinking, "off");
+		assert.equal(falseMeansOff.launchContractDigest, explicitOff.launchContractDigest);
+		assert.notEqual(falseMeansOff.launchContractDigest, (await contractFor({ agent: "plain" })).launchContractDigest);
+
+		const scalarFallback = await contractFor({ agent: "scalar" });
+		assert.equal(scalarFallback.model, "test/worker:low");
+		assert.equal(scalarFallback.thinking, "low");
+		const scalarOverridden = await contractFor({ agent: "scalar", thinking: "medium" });
+		assert.equal(scalarOverridden.model, "test/worker:medium");
+		const clearedFallback = await contractFor({ agent: "cleared" });
+		assert.equal(clearedFallback.model, "test/worker");
+		assert.equal(clearedFallback.thinking, undefined);
+		const clearedOverridden = await contractFor({ agent: "cleared", thinking: "high" });
+		assert.equal(clearedOverridden.model, "test/worker:high");
+
+		// The launch yields to a :level suffix on the resolved model, including one from the agent definition.
+		const agentSuffix = await contractFor({ agent: "suffixed", thinking: "low" });
+		assert.equal(agentSuffix.model, "test/worker:high");
+		assert.equal(agentSuffix.thinking, "high");
+	});
+
+	it("applies settings-object thinking fallbacks only when no explicit thinking is requested", async () => {
+		const cwd = path.join(tempDir, "thinking-settings-repo");
+		fs.mkdirSync(cwd, { recursive: true });
+		writeJson(path.join(cwd, ".pi", "settings.json"), { subagents: { defaultThinking: "medium", agentOverrides: { overridden: { thinking: "minimal" } } } });
+		writeAgent(path.join(cwd, ".pi", "agents", "defaulted.md"), `---\nname: defaulted\ndescription: Defaulted\nmodel: test/worker\n---\nDefaulted.\n`);
+		writeAgent(path.join(cwd, ".pi", "agents", "overridden.md"), `---\nname: overridden\ndescription: Overridden\nmodel: test/worker\n---\nOverridden.\n`);
+		const availableModels = [{ provider: "test", id: "worker", fullId: "test/worker" }];
+		const modelFor = async (agent: string, thinking?: string | false) => {
+			const result = await resolveSubagentLaunchContract({ agent, cwd, task: "Inspect", availableModels, ...(thinking !== undefined ? { thinking } : {}) });
+			assert.equal(result.ok, true);
+			if (!result.ok) throw new Error(result.message);
+			return result.contract.model;
+		};
+
+		assert.equal(await modelFor("defaulted"), "test/worker:medium");
+		assert.equal(await modelFor("overridden"), "test/worker:minimal");
+		assert.equal(await modelFor("defaulted", false), "test/worker:off");
+		assert.equal(await modelFor("overridden", "high"), "test/worker:high");
+	});
+
 	it("binds the resolved agent outputMode into the launch digest", async () => {
 		const cwd = path.join(tempDir, "repo-output-mode");
 		fs.mkdirSync(cwd, { recursive: true });

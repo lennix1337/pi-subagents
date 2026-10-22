@@ -11,7 +11,7 @@ import { applyThinkingSuffix, resolvePiLaunchToolPlan, type PiLaunchToolPlan } f
 import { buildEffectiveSystemPrompt } from "../runs/shared/effective-system-prompt.ts";
 import { normalizeSingleOutputOverride, resolveSingleOutputPath } from "../runs/shared/single-output.ts";
 import { getArtifactPaths, getArtifactsDir } from "../shared/artifacts.ts";
-import { resolveEffectiveThinking } from "../shared/model-info.ts";
+import { resolveEffectiveThinking, splitKnownThinkingSuffix } from "../shared/model-info.ts";
 import { assertThinkingWithinCeiling, intersectThinkingCeilings, type ThinkingLevel } from "../shared/thinking-ceiling.ts";
 import { SUBAGENT_LIFECYCLE_ARTIFACT_VERSION, type ArtifactDirPreference, type ArtifactPaths, type IntercomBridgeConfig, type IntercomBridgeMode, type JsonSchemaObject, type OutputMode } from "../shared/types.ts";
 import { capabilityCeilingAgentRestrictionMessage, intersectSubagentCapabilityCeilings, type ResolvedSubagentCapabilityCeiling, type SubagentCapabilityAudit } from "../runs/shared/capability-ceiling.ts";
@@ -405,7 +405,11 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 			scope: modelScopes,
 			source: modelOrigin === "explicit" ? "explicit" : "inherited",
 		});
-	const effectiveThinkingConfig = input.thinking !== undefined ? input.thinking : agent.thinking;
+	// Mirrors the launch's thinkingOverrideForTask: `false` means off, and a :level suffix on the resolved model wins over the public selector.
+	const thinkingOverride = input.thinking === undefined || splitKnownThinkingSuffix(primaryModel ?? input.model ?? "").thinkingSuffix
+		? undefined
+		: input.thinking === false ? "off" : input.thinking;
+	const effectiveThinkingConfig = thinkingOverride ?? agent.thinking;
 	const thinkingCeiling = externalRunner ? undefined : intersectThinkingCeilings(
 		discovered.maxThinking,
 		input.thinkingCeiling,
@@ -415,7 +419,7 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 			scope: modelScopes,
 			primaryModelFromParent: modelOrigin === "inherited" || inheritsParentModel(input.model, agent.model, input.parentModel),
 			origin: modelOrigin,
-		}).model, effectiveThinkingConfig, input.thinking !== undefined);
+		}).model, effectiveThinkingConfig, thinkingOverride !== undefined);
 	if (!externalRunner) {
 		try {
 			assertThinkingWithinCeiling({ model, configThinking: effectiveThinkingConfig, ceiling: thinkingCeiling, agent: agent.name, runId });
