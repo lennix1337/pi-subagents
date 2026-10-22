@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
 	PANEL_LEDGER_HEARTBEAT_MS,
+	PANEL_LEDGER_PRUNE_INTERVAL_MS,
 	PANEL_LEDGER_VERSION,
 	liveForegroundLedgerDir,
 	liveForegroundRecordPath,
@@ -16,7 +17,6 @@ const record = (over: Record<string, unknown> = {}) => ({
 	runId: "run-1",
 	index: 0,
 	agent: "delegate",
-	task: "do the thing",
 	cwd: "/tmp/work",
 	sessionId: "session-1",
 	model: "anthropic/claude-haiku-5-5:low",
@@ -47,6 +47,20 @@ describe("live foreground ledger", () => {
 		assert.equal(existsSync(file), false);
 	});
 
+	it("never writes a task prompt to disk, even when a caller passes one", () => {
+		const secret = "synthetic-secret-token-9f3a: rotate the production key";
+		const sensitive = { ...record({ runId: "sensitive", index: 2 }), task: secret };
+		writeLiveForegroundRun(sensitive);
+		const file = liveForegroundRecordPath("sensitive", 2);
+		touchLiveForegroundRun("sensitive", 2, 6000);
+		const raw = readFileSync(file, "utf8");
+		assert.equal(raw.includes("synthetic-secret-token-9f3a"), false);
+		assert.equal("task" in JSON.parse(raw), false);
+		assert.equal(JSON.parse(raw).agent, "delegate");
+		removeLiveForegroundRun("sensitive", 2);
+		assert.equal(existsSync(file), false);
+	});
+
 	it("keeps a record that is gone gone", () => {
 		touchLiveForegroundRun("run-1", 7, 10);
 		assert.equal(existsSync(liveForegroundRecordPath("run-1", 7)), false);
@@ -64,5 +78,24 @@ describe("live foreground ledger", () => {
 	it("keeps records inside the live ledger directory", () => {
 		assert.equal(liveForegroundLedgerDir().endsWith("live-foreground"), true);
 		assert.ok(PANEL_LEDGER_HEARTBEAT_MS > 0);
+	});
+
+	it("prunes at most once per interval when children end", () => {
+		// A time far ahead of every other test makes any record written now look stale.
+		const base = Date.now() + 48 * 60 * 60 * 1000;
+		const staleFile = (runId: string) => {
+			writeLiveForegroundRun(record({ runId }));
+			return liveForegroundRecordPath(runId, 0);
+		};
+		const first = staleFile("prune-first");
+		removeLiveForegroundRun("ended-1", 0, base);
+		assert.equal(existsSync(first), false, "the first child end prunes");
+
+		const second = staleFile("prune-second");
+		removeLiveForegroundRun("ended-2", 0, base + 1000);
+		assert.equal(existsSync(second), true, "a child end inside the interval does not scan");
+
+		removeLiveForegroundRun("ended-3", 0, base + PANEL_LEDGER_PRUNE_INTERVAL_MS);
+		assert.equal(existsSync(second), false, "the next interval prunes again");
 	});
 });

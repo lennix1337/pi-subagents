@@ -7,7 +7,7 @@ OptChat (the user's fork) lists pi-subagents runs in its own **Agents** panel, m
 | Artifact | Path | What it shows |
 | --- | --- | --- |
 | Async run status | `<temp-root>/async-subagent-runs/<runId>/status.json` | A live or finished async run: state, agent, model, thinking level, task and the child's transcript. |
-| Live foreground record | `<temp-root>/async-subagent-results/live-foreground/<runId>-<index>.json` | A foreground child that is working right now. The record is refreshed while the child runs and removed when it ends. |
+| Live foreground record | `<temp-root>/async-subagent-results/live-foreground/<runId>-<index>.json` | A foreground child that is working right now, from a single-agent call. The record is refreshed while the child runs and removed when it ends. It holds no task prompt, so the row is labelled by its agent. |
 | Saved foreground runs | `<temp-root>/async-subagent-results/foreground-history.json` | The foreground runs pi-subagents has already persisted, one row per child. |
 
 `<temp-root>` is `PI_SUBAGENTS_TEMP_ROOT` when it is set, otherwise `<os temp>/pi-subagents-<scope>`, where the scope is the user id, the user name or the home directory, following the same rule pi-subagents itself uses. Both extensions therefore find the same artifacts without extra configuration.
@@ -27,4 +27,5 @@ A run with several steps is shown as one row per step, each with its own agent, 
 
 - A foreground child runs inside the Pi process that started it. OptChat can steer and pause it from that session; another session can only read it. An async run has no such limit, because its runner is a separate process with a control inbox.
 - A duration is shown when the artifact records both a start and an end. The saved foreground history has no start time of its own, so a run OptChat did not see working shows a dash; a run it watched start shows the real duration.
-- A live foreground record whose heartbeat stopped belongs to a run that died without cleaning up. OptChat ignores it after a few minutes, and pi-subagents prunes it after a day.
+- A live foreground record whose heartbeat stopped belongs to a run that died without cleaning up. OptChat ignores it after a few minutes, and pi-subagents prunes it after a day (checked when a child ends, at most once an hour).
+- Only a single-agent foreground call writes a live record. Parallel and chain steps run as async runs, which the panel lists from their `status.json`.

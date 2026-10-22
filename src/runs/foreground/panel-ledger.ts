@@ -11,12 +11,17 @@ export const PANEL_LEDGER_DIR_NAME = "live-foreground";
 export const PANEL_LEDGER_HEARTBEAT_MS = 15_000;
 /** Records left behind by a crashed run are pruned once they are this old. */
 export const PANEL_LEDGER_RETENTION_MS = 24 * 60 * 60 * 1000;
+/** Child ends prune the directory at most this often, so a burst of short children does not rescan it each time. */
+export const PANEL_LEDGER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 
 /**
  * One running foreground child, published so another extension (OptChat's agents
- * panel) can show it while the child works. The record is observability only:
- * it never changes what the child does, and a panel that ignores it loses
- * nothing but the live view.
+ * panel) can show it while the child works. Only the single-agent foreground
+ * call writes one; parallel and chain steps run as async runs and are listed
+ * through their own status.json. The record is observability only: it never
+ * changes what the child does, and a panel that ignores it loses nothing but
+ * the live view. It stays on disk for as long as the child runs (up to a day if
+ * the run dies), so it carries no task prompt: the panel labels the row by agent.
  */
 export interface LiveForegroundRecord {
 	version: number;
@@ -25,7 +30,6 @@ export interface LiveForegroundRecord {
 	/** The child's index inside that run. */
 	index: number;
 	agent: string;
-	task: string;
 	/** The child's own Pi session file, when it has one. */
 	sessionFile?: string;
 	cwd: string;
@@ -36,7 +40,8 @@ export interface LiveForegroundRecord {
 	startedAt: number;
 	/** Last heartbeat; a record older than the panel's tolerance belongs to a run that died. */
 	updatedAt: number;
-	state: "running" | "stopping" | "stopped" | "failed";
+	/** A record exists only while its child runs; it is removed when the child ends. */
+	state: "running";
 }
 
 export function liveForegroundLedgerDir(): string {
@@ -52,13 +57,22 @@ export function liveForegroundRecordPath(runId: string, index: number): string {
 	return path.join(liveForegroundLedgerDir(), recordFileName(runId, index));
 }
 
-/** Publishes (or refreshes) the record of a running foreground child. */
+/** Publishes (or refreshes) the record of a running foreground child. Fields are copied one by one so nothing else, such as a task prompt, reaches the disk. */
 export function writeLiveForegroundRun(record: Omit<LiveForegroundRecord, "version" | "updatedAt"> & { updatedAt?: number }): void {
-	writePrivateAtomicJson(liveForegroundRecordPath(record.runId, record.index), {
-		...record,
+	const persisted: LiveForegroundRecord = {
 		version: PANEL_LEDGER_VERSION,
+		runId: record.runId,
+		index: record.index,
+		agent: record.agent,
+		...(record.sessionFile ? { sessionFile: record.sessionFile } : {}),
+		cwd: record.cwd,
+		...(record.sessionId ? { sessionId: record.sessionId } : {}),
+		...(record.model ? { model: record.model } : {}),
+		startedAt: record.startedAt,
 		updatedAt: record.updatedAt ?? Date.now(),
-	});
+		state: record.state,
+	};
+	writePrivateAtomicJson(liveForegroundRecordPath(record.runId, record.index), persisted);
 }
 
 /** Refreshes the heartbeat of a running child; a record that is gone stays gone. */
@@ -70,9 +84,13 @@ export function touchLiveForegroundRun(runId: string, index: number, now = Date.
 	writePrivateAtomicJson(file, { ...(parsed as LiveForegroundRecord), updatedAt: now });
 }
 
-/** Removes the record of a child that ended, and prunes records a crashed run left behind. */
+let lastPruneAt = 0;
+
+/** Removes the record of a child that ended, and now and then prunes records a crashed run left behind. */
 export function removeLiveForegroundRun(runId: string, index: number, now = Date.now()): void {
 	fs.rmSync(liveForegroundRecordPath(runId, index), { force: true });
+	if (now - lastPruneAt < PANEL_LEDGER_PRUNE_INTERVAL_MS) return;
+	lastPruneAt = now;
 	pruneLiveForegroundRuns(now);
 }
 

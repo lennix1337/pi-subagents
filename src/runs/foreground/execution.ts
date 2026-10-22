@@ -1830,12 +1830,12 @@ async function runSyncCompletionInner(
 	}
 	// Publish the running child so an external panel can show it while it works.
 	// Observability only: a failure here never changes what the child does.
+	// The record stays on disk while the child runs, so it carries no task prompt.
 	try {
 		writeLiveForegroundRun({
 			runId: options.runId,
 			index: options.index ?? 0,
 			agent: agentName,
-			task,
 			...(options.sessionFile ? { sessionFile: options.sessionFile } : {}),
 			cwd: options.cwd ?? runtimeCwd,
 			...(options.parentSessionId ? { sessionId: options.parentSessionId } : {}),
