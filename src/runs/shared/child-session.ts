@@ -509,7 +509,8 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 				} }] : []), ...codemode, ...(builtinMcp ? [builtinMcp] : [])],
 				extensionsOverride: (result) => orderChildPromptHooks(prioritizeChildCommandRuntime(result)),
 				...(launch.systemPrompt !== undefined ? { systemPrompt: launch.systemPrompt } : {}),
-				...(launch.appendSystemPrompt !== undefined ? { appendSystemPrompt: [launch.appendSystemPrompt] } : {}),
+				// An empty list stops Pi from filling the slot with the operator's APPEND_SYSTEM.md (#2960).
+				appendSystemPrompt: launch.appendSystemPrompt !== undefined ? [launch.appendSystemPrompt] : [],
 			});
 			// pi's own hosts emit `session_shutdown` before disposing a session so the
 			// extensions loaded into it (ambient extensions included) release their
@@ -630,8 +631,8 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 				subscribe: (listener) => session.subscribe((event) => listener(event as unknown as ChildSessionEvent)),
 				prompt: (text) => session.prompt(text),
 				...(commands ? { finishCommands: () => commands.finish() } : {}),
-				steer: (text) => session.steer(text),
-				followUp: (text) => session.followUp(text),
+				steer: async (text) => { await session.steer(text); },
+				followUp: async (text) => { await session.followUp(text); },
 				abort: () => session.abort(),
 				hasQueuedMessages: () => session.agent?.hasQueuedMessages?.() === true,
 				dispose: () => {

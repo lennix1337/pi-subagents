@@ -2,6 +2,55 @@
 
 ## [Unreleased]
 
+## [0.80.0] - 2026-10-21
+
+### Highlights
+
+- pi-subagents now needs Pi 1.2.0 or newer. In return, waking an idle parent no longer adds an "Inspect subagent updates above" line to your transcript: the subagent's own notice starts the turn.
+- `parallel`, `tasks` and `chain` children can each set their own `cwd` and `model`, so one call can fan out across repositories or worktrees, or mix models, without writing a workflow script.
+- `enableSlashCommands: false` keeps the `subagent` tool and drops every pi-subagents slash command, for setups that delegate only through the model.
+- The folded widget line shows how long the current batch of work has been running, for example `subagents (1/1 running 13s)`.
+- Windows: Pi no longer exits at startup when security software blocks `git`. DeepSeek and other providers that reuse the Codex Responses wire no longer fail on a child's second tool call.
+
+### Added
+
+- Children of the built-in `parallel` workflow (`args.tasks`), and `tasks` items and `chain` steps and group members when workflow scripts are disabled, accept optional `cwd` and `model`. One call can now fan out across several repositories or worktrees, or mix models, without writing a script. Before, these fields were rejected with "accepts only agent and task". Thanks to [@andresutre](https://github.com/andresutre) for [#2985](https://github.com/nicobailon/pi-subagents/pull/2985).
+- The folded async widget line now shows how long the current stretch of running work has lasted, for example `subagents (1/1 running 13s)`. It counts from the oldest running job, so it stays right after a session resume, and it disappears once nothing is running. Thanks to [@summer-tt](https://github.com/summer-tt) for [#2979](https://github.com/nicobailon/pi-subagents/pull/2979).
+- `enableSlashCommands: false` in the extension config keeps the `subagent` tool and drops every pi-subagents slash command and the foreground-detach shortcut, for setups that delegate only through the model or want fewer global commands. Prompt shortcuts such as `/parallel-review` are Pi prompt templates, and Pi's package filter (`"prompts": []`) already removes them. See [configuration](docs/configuration.md#enableslashcommands). Thanks to [@khavronin-artem](https://github.com/khavronin-artem) for requesting it in [#2977](https://github.com/nicobailon/pi-subagents/issues/2977).
+
+### Changed
+
+- pi-subagents now needs Pi 1.2.0 or newer; Pi 0.86.1 and 1.0.0 are no longer supported. The supported standalone target is now the official Pi 1.2.0 Linux x64 release. Pi 1.2.0 lets an extension message start a turn with the full system prompt, so an idle parent is now woken by the subagent notice itself, and the transcript no longer gets a separate "Inspect subagent updates above" line on every wake. Each notice says what the parent should do next. Thanks to [@summer-tt](https://github.com/summer-tt) for [#2976](https://github.com/nicobailon/pi-subagents/issues/2976).
+- The npm package no longer ships source maps. They pointed at TypeScript sources the package does not include, so nothing could use them, and they were almost half its files: the unpacked install drops from 12.1 MB to 6.8 MB and the download from 2.5 MB to 1.6 MB. Thanks to [@tututuhehehe](https://github.com/tututuhehehe) for reporting it in [#2980](https://github.com/nicobailon/pi-subagents/issues/2980).
+
+### Fixed
+
+- Pi could exit at session start on Windows when security software stopped it from launching `git` (`spawn EPERM`). The watchdog now starts without its diff baseline in that case, as it already did when `git` was missing. Thanks to [@advaitpaliwal](https://github.com/advaitpaliwal) for reporting [#2978](https://github.com/nicobailon/pi-subagents/issues/2978).
+- Children on a custom provider that speaks the Codex Responses wire under its own api id, such as `pi-cliproxyapi`'s `cliproxyapi-codex-responses`, had their tool-call ids rewritten, and DeepSeek rejected the second tool turn with a misleading "`reasoning_text` ... must be passed back" error. Any `*-codex-responses` api now keeps its ids the way `openai-codex-responses` does. Thanks to [@xspeed1989](https://github.com/xspeed1989) for reporting [#2981](https://github.com/nicobailon/pi-subagents/issues/2981).
+- Subagent cards said "Configure the expand key for live detail" when Pi's keybindings were not loaded, for example in an HTML session export, although the key was bound (`ctrl+o` by default). They now say "Press the expand key for live detail", and in RPC mode the status line of slash-command launches such as `/run` no longer shows an empty key (`3 tools |  live detail`). Thanks to [@JohannesBertens](https://github.com/JohannesBertens) for [#2983](https://github.com/nicobailon/pi-subagents/pull/2983) ([#2982](https://github.com/nicobailon/pi-subagents/issues/2982)).
+- On Pi 1.2, a child's bash command that exited non-zero showed as `completed` in `subagent_command` status. It now shows as `failed`.
+
+## [0.79.2] - 2026-10-20
+
+### Highlights
+
+- A background child that finishes while you are busy no longer loses its completion notice if Pi restarts before you get to it. The next Pi that opens the session shows it.
+- Steering is less fragile. A steer that times out waiting for a busy child no longer blocks every later steer on that run, and a steer that arrives too late says what state the run is in and what to do next.
+- Children no longer pick up your `APPEND_SYSTEM.md`, on this machine or on a saved Herdr machine. It was meant for your main session.
+- Workflows relaunched after a reload give back their background-run capacity, and workflows started from providers with very long tool-call ids (LiteLLM with Gemini) no longer fail at launch.
+- A session compacted by an older Pi can no longer lose `subagent` for good.
+
+### Fixed
+
+- A background subagent that finished while the parent was busy could lose its completion notice if Pi restarted before the parent got to it: Pi drops a queued notice when the session ends, and the result file was already gone. Such a notice is now saved in the session when it ends, and the next Pi process that opens the session, for example after a restart or with `pi --continue`, resends it and wakes the parent. A notice already in the session is not sent twice, notices on another branch of the session tree don't count, and `/reload` is unchanged. Thanks to [@advaitpaliwal](https://github.com/advaitpaliwal) for [#2968](https://github.com/nicobailon/pi-subagents/pull/2968).
+- A default `steer` on a running child that didn't pause within the recovery wait left the run locked, so every later steer failed with "Another steering recovery is already committed". A timed-out attempt now unlocks the run, still starts no replacement, and its error gives the real wait, the run's last state, that the message wasn't applied, and that `action: "resume"` continues the run. Thanks to [@tglunde](https://github.com/tglunde) for reporting [#2956](https://github.com/nicobailon/pi-subagents/issues/2956).
+- `steer` on a run that had already finished said only that it "is not running or queued". It now names the run's state and the next step: a completed retained child points at `mode: "follow_up"` or `resume`, and other runs point at `resume` only when resume would accept them, otherwise giving resume's own reason (for example, a stopped run has to be started again). Thanks to [@armchairfuturist-code](https://github.com/armchairfuturist-code) for [#2955](https://github.com/nicobailon/pi-subagents/pull/2955) ([#2954](https://github.com/nicobailon/pi-subagents/issues/2954)).
+- Children launched with `systemPromptMode: replace` (every builtin except `delegate`) received the operator's `APPEND_SYSTEM.md`, because Pi fills an empty append-prompt slot from that file. They now start without it, like `delegate` children and like the operator's global `AGENTS.md`. Children on a saved Herdr machine no longer get the remote operator's file either. To give a child those instructions, put them in the agent's prompt or an `agentOverrides` `systemPrompt`. Thanks to [@scnbln](https://github.com/scnbln) for [#2961](https://github.com/nicobailon/pi-subagents/pull/2961) ([#2960](https://github.com/nicobailon/pi-subagents/issues/2960), [#2969](https://github.com/nicobailon/pi-subagents/issues/2969)).
+- An async workflow relaunched after a reload kept its slot in `maxActiveAsyncRunsPerSession` forever when it reused finished children, re-attached to running ones, or had a child stopped before it started, so a long-lived session could run out of capacity. The slot is now released once the reused runs have ended. Slots already held by earlier versions are not reclaimed. Thanks to [@peterdsharpe](https://github.com/peterdsharpe) for reporting [#2958](https://github.com/nicobailon/pi-subagents/issues/2958) and the fix it describes.
+- A workflow launched from a tool call whose id was over 4,096 bytes failed with "parentToolCallId must be a non-empty identifier of at most 4096 UTF-8 bytes". LiteLLM, for example, puts Gemini thought signatures in the tool-call id. The workflow now runs; the workflow summary records a short digest of the id, and the run's `status.json` still keeps the full id. Thanks to [@mxr576](https://github.com/mxr576) for reporting [#2962](https://github.com/nicobailon/pi-subagents/issues/2962).
+- A session compacted by an older Pi, which kept no record of the session's tools, could lose `subagent` for good: on resume the surviving messages read as a deliberate choice to turn it off, and in `auto` mode nothing could turn it back on, not even `/reload`. Such a session now gets the tools a new session would, the same way on resume, `/reload` and tree navigation, and sessions already left without them recover. A choice to turn tools off made after the compaction is still kept. Thanks to [@jbachorik](https://github.com/jbachorik) for [#2963](https://github.com/nicobailon/pi-subagents/pull/2963).
+- The unit tests no longer fail when run from a shell that Pi or a pi-subagents child started, or on Node 24 under macOS. Thanks to [@jbachorik](https://github.com/jbachorik) for reporting [#2964](https://github.com/nicobailon/pi-subagents/issues/2964), [#2965](https://github.com/nicobailon/pi-subagents/issues/2965) and [#2966](https://github.com/nicobailon/pi-subagents/issues/2966).
+
 ## [0.79.1] - 2026-10-17
 
 ### Highlights
