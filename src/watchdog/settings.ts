@@ -486,15 +486,17 @@ export function writeWatchdogModelSettings(input: WatchdogModelSettingsWrite): s
 	});
 }
 
-export function resolveWatchdogConfig(cwd: string, options: { session?: Record<string, unknown> } = {}): WatchdogSettingsResult {
+/** `projectTrusted: false` (the session declined trust) leaves the project's settings.json unread, as Pi does for its own settings. */
+function settingsFileSources(cwd: string, projectTrusted: boolean | undefined): Array<{ scope: "user" | "project"; path: string | undefined }> {
+	const user = { scope: "user" as const, path: getUserSettingsPath() };
+	return projectTrusted === false ? [user] : [user, { scope: "project" as const, path: getProjectSettingsPath(cwd) }];
+}
+
+export function resolveWatchdogConfig(cwd: string, options: { session?: Record<string, unknown>; projectTrusted?: boolean } = {}): WatchdogSettingsResult {
 	const sources: WatchdogSettingsSource[] = [];
 	const errors: WatchdogSettingsError[] = [];
 	let patch: WatchdogConfigPatch = {};
-	const sourceSpecs: Array<{ scope: "user" | "project"; path: string | undefined }> = [
-		{ scope: "user", path: getUserSettingsPath() },
-		{ scope: "project", path: getProjectSettingsPath(cwd) },
-	];
-	for (const source of sourceSpecs) {
+	for (const source of settingsFileSources(cwd, options.projectTrusted)) {
 		if (!source.path) continue;
 		sources.push({ scope: source.scope, path: source.path, exists: fs.existsSync(source.path) });
 		try {

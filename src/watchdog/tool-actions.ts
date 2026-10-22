@@ -62,7 +62,7 @@ function resolveConfiguredValue(ctx: ExtensionContext, params: WatchdogToolParam
 	if (rawModel === "inherit") return { model: null, thinking: thinking ?? null, description: "inherit" };
 	if (rawModel === "recommended") {
 		const recommendation = (params.target ?? "main") === "main"
-			? recommendWatchdogModel(ctx, (runtime?.getSnapshot(ctx.cwd).config ?? resolveWatchdogConfig(ctx.cwd).config).main)
+			? recommendWatchdogModel(ctx, (runtime?.getSnapshot(ctx.cwd).config ?? resolveWatchdogConfig(ctx.cwd, { projectTrusted: ctx.isProjectTrusted?.() }).config).main)
 			: recommendStrongWatchdogModel(ctx);
 		return {
 			model: recommendation.model,
@@ -79,7 +79,7 @@ function resolveConfiguredValue(ctx: ExtensionContext, params: WatchdogToolParam
 }
 
 function buildRecommendationText(ctx: ExtensionContext, runtime?: MainWatchdogRuntime): string {
-	const recommendation = recommendWatchdogModel(ctx, (runtime?.getSnapshot(ctx.cwd).config ?? resolveWatchdogConfig(ctx.cwd).config).main);
+	const recommendation = recommendWatchdogModel(ctx, (runtime?.getSnapshot(ctx.cwd).config ?? resolveWatchdogConfig(ctx.cwd, { projectTrusted: ctx.isProjectTrusted?.() }).config).main);
 	return [
 		"Subagent watchdog recommended model",
 		recommendation.source === "configured" ? formatWatchdogRecommendation(recommendation) : `Recommended: ${recommendation.model}:${recommendation.thinking}`,

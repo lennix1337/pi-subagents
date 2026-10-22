@@ -21,12 +21,13 @@ describe("subagent guide", () => {
 		assert.match(guide, /# pi-subagents/);
 	});
 
-	it("lists valid topics for an unknown topic without changing files", () => {
-		const guide = readSubagentGuide("unknown");
-
-		assert.match(guide, /Unknown subagents guide topic 'unknown'/);
-		assert.match(guide, /No files were changed\./);
-		assert.match(guide, new RegExp(SUBAGENT_GUIDE_TOPICS.join(", ")));
+	it("rejects an unknown topic with the valid topics and without changing files", () => {
+		assert.throws(() => readSubagentGuide("unknown"), (error: Error) => {
+			assert.match(error.message, /Unknown subagents guide topic 'unknown'/);
+			assert.match(error.message, /No files were changed\./);
+			assert.match(error.message, new RegExp(SUBAGENT_GUIDE_TOPICS.join(", ")));
+			return true;
+		});
 	});
 
 	it("registers the guide action for action recovery", () => {
@@ -110,11 +111,12 @@ describe("subagent guide", () => {
 		}
 	});
 
-	it("lists the topic's sections for an unknown section", () => {
-		const guide = readSubagentGuide("workflows/no-such-section");
-
-		assert.match(guide, /Unknown section 'workflows\/no-such-section'/);
-		assert.match(guide, /^workflows\/scripted-workflows — Scripted workflows$/m);
+	it("rejects an unknown section and lists the topic's sections", () => {
+		assert.throws(() => readSubagentGuide("workflows/no-such-section"), (error: Error) => {
+			assert.match(error.message, /Unknown section 'workflows\/no-such-section'/);
+			assert.match(error.message, /^workflows\/scripted-workflows — Scripted workflows$/m);
+			return true;
+		});
 	});
 
 	it("reads sections the same way from a CRLF checkout", () => {

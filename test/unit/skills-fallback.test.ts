@@ -713,6 +713,50 @@ Fallback global agent.
 		assert.equal(resolveSkills(["global-only"], tempDir, ["./skills"], one).resolved[0]?.content, "global fallback");
 	});
 
+	it("skips every project skill source before reading it when the session declined project trust", () => {
+		const agentDir = path.join(tempDir, "agent-dir");
+		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		try {
+			const project = path.join(tempDir, "project");
+			writeSkillFile(path.join(agentDir, "skills", "shared"), "User shared skill.", "USER_SHARED");
+			writeSkillFile(path.join(project, ".pi", "skills", "shared"), "Project shared skill.", "PROJECT_SHARED");
+			writeSkillFile(path.join(project, ".pi", "skills", "project-dir"), "Project dir skill.");
+			writeSkillFile(path.join(project, ".agents", "skills", "project-agents-dir"), "Project .agents skill.");
+			makeProjectPackageSkill(project, "installed-pkg", "project-installed", "Project installed package skill.");
+			makePackageSkill(project, "project-root-package", "Project package.json skill.");
+			makePackageSkill(path.join(project, ".pi", "packages", "settings-pkg"), "project-settings-package", "Project settings package skill.");
+			writeSkillFile(path.join(project, "extra-skills", "project-settings-path"), "Project settings path skill.");
+			fs.writeFileSync(path.join(project, ".pi", "settings.json"), JSON.stringify({ packages: ["./packages/settings-pkg"], skills: ["../extra-skills"] }), "utf-8");
+			const names = ["shared", "project-dir", "project-agents-dir", "project-installed", "project-root-package", "project-settings-package", "project-settings-path"];
+
+			const trusted = resolveSkills(names, project);
+			assert.deepEqual(trusted.missing, []);
+			assert.equal(trusted.resolved.find((skill) => skill.name === "shared")?.description, "PROJECT_SHARED", "a trusted project skill outranks the user skill");
+
+			const declined = resolveSkills(names, project, undefined, undefined, false);
+			assert.deepEqual(declined.resolved.map((skill) => `${skill.name}:${skill.source}:${skill.description}`), ["shared:user:USER_SHARED"]);
+			assert.deepEqual(declined.missing, names.filter((name) => name !== "shared"));
+			const fallbackProject = path.join(tempDir, "fallback-project");
+			fs.mkdirSync(fallbackProject, { recursive: true });
+			assert.deepEqual(
+				resolveSkillsWithFallback(names, fallbackProject, project, undefined, undefined, false).resolved.map((skill) => skill.name),
+				["shared"],
+				"the fallback cwd honors the same trust",
+			);
+			assert.equal(resolveSkills(["shared"], project, undefined, undefined, true).resolved[0]?.description, "PROJECT_SHARED", "an explicit trust still reads the project");
+
+			fs.writeFileSync(path.join(project, ".pi", "settings.json"), "{bad-json", "utf-8");
+			fs.writeFileSync(path.join(project, "package.json"), "{bad-json", "utf-8");
+			clearSkillCache();
+			assert.deepEqual(resolveSkills(["shared"], project, undefined, undefined, false).missing, [], "declined trust does not read malformed project files");
+			assert.throws(() => resolveSkills(["shared"], project), /Failed to read/u);
+		} finally {
+			if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+			else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+		}
+	});
+
 	it("surfaces malformed project settings files instead of silently ignoring them", () => {
 		fs.mkdirSync(path.join(tempDir, ".pi"), { recursive: true });
 		fs.writeFileSync(path.join(tempDir, ".pi", "settings.json"), "{bad-json", "utf-8");

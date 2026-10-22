@@ -374,7 +374,7 @@ async function runSingleAttempt(
 	// runtime config and echoed back on the result payload so hosts can label
 	// this run without reading the child's session file.
 	const childSessionName = deriveChildSessionName({ agent: agent.name, task: shared.originalTask ?? task });
-	const watchdogConfig = resolveWatchdogConfig(options.cwd ?? runtimeCwd);
+	const watchdogConfig = resolveWatchdogConfig(options.cwd ?? runtimeCwd, { projectTrusted: options.projectTrusted });
 	const childWatchdog = watchdogConfig.ok
 		? resolveChildWatchdogConfig({
 			config: watchdogConfig.config,
@@ -1789,6 +1789,7 @@ async function runSyncCompletionInner(
 		runtimeCwd,
 		agent.skillPath,
 		agent.filePath ? path.dirname(agent.filePath) : skillCwd,
+		options.projectTrusted,
 	);
 	if (skillNames.some((skill) => skill.trim() === "pi-subagents") && missingSkills.includes("pi-subagents")) {
 		return redactResultPrompt(withRunContext({
@@ -1801,7 +1802,7 @@ async function runSyncCompletionInner(
 			error: "Skills not found: pi-subagents",
 		}, options.context));
 	}
-	const systemPrompt = buildEffectiveSystemPrompt({ agent, resolvedSkills, cwd: skillCwd });
+	const systemPrompt = buildEffectiveSystemPrompt({ agent, resolvedSkills, cwd: skillCwd, projectTrusted: options.projectTrusted });
 
 	const { model: selectedModel, requestedModel } = resolveModelSelection(
 		options.modelOverride ?? agent.model,

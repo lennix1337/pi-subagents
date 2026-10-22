@@ -103,13 +103,13 @@ function readGuideFiles(topic: string, files: string[], root: string): string[] 
 	}
 }
 
-/** Reads a guide topic. Docs-backed topics return their intro and table of contents; `topic/section` returns one section. */
+/** Reads a guide topic. Docs-backed topics return their intro and table of contents; `topic/section` returns one section. An unknown topic or section throws with its valid choices. */
 export function readSubagentGuide(topic = "overview", root = packageRoot): string {
 	const separator = topic.indexOf("/");
 	const name = separator === -1 ? topic : topic.slice(0, separator);
 	const sectioned = isGuideTopic(name) && name !== "overview" && name !== "council";
 	if (!isGuideTopic(name) || (separator !== -1 && !sectioned)) {
-		return `Unknown subagents guide topic '${topic}'. Valid topics: ${SUBAGENT_GUIDE_TOPICS.join(", ")}. No files were changed.`;
+		throw new Error(`Unknown subagents guide topic '${topic}'. Valid topics: ${SUBAGENT_GUIDE_TOPICS.join(", ")}. No files were changed.`);
 	}
 	if (!sectioned) {
 		const files = name === "overview" ? ["README.md"] : COUNCIL_FILES;
@@ -123,6 +123,6 @@ export function readSubagentGuide(topic = "overview", root = packageRoot): strin
 		return `${intro}\n\n${tableOfContents(name, sections)}`;
 	}
 	const section = sections.find((candidate) => candidate.address === topic);
-	if (!section) return `Unknown section '${topic}'. No files were changed.\n\n${tableOfContents(name, sections)}`;
+	if (!section) throw new Error(`Unknown section '${topic}'. No files were changed.\n\n${tableOfContents(name, sections)}`);
 	return sectionText(lines, section);
 }

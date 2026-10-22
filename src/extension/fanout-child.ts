@@ -216,7 +216,7 @@ export default function registerFanoutChildSubagentExtension(pi: ExtensionAPI, c
 
 	const disabledFeatures = resolveDisabledFeatureSurface(config);
 	const listEnabled = (actions: string[]) => actions.filter((action) => !disabledFeatures.actions.has(action)).join(", ");
-	const blockedActions = listEnabled(["create", "update", "delete", "eject", "disable", "enable", "reset", "grant-spawn-budget", "lane.recordMerge", "lane.recordSupersession"]);
+	const blockedActions = listEnabled(["create", "update", "delete", "eject", "disable", "enable", "reset", "grant-spawn-budget", "watchdog.configure", "refine", "refine.rollback", "lane.recordMerge", "lane.recordSupersession"]);
 	const params = createSubagentParamsSchema(disabledFeatures);
 	const tool: ToolDefinition<typeof params, Details> = {
 		name: "subagent",
@@ -225,7 +225,7 @@ export default function registerFanoutChildSubagentExtension(pi: ExtensionAPI, c
 		description: [
 			"Delegate to subagents from child-safe fanout mode.",
 			`Allowed management/control actions: ${listEnabled(["list", "get", "status", "lane.status", "interrupt", "resume", "steer", "doctor"])}.`,
-			...(blockedActions ? [`Mutating management actions (${blockedActions}) are blocked in this mode.`] : []),
+			...(blockedActions ? [`Mutating management actions, including ${blockedActions}, are blocked in this mode.`] : []),
 		].join("\n"),
 		parameters: params,
 		async execute(id, params, signal, onUpdate, ctx) {

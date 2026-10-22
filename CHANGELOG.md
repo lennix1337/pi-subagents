@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- When the session declined project trust, `subagent` `list`, `get`, `models`, `doctor` and the other agent-management actions no longer read project agents from `.pi/agents`.
+- `guide` with an unknown topic or section now returns a tool error that lists the valid choices, instead of a success result.
+- `children.list` states that it scans only the latest 100 finished runs of the session, including when it finds none, and reports `Showing N of M` when it caps the roster at 10.
+- When the session declined project trust, project-scope management (`agentScope` or `config.scope` `"project"`) returns the project-trust error instead of writing under `.pi` or reporting a missing project config root.
+- `list` with an invalid `agentScope` returns an error instead of listing every scope, and `update` and `delete` return an error instead of ignoring a misspelled scope.
+- When the session declined project trust, `refine`, `refine.show`, `refine.rollback` and `watchdog.configure` with `scope: "project"` return a project-trust error instead of resolving project agents or writing project state.
+- The tool description no longer claims that `list` shows each agent's model and thinking; `options:{capabilities:true}` does.
+- When the session declined project trust, a project's `.pi/subagents/refinements/<agent>.md` overlay is no longer appended to a user-level agent's child prompt, and the project's watchdog settings (`.pi/settings.json`, including launch `rules` with `action: "block"`) and `.pi/WATCHDOG.md` no longer affect watchdog configuration, launch decisions or reviewer prompts.
+- When the session declined project trust, project skills (`.pi/skills`, `.agents/skills`, project packages and project `settings.json`) and project-scope agent memory no longer reach a child prompt, preflight and the launch contract digest, for foreground, background and workflow children. User skills and user-scope memory keep applying, and a skill only the project provides is reported as missing.
+- A pane-native Herdr Pi child now resolves its agent, skills, memory and refinement under the remote Pi's own `isProjectTrusted()`. If that Pi declined trust, the remote project's inputs are not read; a `configure` before the remote session starts is refused instead of reading them.
+- The child-safe fanout `subagent` tool description lists `watchdog.configure`, `refine` and `refine.rollback` among its blocked mutating actions, and says the list is not exhaustive.
+
 ## [0.80.0] - 2026-10-21
 
 ### Highlights

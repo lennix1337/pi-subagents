@@ -322,7 +322,7 @@ async function runWatchdogAttempt(ctx: ExtensionContext, request: WatchdogReview
 	});
 	const systemPrompt = buildWatchdogSystemPrompt(ctx, {
 		hasScope: request.hasScope,
-		guidance: loadWatchdogGuidance(ctx.cwd, request.config.guidance.watchdogMd),
+		guidance: loadWatchdogGuidance(ctx.cwd, request.config.guidance.watchdogMd, ctx.isProjectTrusted?.()),
 		hasDiff: diffBaseline !== undefined,
 	});
 	const agent = new Agent({

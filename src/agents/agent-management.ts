@@ -974,7 +974,8 @@ function formatAgentDetail(agent: AgentConfig): string {
 }
 
 export function handleList(params: ManagementParams, ctx: ManagementContext): AgentToolResult<Details> {
-	const scope = normalizeListScope(params.agentScope) ?? "both";
+	const scope = normalizeListScope(params.agentScope);
+	if (!scope) return result("agentScope must be 'user', 'project', or 'both' for list.", true);
 	const d = discoverCatalog(ctx, ctx.cwd, ctx.model?.provider);
 	let scopedAgents = effectiveAgentsForScope(scope, d, ctx.runtimeAgentOwner, ctx.model?.provider);
 	scopedAgents = scopedAgents
@@ -1205,7 +1206,10 @@ export function handleUpdate(params: ManagementParams, ctx: ManagementContext): 
 	const cfg = parsedConfig.value;
 	if (hasKey(cfg, "steps")) return result("Durable chain definitions were removed; use a workflow script or /prompt-workflow for repeatable workflows.", true);
 	const warnings: string[] = [];
-	const scopeHint = asDisambiguationScope(params.agentScope);
+	// agentScope only picks between same-named agents here, so a misspelled value must not silently widen the target.
+	const parsedScope = params.agentScope === undefined ? {} : actionScope(params.agentScope, "update");
+	if (parsedScope.error) return parsedScope.error;
+	const scopeHint = parsedScope.scope;
 	const targetOrError = resolveTarget(params.agent, findAgents(params.agent, ctx, scopeHint ?? "both"), ctx.cwd, ctx, scopeHint);
 	if ("content" in targetOrError) return targetOrError;
 	const target = targetOrError;
@@ -1264,7 +1268,9 @@ export function handleUpdate(params: ManagementParams, ctx: ManagementContext): 
 
 function handleDelete(params: ManagementParams, ctx: ManagementContext): AgentToolResult<Details> {
 	if (!params.agent) return result("Specify 'agent' for delete.", true);
-	const scopeHint = asDisambiguationScope(params.agentScope);
+	const parsedScope = params.agentScope === undefined ? {} : actionScope(params.agentScope, "delete");
+	if (parsedScope.error) return parsedScope.error;
+	const scopeHint = parsedScope.scope;
 	const targetOrError = resolveTarget(params.agent, findAgents(params.agent, ctx, scopeHint ?? "both"), ctx.cwd, ctx, scopeHint);
 	if ("content" in targetOrError) return targetOrError;
 	const target = targetOrError;

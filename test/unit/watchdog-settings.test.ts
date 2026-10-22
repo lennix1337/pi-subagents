@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { resolveWatchdogConfig, resolveWatchdogConfigStrict, writeUserWatchdogEnabled, writeWatchdogModelSettings } from "../../src/watchdog/settings.ts";
+import { MainWatchdogRuntime } from "../../src/watchdog/runtime.ts";
 
 let tempHome = "";
 let tempProject = "";
@@ -352,5 +353,39 @@ describe("watchdog settings", () => {
 		assert.equal(settings.subagents.watchdog.main.enabled, false);
 		assert.equal(settings.subagents.watchdog.main.model, "openai/watchdog");
 		assert.equal(resolveWatchdogConfig(tempProject).config.main.enabled, false);
+	});
+
+	describe("project trust", () => {
+		beforeEach(() => {
+			writeJson(userSettingsPath(), { subagents: { watchdog: { main: { model: "openai/user-watchdog" } } } });
+			writeJson(projectSettingsPath(), { subagents: { watchdog: { enabled: true, main: { model: "openai/project-watchdog" } } } });
+		});
+
+		it("reads the project's settings unless the session declined project trust", () => {
+			for (const options of [{}, { projectTrusted: true }]) {
+				const result = resolveWatchdogConfig(tempProject, options);
+				assert.deepEqual(result.sources.map((source) => source.scope), ["user", "project"]);
+				assert.equal(result.config.enabled, true);
+				assert.equal(result.config.main.model, "openai/project-watchdog");
+			}
+			const declined = resolveWatchdogConfig(tempProject, { projectTrusted: false });
+			assert.equal(declined.ok, true);
+			assert.deepEqual(declined.sources.map((source) => source.scope), ["user"]);
+			assert.equal(declined.config.enabled, false);
+			assert.equal(declined.config.main.model, "openai/user-watchdog");
+			assert.equal(resolveWatchdogConfig(tempProject, { projectTrusted: false, session: { enabled: true } }).config.enabled, true, "session overrides still apply");
+		});
+
+		it("keeps the bound session's trust across the runtime's config refreshes", () => {
+			const runtime = new MainWatchdogRuntime({ cwd: tempProject });
+			runtime.bindSession({ cwd: tempProject, isProjectTrusted: () => false });
+			assert.equal(runtime.getSnapshot(tempProject).enabled, false);
+			assert.equal(runtime.getSnapshot().config.main.model, "openai/user-watchdog");
+			runtime.handleToolResult({ cwd: tempProject, isProjectTrusted: () => false });
+			assert.equal(runtime.getSnapshot().enabled, false);
+			runtime.bindSession({ cwd: tempProject, isProjectTrusted: () => true });
+			assert.equal(runtime.getSnapshot(tempProject).enabled, true);
+			assert.equal(runtime.getSnapshot().config.main.model, "openai/project-watchdog");
+		});
 	});
 });

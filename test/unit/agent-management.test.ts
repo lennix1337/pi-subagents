@@ -112,6 +112,43 @@ describe("agent management config parsing", () => {
 		assert.doesNotMatch(readText(result), /- scout \(builtin/);
 	});
 
+	it("rejects an invalid list agentScope instead of listing every scope", () => {
+		const agentsDir = path.join(tempDir, ".pi", "agents");
+		fs.mkdirSync(agentsDir, { recursive: true });
+		fs.writeFileSync(path.join(agentsDir, "scope-probe.md"), "---\nname: scope-probe\ndescription: Project probe\n---\n\nProbe.\n");
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+
+		const result = handleManagementAction("list", { agentScope: "projct" }, ctx);
+
+		assert.equal(result.isError, true);
+		assert.equal(readText(result), "agentScope must be 'user', 'project', or 'both' for list.");
+		assert.doesNotMatch(readText(result), /scope-probe/);
+		assert.equal(handleManagementAction("list", { agentScope: "both" }, ctx).isError, false);
+		assert.equal(handleManagementAction("list", {}, ctx).isError, false);
+	});
+
+	it("rejects an invalid update or delete agentScope instead of widening the target", () => {
+		const agentsDir = path.join(tempDir, ".pi", "agents");
+		fs.mkdirSync(agentsDir, { recursive: true });
+		const agentPath = path.join(agentsDir, "scope-typo.md");
+		fs.writeFileSync(agentPath, "---\nname: scope-typo\ndescription: Project probe\n---\n\nProbe.\n");
+		const ctx = { cwd: tempDir, modelRegistry: { getAvailable: () => [] } };
+
+		for (const params of [{ agent: "scope-typo", agentScope: "projct", config: { description: "Changed" } }, { agent: "scope-typo", agentScope: "both", config: { description: "Changed" } }]) {
+			const updated = handleManagementAction("update", params, ctx);
+			assert.equal(updated.isError, true);
+			assert.equal(readText(updated), "agentScope must be 'user' or 'project' for update.");
+		}
+		const deleted = handleManagementAction("delete", { agent: "scope-typo", agentScope: "projct" }, ctx);
+		assert.equal(deleted.isError, true);
+		assert.equal(readText(deleted), "agentScope must be 'user' or 'project' for delete.");
+		assert.equal(fs.existsSync(agentPath), true, "a rejected scope must not delete the agent");
+		assert.match(fs.readFileSync(agentPath, "utf-8"), /description: Project probe/);
+		assert.equal(handleManagementAction("update", { agent: "scope-typo", config: { description: "Changed" } }, ctx).isError, false);
+		assert.equal(handleManagementAction("delete", { agent: "scope-typo", agentScope: "project" }, ctx).isError, false);
+		assert.equal(fs.existsSync(agentPath), false);
+	});
+
 	it("lists compact declared capabilities without exposing system prompts", () => {
 		const agentsDir = path.join(tempDir, ".pi", "agents");
 		fs.mkdirSync(agentsDir, { recursive: true });

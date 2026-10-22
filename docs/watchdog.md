@@ -138,6 +138,10 @@ Asking consumes the current review evidence, so an unchanged Git-backed boundary
 
 Reviews retain the existing `agentEndTimeoutMs`. Questions and evidence are capped at 1,000 and 2,000 characters; scope, activity and delta share the existing 24,000-character input limit. Enabled cost adds at most one activity boundary review and one question-triggered continuation per prompt, not a dedicated answer review. Disabled execution does not collect activity or add polling, model calls or reviewer prompt/tool content. Child warning messaging and permission decisions remain unchanged.
 
+## Project trust
+
+When the session declined Pi project trust, the watchdog ignores everything the project controls: `<project>/.pi/settings.json` (including `rules`), child watchdog launch configuration, and `<project>/.pi/WATCHDOG.md`. User and session settings and `~/.pi/agent/WATCHDOG.md` still apply.
+
 ## Child watchdogs
 
 Opt in under `subagents.watchdog.children`. `model` and `thinking` set the default child watchdog; `overrides.<agent>` can set `model`, `thinking`, `enabled`, or `cadence` per role.

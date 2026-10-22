@@ -20,6 +20,8 @@ interface BridgeContext {
 	isIdle(): boolean;
 	hasPendingMessages(): boolean;
 	getActiveTools?(): string[];
+	/** The remote Pi's own project trust for the remote machine's files; absent on hosts older than Pi's trust concept. */
+	isProjectTrusted?(): boolean;
 	sessionManager?: { getSessionId?(): string; getSessionFile?(): string | undefined };
 	model?: { provider?: string; id?: string };
 }
@@ -32,15 +34,16 @@ function gitEvidence(cwd: string): Record<string, unknown> | undefined {
 	return { ...(head.status === 0 ? { head: head.stdout.trim() } : {}), ...(branch.status === 0 ? { branch: branch.stdout.trim() } : {}), dirty: Boolean(dirty.stdout.trim()) };
 }
 
-export function resolveRemoteHerdrResources(cwd: string, resources: { agent: string; skills?: string[]; toolCeiling?: string[]; reads?: string[] | false }, remoteDefaultTools: string[] = []): { agent: string; skills: string[]; tools: string[]; systemPrompt: string; inheritProjectContext: boolean; inheritGlobalContext: boolean; inheritSkills: boolean } {
+export function resolveRemoteHerdrResources(cwd: string, resources: { agent: string; skills?: string[]; toolCeiling?: string[]; reads?: string[] | false }, remoteDefaultTools: string[] = [], projectTrusted?: boolean): { agent: string; skills: string[]; tools: string[]; systemPrompt: string; inheritProjectContext: boolean; inheritGlobalContext: boolean; inheritSkills: boolean } {
 	if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(resources.agent) || resources.skills?.some((name) => !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(name)) || resources.toolCeiling?.some((name) => !/^[A-Za-z0-9_-]{1,64}$/u.test(name)) || (resources.reads !== undefined && resources.reads !== false && (!Array.isArray(resources.reads) || resources.reads.some((name) => typeof name !== "string")))) throw new Error("Remote logical resource names are invalid.");
-	const discovered = discoverAgents(cwd, "both").agents.filter((agent) => agent.name === resources.agent || agent.aliases?.includes(resources.agent));
+	const discovered = discoverAgents(cwd, "both", undefined, { projectTrusted }).agents.filter((agent) => agent.name === resources.agent || agent.aliases?.includes(resources.agent));
 	if (discovered.length !== 1) throw new Error(`Remote agent '${resources.agent}' was not found unambiguously in ${cwd}.`);
 	const agent = discovered[0]!; const names = resources.skills ?? agent.skills ?? [];
-	const skills = resolveSkills(names, cwd); if (skills.missing.length) throw new Error(`Remote Pi skills not found: ${skills.missing.join(", ")}. Configure them on the saved machine.`);
+	const skills = resolveSkills(names, cwd, undefined, undefined, projectTrusted); if (skills.missing.length) throw new Error(`Remote Pi skills not found: ${skills.missing.join(", ")}. Configure them on the saved machine.`);
 	const skillPrompt = buildSkillInjection(skills.resolved);
 	const reads = resources.reads === undefined ? agent.defaultReads ?? false : resources.reads; const readPaths = Array.isArray(reads) ? resolveExistingReadPaths(reads, cwd) : [];
-	const systemPrompt = appendAgentRefinementOverlay(`${agent.systemPrompt}${buildAgentMemoryInjection(agent, cwd)}${skillPrompt ? `\n\n${skillPrompt}` : ""}${readPaths.length ? `\n\n[Read from: ${readPaths.join(", ")}]` : ""}`, { cwd, agentName: agent.name });
+	const basePrompt = `${agent.systemPrompt}${buildAgentMemoryInjection(agent, cwd, projectTrusted)}${skillPrompt ? `\n\n${skillPrompt}` : ""}${readPaths.length ? `\n\n[Read from: ${readPaths.join(", ")}]` : ""}`;
+	const systemPrompt = projectTrusted === false ? basePrompt : appendAgentRefinementOverlay(basePrompt, { cwd, agentName: agent.name });
 	const denied = new Set(agent.excludeTools ?? []); const tools = (agent.tools === undefined ? remoteDefaultTools : agent.tools).filter((tool) => !denied.has(tool) && (!resources.toolCeiling || resources.toolCeiling.includes(tool))); if (agent.tools === undefined && !tools.length) throw new Error(`Remote agent '${agent.name}' resolved no default active tools within the inherited ceiling.`);
 	return { agent: agent.name, skills: names, tools, systemPrompt, inheritProjectContext: agent.inheritProjectContext, inheritGlobalContext: agent.inheritGlobalContext, inheritSkills: agent.inheritSkills };
 }
@@ -148,7 +151,11 @@ export default function registerHerdrPiBridge(pi: ExtensionAPI): void {
 						const invalidSkills = resources.skills !== undefined && (!Array.isArray(resources.skills) || resources.skills.some((name) => typeof name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(name)));
 						const invalidReads = resources.reads !== undefined && resources.reads !== false && (!Array.isArray(resources.reads) || resources.reads.some((name) => typeof name !== "string"));
 						if (typeof resources.agent !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(resources.agent) || invalidSkills || invalidReads) throw new Error("Remote logical resource names are invalid.");
-						const resolved = resolveRemoteHerdrResources(process.cwd(), { agent: resources.agent, ...(resources.skills ? { skills: resources.skills as string[] } : {}), ...(resources.toolCeiling ? { toolCeiling: resources.toolCeiling as string[] } : {}), ...(resources.reads !== undefined ? { reads: resources.reads as string[] | false } : {}) }, context ? activeTools(context) : []); resolvedSystemPrompt = resolved.systemPrompt; resolvedContextPolicy = resolved;
+						// The remote Pi's own trust governs the remote machine's project files; the local session's trust never grants it.
+						// Without a started session there is no trust context, so no project input is read.
+						if (!context) throw new Error("Remote Pi session has not started; project trust is unknown, so project resources were not read.");
+						const projectTrusted = context.isProjectTrusted?.();
+						const resolved = resolveRemoteHerdrResources(process.cwd(), { agent: resources.agent, ...(resources.skills ? { skills: resources.skills as string[] } : {}), ...(resources.toolCeiling ? { toolCeiling: resources.toolCeiling as string[] } : {}), ...(resources.reads !== undefined ? { reads: resources.reads as string[] | false } : {}) }, activeTools(context), projectTrusted); resolvedSystemPrompt = resolved.systemPrompt; resolvedContextPolicy = resolved;
 						(pi as unknown as { setActiveTools?(tools: string[]): void }).setActiveTools?.(resolved.tools); const acknowledged = context ? activeTools(context) : []; if (acknowledged.some((tool) => !resolved.tools.includes(tool)) || resolved.tools.some((tool) => !acknowledged.includes(tool))) throw new Error("Remote Pi did not apply the resolved active-tool set exactly.");
 						configured = true; send({ type: "configured", requestId: frame.requestId, nativeSessionId, agent: resolved.agent, skills: resolved.skills, model: context?.model?.provider && context.model.id ? `${context.model.provider}/${context.model.id}` : undefined, tools: acknowledged }); continue;
 					}

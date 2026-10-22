@@ -345,6 +345,13 @@ describe("main watchdog review adapter", () => {
 			const second = createStreamFn([fauxAssistantMessage("done", { stopReason: "stop" })]);
 			await createMainWatchdogReview(ctx, { streamFn: second.streamFn })(request(disabled, []));
 			assert.doesNotMatch(getCurrentSystemPrompt(second.calls[0]!.context.messages), /Standing instructions/);
+
+			// A session that declined project trust does not feed the project's WATCHDOG.md to the reviewer; the user's file still applies.
+			const declined = createStreamFn([fauxAssistantMessage("done", { stopReason: "stop" })]);
+			await createMainWatchdogReview({ ...ctx, isProjectTrusted: () => false }, { streamFn: declined.streamFn })(request(enabledConfig(), []));
+			const declinedPrompt = getCurrentSystemPrompt(declined.calls[0]!.context.messages);
+			assert.doesNotMatch(declinedPrompt, /Never accept skipped tests/);
+			assert.match(declinedPrompt, /Standing instructions from WATCHDOG\.md \(project first, then user\):\nu+\n\n<cwd>/);
 		} finally {
 			if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 			else process.env.PI_CODING_AGENT_DIR = originalAgentDir;

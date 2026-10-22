@@ -9,6 +9,8 @@ export interface EffectiveSystemPromptInput {
 	resolvedSkills: Parameters<typeof buildSkillInjection>[0];
 	/** Directory that scopes memory and refinement lookups. */
 	cwd: string;
+	/** The launching session's project trust; `false` leaves out the project's refinement overlay and project-scope memory. */
+	projectTrusted?: boolean;
 }
 
 function appendSection(prompt: string, section: string): string {
@@ -25,8 +27,8 @@ function appendSection(prompt: string, section: string): string {
 export function buildEffectiveSystemPrompt(input: EffectiveSystemPromptInput): string {
 	let prompt = input.agent.systemPrompt?.trim() ?? "";
 	if (input.resolvedSkills.length > 0) prompt = appendSection(prompt, buildSkillInjection(input.resolvedSkills));
-	const memoryInjection = buildAgentMemoryInjection(input.agent, input.cwd);
+	const memoryInjection = buildAgentMemoryInjection(input.agent, input.cwd, input.projectTrusted);
 	if (memoryInjection) prompt = appendSection(prompt, memoryInjection);
-	prompt = appendAgentRefinementOverlay(prompt, { cwd: input.cwd, agentName: input.agent.name });
+	if (input.projectTrusted !== false) prompt = appendAgentRefinementOverlay(prompt, { cwd: input.cwd, agentName: input.agent.name });
 	return prompt;
 }

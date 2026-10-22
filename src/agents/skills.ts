@@ -52,7 +52,7 @@ interface SkillSearchPath {
 const skillCache = new Map<string, SkillCacheEntry>();
 const MAX_CACHE_SIZE = 50;
 
-let loadSkillsCache: { cwd: string; agentDir: string; skills: CachedSkillEntry[]; timestamp: number } | null = null;
+let loadSkillsCache: { cwd: string; agentDir: string; projectTrusted: boolean; skills: CachedSkillEntry[]; timestamp: number } | null = null;
 const LOAD_SKILLS_CACHE_TTL_MS = 5000;
 
 const SUBAGENT_ORCHESTRATION_SKILL = "pi-subagents";
@@ -154,10 +154,9 @@ function getGlobalNpmRoot(): string | null {
 	}
 }
 
-function collectInstalledPackageSkillPaths(cwd: string, agentDir: string): SkillSearchPath[] {
-	const projectConfigDir = getProjectConfigDir(cwd);
+function collectInstalledPackageSkillPaths(cwd: string, agentDir: string, includeProject: boolean): SkillSearchPath[] {
 	const dirs: SkillSearchPath[] = [
-		{ path: path.join(projectConfigDir, "npm", "node_modules"), source: "project-package" },
+		...(includeProject ? [{ path: path.join(getProjectConfigDir(cwd), "npm", "node_modules"), source: "project-package" as const }] : []),
 		{ path: path.join(agentDir, "npm", "node_modules"), source: "user-package" },
 	];
 
@@ -206,13 +205,24 @@ function collectInstalledPackageSkillPaths(cwd: string, agentDir: string): Skill
 	return results;
 }
 
-function collectSettingsSkillPaths(cwd: string, agentDir: string): SkillSearchPath[] {
-	const results: SkillSearchPath[] = [];
+/** The settings files that can declare skills or packages; the project's is left out, unread, when `includeProject` is false. */
+function settingsFileSources<Source extends SkillSource>(
+	cwd: string,
+	agentDir: string,
+	includeProject: boolean,
+	projectSource: Source,
+	userSource: Source,
+): Array<{ file: string; base: string; source: Source }> {
 	const projectConfigDir = getProjectConfigDir(cwd);
-	const settingsFiles = [
-		{ file: path.join(projectConfigDir, "settings.json"), base: projectConfigDir, source: "project-settings" as const },
-		{ file: path.join(agentDir, "settings.json"), base: agentDir, source: "user-settings" as const },
+	return [
+		...(includeProject ? [{ file: path.join(projectConfigDir, "settings.json"), base: projectConfigDir, source: projectSource }] : []),
+		{ file: path.join(agentDir, "settings.json"), base: agentDir, source: userSource },
 	];
+}
+
+function collectSettingsSkillPaths(cwd: string, agentDir: string, includeProject: boolean): SkillSearchPath[] {
+	const results: SkillSearchPath[] = [];
+	const settingsFiles = settingsFileSources(cwd, agentDir, includeProject, "project-settings", "user-settings");
 
 	for (const { file, base, source } of settingsFiles) {
 		const settings = readOptionalJsonFile(file, "skills settings file");
@@ -308,12 +318,8 @@ function resolveSettingsPackageRoot(source: string, baseDir: string): string | u
 	return undefined;
 }
 
-function collectSettingsPackageSkillPaths(cwd: string, agentDir: string): SkillSearchPath[] {
-	const projectConfigDir = getProjectConfigDir(cwd);
-	const settingsFiles = [
-		{ file: path.join(projectConfigDir, "settings.json"), base: projectConfigDir, source: "project-package" as const },
-		{ file: path.join(agentDir, "settings.json"), base: agentDir, source: "user-package" as const },
-	];
+function collectSettingsPackageSkillPaths(cwd: string, agentDir: string, includeProject: boolean): SkillSearchPath[] {
+	const settingsFiles = settingsFileSources(cwd, agentDir, includeProject, "project-package", "user-package");
 	const results: SkillSearchPath[] = [];
 
 	for (const { file, base, source } of settingsFiles) {
@@ -339,17 +345,20 @@ function collectSettingsPackageSkillPaths(cwd: string, agentDir: string): SkillS
 	return results;
 }
 
-function buildSkillPaths(cwd: string, agentDir: string): SkillSearchPath[] {
+/** With `includeProject` false, every project-controlled source is skipped before it is read. */
+function buildSkillPaths(cwd: string, agentDir: string, includeProject: boolean): SkillSearchPath[] {
 	const projectConfigDir = getProjectConfigDir(cwd);
 	const skillPaths: SkillSearchPath[] = [
-		{ path: path.join(projectConfigDir, "skills"), source: "project" },
-		{ path: path.join(cwd, ".agents", "skills"), source: "project" },
+		...(includeProject ? [
+			{ path: path.join(projectConfigDir, "skills"), source: "project" as const },
+			{ path: path.join(cwd, ".agents", "skills"), source: "project" as const },
+		] : []),
 		{ path: path.join(agentDir, "skills"), source: "user" },
 		{ path: path.join(os.homedir(), ".agents", "skills"), source: "user" },
-		...collectInstalledPackageSkillPaths(cwd, agentDir),
-		...collectSettingsPackageSkillPaths(cwd, agentDir),
-		...extractSkillPathsFromPackageRoot(cwd, "project-package"),
-		...collectSettingsSkillPaths(cwd, agentDir),
+		...collectInstalledPackageSkillPaths(cwd, agentDir, includeProject),
+		...collectSettingsPackageSkillPaths(cwd, agentDir, includeProject),
+		...(includeProject ? extractSkillPathsFromPackageRoot(cwd, "project-package") : []),
+		...collectSettingsSkillPaths(cwd, agentDir, includeProject),
 	];
 
 	const deduped = new Map<string, SkillSearchPath>();
@@ -576,14 +585,15 @@ function collectFilesystemSkills(cwd: string, agentDir: string, skillPaths: Skil
 	return entries;
 }
 
-function getCachedSkills(cwd: string): CachedSkillEntry[] {
+function getCachedSkills(cwd: string, projectTrusted?: boolean): CachedSkillEntry[] {
 	const now = Date.now();
 	const agentDir = getAgentDir();
-	if (loadSkillsCache && loadSkillsCache.cwd === cwd && loadSkillsCache.agentDir === agentDir && now - loadSkillsCache.timestamp < LOAD_SKILLS_CACHE_TTL_MS) {
+	const includeProject = projectTrusted !== false;
+	if (loadSkillsCache && loadSkillsCache.cwd === cwd && loadSkillsCache.agentDir === agentDir && loadSkillsCache.projectTrusted === includeProject && now - loadSkillsCache.timestamp < LOAD_SKILLS_CACHE_TTL_MS) {
 		return loadSkillsCache.skills;
 	}
 
-	const skillPaths = buildSkillPaths(cwd, agentDir);
+	const skillPaths = buildSkillPaths(cwd, agentDir, includeProject);
 	const loaded = collectFilesystemSkills(cwd, agentDir, skillPaths);
 	const dedupedByName = new Map<string, CachedSkillEntry>();
 
@@ -593,15 +603,16 @@ function getCachedSkills(cwd: string): CachedSkillEntry[] {
 	}
 
 	const skills = [...dedupedByName.values()].sort((a, b) => a.order - b.order);
-	loadSkillsCache = { cwd, agentDir, skills, timestamp: now };
+	loadSkillsCache = { cwd, agentDir, projectTrusted: includeProject, skills, timestamp: now };
 	return skills;
 }
 
 export function resolveSkillPath(
 	skillName: string,
 	cwd: string,
+	projectTrusted?: boolean,
 ): { path: string; source: SkillSource } | undefined {
-	const skills = getCachedSkills(cwd);
+	const skills = getCachedSkills(cwd, projectTrusted);
 	const skill = skills.find((s) => s.name === skillName);
 	if (!skill) return undefined;
 	return { path: skill.filePath, source: skill.source };
@@ -645,11 +656,13 @@ function readSkill(
 	}
 }
 
+/** `projectTrusted: false` resolves names from user and package sources only; user skills keep their precedence. */
 export function resolveSkills(
 	skillNames: string[],
 	cwd: string,
 	localSkillPaths?: string[],
 	localBaseDir?: string,
+	projectTrusted?: boolean,
 ): { resolved: ResolvedSkill[]; missing: string[] } {
 	const resolved: ResolvedSkill[] = [];
 	const missing: string[] = [];
@@ -676,7 +689,7 @@ export function resolveSkills(
 		const local = localByName.get(trimmed);
 		let skill = local ? readSkill(trimmed, local.filePath, local.source) : undefined;
 		if (!skill) {
-			const location = resolveSkillPath(trimmed, cwd);
+			const location = resolveSkillPath(trimmed, cwd, projectTrusted);
 			if (location) skill = readSkill(trimmed, location.path, location.source);
 		}
 		if (skill) resolved.push(skill);
@@ -692,12 +705,13 @@ export function resolveSkillsWithFallback(
 	fallbackCwd?: string,
 	localSkillPaths?: string[],
 	localBaseDir?: string,
+	projectTrusted?: boolean,
 ): { resolved: ResolvedSkill[]; missing: string[] } {
-	const primary = resolveSkills(skillNames, primaryCwd, localSkillPaths, localBaseDir);
+	const primary = resolveSkills(skillNames, primaryCwd, localSkillPaths, localBaseDir, projectTrusted);
 	if (!fallbackCwd || primary.missing.length === 0) return primary;
 	if (path.resolve(primaryCwd) === path.resolve(fallbackCwd)) return primary;
 
-	const fallback = resolveSkills(primary.missing, fallbackCwd);
+	const fallback = resolveSkills(primary.missing, fallbackCwd, undefined, undefined, projectTrusted);
 	return {
 		resolved: [...primary.resolved, ...fallback.resolved],
 		missing: fallback.missing,

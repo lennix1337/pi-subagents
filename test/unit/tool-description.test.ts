@@ -51,6 +51,13 @@ describe("registered subagent tool description", () => {
 		assert.match(buildSubagentToolDescription({ toolDescriptionMode: "custom" }, { cwd, agentDir }), /Operator-owned custom guidance/);
 	});
 
+	it("states that list shows agent types and that capabilities adds model, thinking and tools", () => {
+		for (const description of [buildSubagentToolDescription(), buildSubagentToolDescription({ toolDescriptionMode: "full" })]) {
+			assert.match(description, /\{action:"list"\} = agent types; options:\{capabilities:true\} adds each agent's default model\/thinking\/tools;/);
+			assert.doesNotMatch(description, /agent types and their default model\/thinking/);
+		}
+	});
+
 	it("uses a one-line snippet only by default", () => {
 		assert.equal(buildSubagentToolDescription(), DEFAULT_SUBAGENT_TOOL_DESCRIPTION);
 		assert.deepEqual(buildSubagentToolPromptMetadata(), { promptSnippet: SUBAGENT_TOOL_PROMPT_SNIPPET });
