@@ -81,7 +81,7 @@ export function touchLiveForegroundRun(runId: string, index: number, now = Date.
 	if (!fs.existsSync(file)) return;
 	const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
 	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
-	writePrivateAtomicJson(file, { ...(parsed as LiveForegroundRecord), updatedAt: now });
+	writeLiveForegroundRun({ ...(parsed as LiveForegroundRecord), runId, index, updatedAt: now });
 }
 
 let lastPruneAt = 0;

@@ -212,13 +212,13 @@ Async runs write machine-readable lifecycle artifacts for observability and work
 
 For a top-level async run, `details.asyncDir` points at that directory; the final summary is written to Pi's subagent results directory as `<runId>.json`. Nested async runs use the same shape under the nested async root and are discoverable through status projections that read the nested-run registry. These files are append/update artifacts only; interactive foreground behavior is unchanged.
 
-A foreground child publishes one small record per running child, so an external panel can show it while it works:
+A single-agent foreground call publishes one small record for its running child, so an external panel can show it while it works. Parallel and chain runs use async status artifacts instead:
 
 ```text
 <tmpdir>/pi-subagents-<scope>/async-subagent-results/live-foreground/<runId>-<index>.json
 ```
 
-The record names the agent, the task, the model, the session file and the start time, and it is refreshed while the child runs and removed when the child ends. It is observability only: a panel that ignores it loses nothing but the live view, and a failure to write it never changes what the child does. See [OptChat integration](optchat.md).
+The record names the agent, the model, the session file and the start time, but contains no task prompt. It is refreshed while the child runs and removed when the child ends. It is observability only: a panel that ignores it loses nothing but the live view, and a failure to write it never changes what the child does. See [OptChat integration](optchat.md).
 
 The result file is consumed and deleted once its completion notice is delivered. Before deletion, the watcher writes a versioned replay record under `<resultsDir>/completion-replay/<runId>.json` and a bounded output archive under `<resultsDir>/output-archives/<runId>.json`. Replay records expire with the completion deduplication window and are best-effort temporary state, not a permanent run ledger.
 

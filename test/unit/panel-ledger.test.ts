@@ -61,6 +61,18 @@ describe("live foreground ledger", () => {
 		assert.equal(existsSync(file), false);
 	});
 
+	it("removes a legacy task prompt when refreshing an older record", () => {
+		writeLiveForegroundRun(record({ runId: "legacy" }));
+		const file = liveForegroundRecordPath("legacy", 0);
+		writeFileSync(file, JSON.stringify({ ...record({ runId: "legacy" }), task: "synthetic-legacy-prompt" }));
+		touchLiveForegroundRun("legacy", 0, 7000);
+		const raw = readFileSync(file, "utf8");
+		assert.equal(raw.includes("synthetic-legacy-prompt"), false);
+		assert.equal("task" in JSON.parse(raw), false);
+		assert.equal(JSON.parse(raw).updatedAt, 7000);
+		removeLiveForegroundRun("legacy", 0);
+	});
+
 	it("keeps a record that is gone gone", () => {
 		touchLiveForegroundRun("run-1", 7, 10);
 		assert.equal(existsSync(liveForegroundRecordPath("run-1", 7)), false);
