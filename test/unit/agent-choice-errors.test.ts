@@ -66,6 +66,50 @@ describe("agent choice errors at launch", () => {
 		assert.equal(result.split("Available agents:").length - 1, 1);
 	});
 
+	it("rejects an unknown thinking level with the valid choices before launch", async () => {
+		const result = await launch({ agent: "reviewer", task: "Review", thinking: "turbo" });
+
+		assert.equal(result.isError, true);
+		assert.match(text(result), /Unknown thinking level 'turbo'\. Use one of off, minimal, low, medium, high, xhigh, max; false means off\./);
+	});
+
+	it("rejects thinking: true with the same actionable choices", async () => {
+		const result = await launch({ agent: "reviewer", task: "Review", thinking: true });
+
+		assert.equal(result.isError, true);
+		assert.match(text(result), /Invalid thinking value\. Use one of off, minimal, low, medium, high, xhigh, max; false means off\./);
+	});
+
+	it("accepts a case-insensitive thinking selector", async () => {
+		const result = await launch({ agent: "nobody", task: "Review", thinking: "LOW" });
+
+		assert.equal(result.isError, true);
+		assert.match(text(result), /^Unknown agent: nobody/);
+		assert.doesNotMatch(text(result), /Unknown thinking level/);
+	});
+
+	it("accepts thinking: false as off", async () => {
+		const result = await launch({ agent: "nobody", task: "Review", thinking: false });
+
+		assert.equal(result.isError, true);
+		assert.match(text(result), /^Unknown agent: nobody/);
+		assert.doesNotMatch(text(result), /Invalid thinking value|Unknown thinking level/);
+	});
+
+	it("suggests a close thinking-level typo", async () => {
+		const result = await launch({ agent: "reviewer", task: "Review", thinking: "loww" });
+
+		assert.equal(result.isError, true);
+		assert.match(text(result), /Unknown thinking level 'loww'\. Did you mean 'low'\?/);
+	});
+
+	it("rejects a mistyped model thinking suffix with the intended level", async () => {
+		const result = await launch({ agent: "reviewer", task: "Review", model: "anthropic/claude-haiku-5-5:loww" });
+
+		assert.equal(result.isError, true);
+		assert.match(text(result), /Unknown thinking suffix ':loww' in model 'anthropic\/claude-haiku-5-5:loww'.*Did you mean ':low'\?/);
+	});
+
 	it("names a disabled agent as disabled and lists the agents that can run instead", async () => {
 		fs.mkdirSync(path.join(tempHome, ".pi", "agent"), { recursive: true });
 		fs.writeFileSync(path.join(tempHome, ".pi", "agent", "settings.json"), JSON.stringify({ subagents: { agentOverrides: { reviewer: { disabled: true } } } }));

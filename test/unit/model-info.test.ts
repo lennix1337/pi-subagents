@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { findModelInfo, getSupportedThinkingLevels, qualifyModelWithProvider, splitKnownThinkingSuffix, toModelInfo, type ModelInfo } from "../../src/shared/model-info.ts";
+import { findModelInfo, getSupportedThinkingLevels, mistypedThinkingSuffix, normalizeThinkingLevel, qualifyModelWithProvider, splitKnownThinkingSuffix, toModelInfo, type ModelInfo } from "../../src/shared/model-info.ts";
 
 describe("model info helpers", () => {
 	const ambiguousModels: ModelInfo[] = [
@@ -94,6 +94,16 @@ describe("model info helpers", () => {
 			}),
 			["high"],
 		);
+	});
+
+	it("normalizes public thinking levels and detects likely suffix typos", () => {
+		assert.equal(normalizeThinkingLevel(" HIGH "), "high");
+		assert.equal(normalizeThinkingLevel("off"), "off");
+		assert.equal(normalizeThinkingLevel("turbo"), undefined);
+		assert.deepEqual(mistypedThinkingSuffix("anthropic/claude-haiku-5-5:loww"), { suffix: "loww", suggestion: "low" });
+		assert.deepEqual(mistypedThinkingSuffix("openai/gpt-5:hihg"), { suffix: "hihg", suggestion: "high" });
+		assert.equal(mistypedThinkingSuffix("anthropic/claude-haiku-5-5:low"), undefined);
+		assert.equal(mistypedThinkingSuffix("openrouter/model:free"), undefined);
 	});
 
 	it("honors an explicit max mapping and recognizes max suffixes", () => {

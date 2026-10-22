@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 export const SUBAGENT_GUIDE_TOPICS = [
 	"overview",
+	"delegation",
 	"workflows",
 	"agents",
 	"missions",

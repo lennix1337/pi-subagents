@@ -7,7 +7,7 @@ import * as path from "node:path";
 import { describe, it } from "node:test";
 import { writeAsyncResultFile, writePendingAsyncResultFile } from "../../src/runs/background/result-files.ts";
 import { finalizeProcessTerminal, initializeProcessTerminal, readProcessTerminal } from "../../src/runs/background/process-terminal.ts";
-import { checkPidLiveness, reconcileAsyncRun } from "../../src/runs/background/stale-run-reconciler.ts";
+import { checkPidLiveness, reconcileAsyncRun, reconcileOrphanedAsyncRuns } from "../../src/runs/background/stale-run-reconciler.ts";
 import { summarizeAsyncStatus } from "../../src/runs/background/async-status.ts";
 
 function tempRoot(prefix: string): string {
@@ -100,6 +100,64 @@ describe("async stale-run reconciliation", () => {
 		} finally {
 			parent.stdin.end("reap");
 			await closed;
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("closes out running runs of any session whose runner died, leaving live and protected runs alone", () => {
+		const root = tempRoot("pi-stale-run-orphans-");
+		try {
+			const runs = path.join(root, "runs");
+			const write = (runId: string, state: string, pid: number) => writeStatus(path.join(runs, runId), {
+				runId, sessionId: "previous-pi-session", mode: "single", state, pid,
+				startedAt: 1000, lastUpdate: 1000,
+				steps: [{ agent: "worker", status: state, startedAt: 1000 }],
+			});
+			write("run-dead", "running", 111);
+			write("run-live", "running", 222);
+			write("run-protected", "running", 333);
+			write("run-done", "complete", 444);
+			fs.mkdirSync(path.join(runs, "not-a-run"), { recursive: true });
+			const kill = (pid: number) => { if (pid === 222) return true; throw errno("ESRCH"); };
+			const repaired = reconcileOrphanedAsyncRuns(runs, { resultsDir: path.join(root, "results"), kill, now: () => 5000, protectedRunIds: new Set(["run-protected"]) });
+			assert.deepEqual(repaired, ["run-dead"]);
+			const state = (runId: string) => JSON.parse(fs.readFileSync(path.join(runs, runId, "status.json"), "utf-8")).state;
+			assert.equal(state("run-dead"), "failed");
+			assert.equal(state("run-live"), "running");
+			assert.equal(state("run-protected"), "running");
+			assert.equal(state("run-done"), "complete");
+			assert.deepEqual(reconcileOrphanedAsyncRuns(path.join(root, "missing"), { resultsDir: path.join(root, "results") }), []);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("repairs a run whose PID still answers once it is well past its timeout deadline", () => {
+		const root = tempRoot("pi-stale-run-deadline-");
+		try {
+			const asyncDir = path.join(root, "run-reused-pid");
+			writeStatus(asyncDir, {
+				runId: "run-reused-pid",
+				mode: "single",
+				state: "running",
+				pid: 8,
+				startedAt: 1000,
+				lastUpdate: 2000,
+				timeoutMs: 60_000,
+				deadlineAt: 61_000,
+				steps: [{ agent: "worker", status: "running", startedAt: 1000 }],
+			});
+			// A Windows system process answers EPERM for a recycled PID.
+			const kill = () => { throw errno("EPERM"); };
+			const withinGrace = reconcileAsyncRun(asyncDir, { resultsDir: path.join(root, "results"), kill, now: () => 61_000 + 60_000 });
+			assert.equal(withinGrace.repaired, false);
+			assert.equal(withinGrace.status?.state, "running");
+
+			const pastDeadline = reconcileAsyncRun(asyncDir, { resultsDir: path.join(root, "results"), kill, now: () => 61_000 + 11 * 60_000 });
+			assert.equal(pastDeadline.repaired, true);
+			assert.equal(pastDeadline.status?.state, "failed");
+			assert.match(pastDeadline.message ?? "", /past its 60000ms timeout deadline/);
+		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	});

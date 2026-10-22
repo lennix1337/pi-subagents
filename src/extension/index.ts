@@ -43,6 +43,7 @@ import { createAsyncJobTracker } from "../runs/background/async-job-tracker.ts";
 import { getActiveAsyncCapacitySnapshot, resolveAbandonedSlotReleaseAfterMs, resolveMaxActiveAsyncRunsPerSession } from "../runs/background/active-async-capacity.ts";
 import { cleanupResultIndexes, missionObserverResultCandidateFiles, resultFilePath } from "../runs/background/result-files.ts";
 import { ASYNC_RETENTION_DELAY_MS, cleanupAsyncRetention } from "../runs/background/async-retention.ts";
+import { reconcileOrphanedAsyncRuns } from "../runs/background/stale-run-reconciler.ts";
 import { createResultWatcher } from "../runs/background/result-watcher.ts";
 import { createResultDeliveryOwnership } from "../runs/background/result-delivery-ownership.ts";
 import { createScheduledRunManager } from "../runs/background/scheduled-runs.ts";
@@ -521,15 +522,17 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		if (!asyncRetentionTimer) {
 			asyncRetentionTimer = setTimeout(async () => {
 				try {
+					const protectedRunIds = new Set([
+						...state.asyncJobs.keys(),
+						...(state.workflowControllers?.keys() ?? []),
+						...scheduledRunManager.referencedAsyncRunIds(),
+					]);
+					reconcileOrphanedAsyncRuns(DIRS.async, { resultsDir: DIRS.results, protectedRunIds });
 					await cleanupAsyncRetention({
 						asyncDirRoot: DIRS.async,
 						resultsDir: DIRS.results,
 						signal: asyncRetentionAbort.signal,
-						protectedRunIds: new Set([
-							...state.asyncJobs.keys(),
-							...(state.workflowControllers?.keys() ?? []),
-							...scheduledRunManager.referencedAsyncRunIds(),
-						]),
+						protectedRunIds,
 					});
 				} catch (error) {
 					console.error("Failed to clean retained async subagent state:", error);

@@ -1,4 +1,5 @@
 import type { ModelCost } from "@earendil-works/pi-ai";
+import { closestMatch } from "./edit-distance.ts";
 
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export type ThinkingLevel = typeof THINKING_LEVELS[number];
@@ -78,6 +79,23 @@ export function splitKnownThinkingSuffix(model: string): { baseModel: string; th
 		baseModel: model.substring(0, colonIdx),
 		thinkingSuffix: `:${suffix}`,
 	};
+}
+
+/** Normalize a public thinking selector; returns undefined for an unknown level. */
+export function normalizeThinkingLevel(value: string): ThinkingLevel | undefined {
+	const normalized = value.trim().toLowerCase();
+	return THINKING_LEVELS.find((level) => level === normalized);
+}
+
+/** Detect a likely typo in a model's trailing :level suffix without rejecting legitimate colon-bearing ids. */
+export function mistypedThinkingSuffix(model: string): { suffix: string; suggestion: ThinkingLevel } | undefined {
+	const colonIdx = model.lastIndexOf(":");
+	if (colonIdx === -1) return undefined;
+	const suffix = model.substring(colonIdx + 1);
+	if (THINKING_LEVELS.some((level) => level === suffix)) return undefined;
+	const match = closestMatch(suffix, THINKING_LEVELS);
+	const suggestion = THINKING_LEVELS.find((level) => level === match);
+	return suggestion ? { suffix, suggestion } : undefined;
 }
 
 /**

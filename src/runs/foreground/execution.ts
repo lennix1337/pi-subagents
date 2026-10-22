@@ -17,6 +17,12 @@ import {
 } from "../../shared/artifacts.ts";
 import { createChildTranscriptWriter, type ChildTranscriptWriter } from "../../shared/child-transcript.ts";
 import {
+	PANEL_LEDGER_HEARTBEAT_MS,
+	removeLiveForegroundRun,
+	touchLiveForegroundRun,
+	writeLiveForegroundRun,
+} from "./panel-ledger.ts";
+import {
 	type AgentProgress,
 	type ArtifactPaths,
 	type ControlEvent,
@@ -1807,9 +1813,10 @@ async function runSyncCompletionInner(
 			origin: options.modelOrigin ?? (options.modelOverrideFromParent ? "inherited" : "configured"),
 		},
 	);
+	let effectiveModel: string | undefined;
 	try {
-		const model = applyThinkingSuffix(selectedModel, options.thinkingOverride ?? agent.thinking, options.thinkingOverride !== undefined);
-		assertThinkingWithinCeiling({ model, configThinking: options.thinkingOverride ?? agent.thinking, ceiling: options.thinkingCeiling, agent: agent.name, runId: options.runId });
+		effectiveModel = applyThinkingSuffix(selectedModel, options.thinkingOverride ?? agent.thinking, options.thinkingOverride !== undefined);
+		assertThinkingWithinCeiling({ model: effectiveModel, configThinking: options.thinkingOverride ?? agent.thinking, ceiling: options.thinkingCeiling, agent: agent.name, runId: options.runId });
 	} catch (error) {
 		return redactResultPrompt(withRunContext({
 			index: options.index ?? 0,
@@ -1820,6 +1827,24 @@ async function runSyncCompletionInner(
 			usage: emptyUsage(),
 			error: error instanceof Error ? error.message : String(error),
 		}, options.context));
+	}
+	// Publish the running child so an external panel can show it while it works.
+	// Observability only: a failure here never changes what the child does.
+	try {
+		writeLiveForegroundRun({
+			runId: options.runId,
+			index: options.index ?? 0,
+			agent: agentName,
+			task,
+			...(options.sessionFile ? { sessionFile: options.sessionFile } : {}),
+			cwd: options.cwd ?? runtimeCwd,
+			...(options.parentSessionId ? { sessionId: options.parentSessionId } : {}),
+			...(effectiveModel ? { model: effectiveModel } : {}),
+			startedAt: Date.now(),
+			state: "running",
+		});
+	} catch (error) {
+		console.error("Failed to publish the live foreground record:", error);
 	}
 	const aggregateUsage = emptyUsage();
 	const attemptNotes: string[] = [];
@@ -2152,6 +2177,14 @@ export async function runSync(
 	if (originSignal?.aborted) forwardOriginAbort();
 	else originSignal?.addEventListener("abort", forwardOriginAbort, { once: true });
 
+	// Keep the live foreground record fresh while the child works, including a
+	// detached child that outlives this call.
+	const panelHeartbeat = setInterval(() => {
+		try { touchLiveForegroundRun(options.runId, options.index ?? 0); }
+		catch (error) { console.error("Failed to refresh the live foreground record:", error); }
+	}, PANEL_LEDGER_HEARTBEAT_MS);
+	panelHeartbeat.unref?.();
+
 	const completion = runSyncCompletion(runtimeCwd, agents, agentName, task, {
 		...options,
 		signal: originController.signal,
@@ -2252,6 +2285,10 @@ export async function runSync(
 		// promise without becoming an unhandled side-channel rejection.
 	}).finally(() => {
 		originSignal?.removeEventListener("abort", forwardOriginAbort);
+		clearInterval(panelHeartbeat);
+		// The child is done, detached or not: its live record goes with it.
+		try { removeLiveForegroundRun(options.runId, options.index ?? 0); }
+		catch (error) { console.error("Failed to remove the live foreground record:", error); }
 	});
 
 	return Promise.race([authoritativeCompletion, receipt]);

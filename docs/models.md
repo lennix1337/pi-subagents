@@ -86,6 +86,12 @@ For a persistent role override:
 
 `subagents.defaultModel` and `subagents.defaultProvider` apply to builtin, package, user, project, and runtime-registered agents. `defaultModel` fills only agents that do not set `model` in frontmatter or in their runtime definition. `defaultProvider` is also applied to frontmatter and override models so bare ids resolve against the intended provider. Per-run model overrides and `agentOverrides.<name>.model` win over frontmatter and the global default. The same `agentOverrides` block can change `tools`, `skills`, inherited context, prompt text, or disable an agent (see [agents.md](agents.md)); matching custom-agent frontmatter is replaced for any field set by the override. Runtime-registered agents take only `model`, `defaultProvider`, `fast`, and `thinking` from `agentOverrides.<name>`; their other definition fields stay owned by the registering extension.
 
+## Per-launch model and thinking
+
+The model-facing `subagent` call accepts `model` and `thinking` as top-level selectors. `thinking` alone keeps the agent's resolved model; omit both to inherit the agent default. A model `:level` suffix wins over `thinking`, and a delegated recovery override remains authoritative. `false` means `off`; `true` is invalid. The selector applies to every child in one execution call, so a workflow child that pins its own suffix keeps it.
+
+Discover live models and levels with `{action:"models"}` or one agent with `{action:"models",agent:"name"}`. Unsupported registry levels are advisory: a provider may clamp them, so prefer a model whose list includes the level when exact effort matters. Cross-provider and cross-account selection is allowed; the child model need not match the parent.
+
 ## Fast mode
 
 Set `fast: true` on a run, in agent frontmatter, or in `subagents.agentOverrides.<name>.fast` to request the OpenAI priority service tier for supported native OpenAI-Codex children. This can use a higher quota tier or cost more. It is off by default.

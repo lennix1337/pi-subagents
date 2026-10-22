@@ -16,6 +16,9 @@ import { isTerminalAsyncState } from "./workflow-terminal-proof.ts";
 
 export type PidLiveness = "alive" | "dead" | "unknown";
 
+/** How long past its timeout deadline a run may stay "running" while its runner writes the timeout result. */
+const DEADLINE_GRACE_MS = 10 * 60 * 1000;
+
 type KillFn = (pid: number, signal?: NodeJS.Signals | 0) => boolean;
 
 interface StartedRunMetadata {
@@ -492,8 +495,15 @@ export function reconcileAsyncRun(asyncDir: string, options: ReconcileAsyncRunOp
 	const observedLiveness = checkPidLiveness(effectiveStatus.pid, options.kill, pidScopeVerified);
 	const liveness = observedLiveness === "dead" && pidScopeMismatch ? "unknown" : observedLiveness;
 	if (liveness !== "dead") {
-		const staleAfterMs = options.staleAlivePidMs ?? 24 * 60 * 60 * 1000;
 		const lastUpdate = effectiveStatus.lastUpdate ?? effectiveStatus.startedAt;
+		// The runner enforces its own timeout and writes a result, so a run still "running" well past
+		// its deadline lost its runner even when a recycled PID still answers the probe.
+		const deadlineAt = effectiveStatus.deadlineAt;
+		if (deadlineAt !== undefined && now - deadlineAt > DEADLINE_GRACE_MS && now - lastUpdate > DEADLINE_GRACE_MS) {
+			const message = `Async runner PID ${effectiveStatus.pid} has not written a result and the run is ${now - deadlineAt}ms past its ${effectiveStatus.timeoutMs ?? "unknown"}ms timeout deadline; stale-run reconciliation marked it failed.`;
+			return writeFailedRepair(asyncDir, effectiveStatus, resultPath, now, message);
+		}
+		const staleAfterMs = options.staleAlivePidMs ?? 24 * 60 * 60 * 1000;
 		if (now - lastUpdate <= staleAfterMs) return { status: status ?? null, repaired: false, resultPath };
 		const probe = liveness === "alive" ? "is still live" : "cannot be probed from this process";
 		const message = `Async runner PID ${effectiveStatus.pid} ${probe}; status has not updated for ${now - lastUpdate}ms, so stale-run reconciliation marked the run failed because PID ownership is unverified.`;
@@ -501,4 +511,34 @@ export function reconcileAsyncRun(asyncDir: string, options: ReconcileAsyncRunOp
 	}
 
 	return writeFailedRepair(asyncDir, effectiveStatus, resultPath, now);
+}
+
+/**
+ * Closes out "running" runs whose runner is gone, whatever session started them. Session-scoped
+ * status skips runs of a previous Pi session, so without this a runner killed with that session
+ * stays "running" on disk for every reader until retention reaches it. Each repair still needs
+ * the evidence reconcileAsyncRun requires (a dead PID, a passed deadline, or a stale status).
+ * Returns the ids it repaired.
+ */
+export function reconcileOrphanedAsyncRuns(asyncDirRoot: string, options: ReconcileAsyncRunOptions & { protectedRunIds?: ReadonlySet<string> } = {}): string[] {
+	let entries: fs.Dirent[];
+	try {
+		entries = fs.readdirSync(asyncDirRoot, { withFileTypes: true });
+	} catch (error) {
+		if (isNotFoundError(error)) return [];
+		throw error;
+	}
+	const { protectedRunIds, ...reconcileOptions } = options;
+	const repaired: string[] = [];
+	for (const entry of entries) {
+		if (!entry.isDirectory() || protectedRunIds?.has(entry.name)) continue;
+		const asyncDir = path.join(asyncDirRoot, entry.name);
+		try {
+			if (readStatus(asyncDir)?.state !== "running") continue;
+			if (reconcileAsyncRun(asyncDir, reconcileOptions).repaired) repaired.push(entry.name);
+		} catch (error) {
+			console.error(`Failed to reconcile async run ${entry.name}:`, getErrorMessage(error));
+		}
+	}
+	return repaired;
 }

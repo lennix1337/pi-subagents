@@ -1665,8 +1665,8 @@ Drive the failing test first.
 		assert.match(text, /(?:^|\n)advisor\n  model:\n    openai\/gpt-5-mini\n  source: inherits current session model(?:\n|$)/);
 		assert.doesNotMatch(text, /advisor\n  model:\n    \(builtin definition not found\)/);
 		assert.match(text, /Available models in this session's registry/);
-		assert.match(text, /  anthropic\/claude-sonnet-4\n  openai\/gpt-5-mini/);
-		assert.match(text, /Use an exact provider\/id from this list when you pass model/);
+		assert.match(text, /  anthropic\/claude-sonnet-4  thinking=off,minimal,low,medium,high,xhigh\n  openai\/gpt-5-mini  thinking=off,minimal,low,medium,high,xhigh/);
+		assert.match(text, /Pass thinking separately to override the agent default; a model :level suffix takes precedence/);
 	});
 
 	it("resolves the advisor builtin alias in a filtered model mapping", () => {
@@ -1679,6 +1679,8 @@ Drive the failing test first.
 		assert.equal(result.isError, false);
 		assert.match(text, /Agent: advisor/);
 		assert.match(text, /Effective model:\n  openai\/gpt-5-mini/);
+		assert.match(text, /Supported thinking: off, minimal, low, medium, high, xhigh/);
+		assert.match(text, /Available models in this session's registry/);
 		assert.doesNotMatch(text, /Builtin agent 'advisor' not found|source: missing/);
 	});
 

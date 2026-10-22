@@ -43,6 +43,18 @@ describe("subagent guide", () => {
 		assert.doesNotMatch(guide, /External job profiles do not support[^.\n]*steer\/resume/);
 	});
 
+	it("serves delegation guidance for context choice and cold-start briefs", () => {
+		const toc = readSubagentGuide("delegation");
+		assert.match(toc, /^delegation\/context-and-brief — Context and brief$/m);
+		assert.match(toc, /^ {2}delegation\/fresh-or-fork — Fresh or fork$/m);
+		assert.match(toc, /^ {2}delegation\/cold-start-brief — Cold-start brief$/m);
+		const context = readSubagentGuide("delegation/context-and-brief");
+		assert.match(context, /fresh[\s\S]*independent[\s\S]*fork[\s\S]*inherited decisions/i);
+		assert.match(context, /A fresh child does not see the parent chat[\s\S]*Goal:[\s\S]*Target:[\s\S]*Authority:/i);
+		assert.match(readSubagentGuide("delegation/edge-cases"), /explicit `context: "fork"` fails[\s\S]*Parallel writers[\s\S]*same cwd or worktree/i);
+		assert.match(readSubagentGuide("delegation/edge-cases"), /Cross-provider fork[\s\S]*thinking blocks as plain text/i);
+	});
+
 	it("documents external CLI runner limits in packaged guide topics", () => {
 		assert.match(readSubagentGuide("tool-reference/external-cli-agent-profiles"), /External CLI agent profiles[\s\S]*native Pi child options[\s\S]*model override[\s\S]*native Pi tools/);
 		assert.match(readSubagentGuide("agents/advisory-runner-data-boundary"), /External CLI agents use their own runner contract[\s\S]*native Pi child options/);

@@ -24,6 +24,10 @@ and may perform the work directly where it is the most efficient owner.
 Children do not spawn subagents unless the parent explicitly delegated fanout
 and their resolved `tools` allow `subagent`.
 
+For an authorized handoff, choose context before shape: `fresh` for independent
+work with a cold-start brief, `fork` only when inherited decisions or history
+matter. The brief fields and routing rules are in `guide delegation/context-and-brief`.
+
 ## Launch shape
 
 | Need | Use |

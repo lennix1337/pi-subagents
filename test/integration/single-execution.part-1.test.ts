@@ -333,6 +333,25 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.doesNotMatch(result.content[0]?.text ?? "", /Console:/);
 	});
 
+	it("applies thinking to the selected model and lets an explicit model suffix win", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+		mockPi.onCall({ output: "plain" });
+		mockPi.onCall({ output: "suffixed" });
+		const executor = makeExecutor([makeAgent("echo", { model: "mock/test-model" })]);
+		const ctx = {
+			...makeMinimalCtx(tempDir),
+			modelRegistry: { getAvailable: () => [{ provider: "mock", id: "test-model" }] },
+		};
+
+		const plain = await executor.executePublic("thinking-plain", { agent: "echo", task: "A", async: false, thinking: "low" }, new AbortController().signal, undefined, ctx);
+		const suffixed = await executor.executePublic("thinking-suffixed", { agent: "echo", task: "B", async: false, model: "mock/test-model:max", thinking: "low" }, new AbortController().signal, undefined, ctx);
+
+		assert.equal(plain.isError, undefined, plain.content[0]?.text ?? "");
+		assert.equal(suffixed.isError, undefined, suffixed.content[0]?.text ?? "");
+		const [plainArgs, suffixedArgs] = readAllCallArgs(true);
+		assert.equal(plainArgs?.[plainArgs.indexOf("--model") + 1], "mock/test-model:low");
+		assert.equal(suffixedArgs?.[suffixedArgs.indexOf("--model") + 1], "mock/test-model:max");
+	});
+
 	it("binds each public foreground launch to its invoking model registry", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
 		mockPi.onCall({ output: "A completed" });
 		mockPi.onCall({ output: "B completed" });

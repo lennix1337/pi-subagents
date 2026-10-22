@@ -28,7 +28,7 @@ import {
 	buildProactiveSkillSubagentRecommendationLines,
 } from "./proactive-skills.ts";
 import { parseFrontmatter, parseFrontmatterList } from "./frontmatter.ts";
-import { resolveEffectiveThinking, toModelInfo } from "../shared/model-info.ts";
+import { findModelInfo, getSupportedThinkingLevels, resolveEffectiveThinking, toModelInfo } from "../shared/model-info.ts";
 import { resolveSubagentModelOverride, type ParentModel } from "../runs/shared/model-resolution.ts";
 import { validateToolBudgetConfig } from "../runs/shared/tool-budget.ts";
 import { formatReviewGateLabel, validateAcceptanceInput } from "../runs/shared/acceptance.ts";
@@ -1079,6 +1079,8 @@ function handleModels(params: ManagementParams, ctx: ManagementContext): AgentTo
 			lines.push(`  ${resolvedModel ?? "(unresolved)"}`);
 			lines.push(`Source: ${source}`);
 			lines.push(`Thinking: ${effectiveThinking ?? "default"}`);
+			const selectedModelInfo = findModelInfo(resolvedModel, availableModels, agent.modelProvider ?? preferredProvider);
+			lines.push(`Supported thinking: ${selectedModelInfo ? getSupportedThinkingLevels(selectedModelInfo).join(", ") : "unknown (effective model is not in the live registry)"}`);
 			if (agent.override) {
 				lines.push("Override file:");
 				lines.push(`  ${agent.override.path}`);
@@ -1109,15 +1111,16 @@ function handleModels(params: ManagementParams, ctx: ManagementContext): AgentTo
 		lines.push("");
 	}
 
-	const availableFullIds = availableModels.map((m) => m.fullId).sort();
-	if (!requestedAgent && availableFullIds.length > 0) {
+	const availableEntries = [...availableModels].sort((a, b) => a.fullId.localeCompare(b.fullId));
+	if (availableEntries.length > 0) {
 		lines.push("Available models in this session's registry (copy an exact provider/id when passing model):");
+		lines.push("Each model lists the thinking levels this session's registry supports.");
 		lines.push("");
-		const shown = availableFullIds.slice(0, 80);
-		for (const fullId of shown) lines.push(`  ${fullId}`);
-		if (availableFullIds.length > shown.length) lines.push(`  ... and ${availableFullIds.length - shown.length} more`);
+		const shown = availableEntries.slice(0, 80);
+		for (const model of shown) lines.push(`  ${model.fullId}  thinking=${getSupportedThinkingLevels(model).join(",")}`);
+		if (availableEntries.length > shown.length) lines.push(`  ... and ${availableEntries.length - shown.length} more`);
 		lines.push("");
-		lines.push("Use an exact provider/id from this list when you pass model; bare ids resolve only when unique in the registry.");
+		lines.push("Use an exact provider/id from this list when you pass model; bare ids resolve only when unique in the registry. Pass thinking separately to override the agent default; a model :level suffix takes precedence.");
 	}
 	if (!requestedAgent) appendAgentDiagnosticLines(lines, diagnosticsForScope(discovered.agentDiagnostics, scope));
 	return result(lines.join("\n"));

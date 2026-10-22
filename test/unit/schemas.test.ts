@@ -261,6 +261,20 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.match(String(properties?.output?.description ?? ""), /outputReference.*outputPathMapping.*artifactPaths/i);
 	});
 
+	it("exposes model and thinking selectors on the model-facing schema", () => {
+		const properties = ProviderParams?.properties as Record<string, JsonSchemaNode> | undefined;
+		assert.ok(properties?.model, "model selector should be model-facing");
+		assert.ok(properties?.thinking, "thinking selector should be model-facing");
+		assert.match(String(properties?.thinking?.description ?? ""), /off\/minimal\/low\/medium\/high\/xhigh\/max/);
+		assert.match(String(properties?.thinking?.description ?? ""), /model :suffix wins/i);
+		if (CompileSchema) {
+			const validator = CompileSchema(ProviderParams);
+			assert.equal(validator.Check({ agent: "worker", task: "Fix", model: "anthropic/claude-haiku-5-5", thinking: "low" }), true);
+			assert.equal(validator.Check({ agent: "worker", task: "Fix", thinking: false }), true);
+			assert.equal(validator.Check({ agent: "worker", task: "Fix", thinking: 123 }), false);
+		}
+	});
+
 	it("omits removed legacy and workflow-child-only fields", () => {
 		for (const name of ["tasks", "chain", "concurrency", "chainDir", "step", "schedule", "scheduleName", "resume", "workflowScript", "workflowScriptPath"]) {
 			assert.equal((SubagentParams?.properties as Record<string, unknown> | undefined)?.[name], undefined, `${name} should not be public`);
@@ -467,7 +481,7 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.equal(serialized.includes('"$ref"'), false);
 		assert.equal(serialized.includes('"$defs"'), false);
 		const properties = schema.properties as Record<string, JsonSchemaNode>;
-		assert.deepEqual(Object.keys(properties), ["agent", "task", "workflow", "args", "async", "model", "cwd", "worktree", "output", "action", "id", "message", "options"]);
+		assert.deepEqual(Object.keys(properties), ["agent", "task", "workflow", "args", "async", "model", "thinking", "cwd", "worktree", "output", "action", "id", "message", "options"]);
 		assert.match(String(properties.agent?.description ?? ""), /management target/);
 		assert.equal(properties.options?.type, "object");
 		assert.equal(properties.options?.additionalProperties, true);
@@ -476,7 +490,7 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		const { resolveDisabledFeatureSurface } = await import("../../src/shared/disabled-features.ts");
 		const structured = createProviderSchema!(resolveDisabledFeatureSurface({ disabledFeatures: ["workflow-scripts"] }));
 		assert.ok(JSON.stringify(structured).length <= 2_400, `expected structured schema at or under 2,400 chars, got ${JSON.stringify(structured).length}`);
-		assert.deepEqual(Object.keys(structured.properties as JsonSchemaNode), ["agent", "task", "tasks", "chain", "async", "model", "cwd", "worktree", "output", "action", "id", "message", "options"]);
+		assert.deepEqual(Object.keys(structured.properties as JsonSchemaNode), ["agent", "task", "tasks", "chain", "async", "model", "thinking", "cwd", "worktree", "output", "action", "id", "message", "options"]);
 
 		const nestedDescriptionPaths: string[] = [];
 		const stack: Array<{ path: string; value: unknown }> = [{ path: "SubagentParams", value: schema }];

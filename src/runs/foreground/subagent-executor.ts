@@ -8,7 +8,8 @@ import { getArtifactsDir, getProjectArtifactPackagingWarning, getProjectSubagent
 import { writeAtomicJson } from "../../shared/atomic-json.ts";
 import { createCapacityResilientJsonWriter } from "../../shared/capacity-resilient-json.ts";
 import { isStorageCapacityError } from "../../shared/file-system-retry.ts";
-import { resolveEffectiveThinking, toModelInfo, type ModelInfo } from "../../shared/model-info.ts";
+import { closestMatch } from "../../shared/edit-distance.ts";
+import { mistypedThinkingSuffix, normalizeThinkingLevel, resolveEffectiveThinking, splitKnownThinkingSuffix, THINKING_LEVELS, toModelInfo, type ModelInfo } from "../../shared/model-info.ts";
 import {
 	beginForegroundChild,
 	finishForegroundChild,
@@ -477,7 +478,7 @@ function inheritedRunFanoutBudget(deps: Pick<ExecutorDeps, "childRuntime">): Run
 
 type ForkSessionFileForTask = (agentName: string, idx?: number, modelOverride?: string, modelOverrideFromParent?: boolean, modelOrigin?: ModelOrigin) => string | undefined;
 type PrepareForkSessionForTask = (agentName: string, idx?: number, modelOverride?: string, modelOverrideFromParent?: boolean, modelOrigin?: ModelOrigin) => Promise<void>;
-type ThinkingOverrideForTask = () => AgentConfig["thinking"] | undefined;
+type ThinkingOverrideForTask = (model?: string) => AgentConfig["thinking"] | undefined;
 
 interface ExecutionContextData {
 	params: SubagentParamsLike;
@@ -2950,6 +2951,28 @@ function summarizeResultContext(details: Details, fallback: ContextSummary | und
 	return summarizeContextModes(details.results.map((result) => result.context)) ?? fallback;
 }
 
+/** The public `thinking` selector applies to every child in one execution call. A child's model suffix still wins. */
+function resolveExecutionThinkingOverride(params: SubagentParamsLike): { value?: AgentConfig["thinking"]; error?: string } {
+	if (params.action !== undefined) return {};
+	const modelSuffix = params.model ? mistypedThinkingSuffix(params.model) : undefined;
+	if (modelSuffix) {
+		return { error: `Unknown thinking suffix ':${modelSuffix.suffix}' in model '${params.model}'. Did you mean ':${modelSuffix.suggestion}'? Use a model :level suffix or pass thinking separately.` };
+	}
+	// The public type is string | false, but RPC/JSON callers can still send other values.
+	const raw: unknown = params.thinking;
+	if (raw === undefined) return {};
+	if (raw === false) return { value: "off" };
+	if (typeof raw !== "string") {
+		return { error: `Invalid thinking value. Use one of ${THINKING_LEVELS.join(", ")}; false means off.` };
+	}
+	const level = normalizeThinkingLevel(raw);
+	if (!level) {
+		const suggestion = closestMatch(raw.trim(), THINKING_LEVELS);
+		return { error: `Unknown thinking level '${raw}'.${suggestion ? ` Did you mean '${suggestion}'?` : ""} Use one of ${THINKING_LEVELS.join(", ")}; false means off.` };
+	}
+	return { value: level };
+}
+
 function buildRequestedModeError(params: SubagentParamsLike, message: string): AgentToolResult<Details> {
 	return withResolvedContext(
 		{
@@ -3240,7 +3263,7 @@ function resolveStaticLaunchSummary(input: {
 			agentConfig?.modelProvider ?? input.currentProvider,
 			modelScopes.length === 0 ? {} : { scope: modelScopes },
 		);
-	const thinkingOverride = externalRunner ? undefined : input.thinkingOverrideForTask();
+	const thinkingOverride = externalRunner ? undefined : input.thinkingOverrideForTask(model);
 	const thinking = externalRunner ? undefined : resolveEffectiveThinking(model, thinkingOverride ?? agentConfig?.thinking);
 	return {
 		agent: input.agent,
@@ -3663,7 +3686,7 @@ async function runAsyncPath(data: ExecutionContextData, deps: ExecutorDeps): Pro
 			fast: params.fast,
 			modelOverrideFromParent,
 			modelOrigin,
-			thinkingOverride: externalRunnerWithoutExplicitModel ? undefined : thinkingOverrideForTask(),
+			thinkingOverride: externalRunnerWithoutExplicitModel ? undefined : thinkingOverrideForTask(modelOverride),
 			thinkingCeiling: a.maxThinking,
 			maxSubagentDepth,
 			waitToolEnabled: deps.waitToolEnabled,
@@ -4288,7 +4311,7 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 		if (wasActive) syncHerdrForegroundChild();
 	};
 	if (foregroundControl) {
-		const thinking = resolveEffectiveThinking(modelOverride, thinkingOverrideForTask());
+		const thinking = resolveEffectiveThinking(modelOverride, thinkingOverrideForTask(modelOverride));
 		beginForegroundChild(foregroundControl, omitUndefinedProperties({
 			index: 0,
 			agent: params.agent!,
@@ -4391,7 +4414,7 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 			fast: params.fast,
 			modelOverrideFromParent,
 			modelOrigin,
-			thinkingOverride: thinkingOverrideForTask(),
+			thinkingOverride: thinkingOverrideForTask(modelOverride),
 			thinkingCeiling: agentConfig.maxThinking,
 			extensionBindings: params.extensionBindings,
 			availableModels,
@@ -5413,7 +5436,11 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 		const workflowLaunchObserver = workflowLaunchObservers.get(params);
 		const inheritedUsageBudget = workflowOwnedUsageBudgets.get(params);
 		const retainedRequiredExtensions = workflowRetainedRequiredExtensions.get(params);
-		const delegatedThinkingOverride = delegatedThinkingOverrides.get(params);
+		const delegatedThinking = delegatedThinkingOverrides.get(params);
+		// A delegated recovery override is authoritative, so the public selector is not validated against it.
+		const requestedThinking = delegatedThinking !== undefined ? {} : resolveExecutionThinkingOverride(params);
+		if (requestedThinking.error) return buildRequestedModeError(params, requestedThinking.error);
+		const delegatedThinkingOverride = delegatedThinking ?? requestedThinking.value;
 		const allowZeroToolBudget = delegatedZeroToolBudgets.has(params);
 		const delegatedExecution = delegatedExecutions.has(params);
 		const publicExecution = publicExecutions.has(params);
@@ -7733,7 +7760,11 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 			if (!shouldForkAgent(contextPolicy, agentName)) return;
 			await prepareForkSessionForIndex(idx);
 		};
-		const thinkingOverrideForTask: ThinkingOverrideForTask = () => delegatedThinkingOverride;
+		// A delegated recovery override is authoritative; the public selector yields to an explicit model :level suffix.
+		const thinkingOverrideForTask: ThinkingOverrideForTask = (model) =>
+			delegatedThinking !== undefined || !model || !splitKnownThinkingSuffix(model).thinkingSuffix
+				? delegatedThinkingOverride
+				: undefined;
 		const childSessionFileForTask: ForkSessionFileForTask = (agentName, idx, modelOverride, modelOverrideFromParent, modelOrigin) =>
 			forkSessionFileForTask(agentName, idx, modelOverride, modelOverrideFromParent, modelOrigin) ?? path.join(sessionDirForIndex(idx), "session.jsonl");
 		const childSessionFileForIndex = (idx?: number) =>

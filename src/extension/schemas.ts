@@ -159,7 +159,7 @@ const SubagentParamProperties = {
 	extensionBindings: Type.Optional(Type.Unsafe({ type: "object", maxProperties: 16, additionalProperties: true, description: "Child-only plain JSON; package.name/1; depth 16, 256 props, 16 KiB." })),
 	// Management action (when present, tool operates in management mode)
 	action: Type.Optional(Type.String({ minLength: 1,
-		description: "Management/control only; omit for execution. validate accepts workflow: true or a script path. Discover actions with {action:\"guide\",options:{topic:\"tool-reference\"}}."
+		description: "Management/control only; omit for execution. validate accepts workflow: true or a script path. Discover: {action:\"guide\",options:{topic:\"tool-reference\"}}."
 	})),
 	capabilities: Type.Optional(Type.Boolean({ description: "list: compact capability rows/details without system prompts." })),
 	name: Type.Optional(Type.String({ description: "schedule.create name." })),
@@ -194,7 +194,6 @@ const SubagentParamProperties = {
 	scope: Type.Optional(Type.String({ enum: ["session", "user", "project"], description: "watchdog.configure scope; default session, persistent only if explicit." })),
 	target: Type.Optional(Type.String({ enum: ["main", "children", "child"], description: "Watchdog target." })),
 	focus: Type.Optional(Type.Boolean({ description: "Focus inspector.open/project.open pane." })),
-	thinking: Type.Optional(Type.Unsafe({ anyOf: [{ type: "string" }, { type: "boolean" }], description: "watchdog.configure only: off/minimal/low/medium/high/xhigh/max, inherit, false=off; true invalid. Dispatch ignores this; use model suffix." })),
 	at: Type.Optional(Type.String({ description: "Delay/ISO or local HH:mm." })),
 	every: Type.Optional(Type.String({ description: "Duration or day/week." })),
 	sessionOnly: Type.Optional(Type.Boolean()),
@@ -221,9 +220,9 @@ const SubagentParamProperties = {
 	})),
 	workflow: Type.Optional(Type.Unsafe<string | true>({
 		anyOf: [{ type: "boolean" }, { type: "string", minLength: 1 }],
-		description: "true: run the one ```js workflow block written in this same reply (false invalid). String with '/': script file read from request cwd. Other string: named workflow resource. Raw scripts (true or path) have no runs.host.",
+		description: "true: run the one ```js workflow block written in this same reply. String with '/': script file read from request cwd. Other string: named workflow resource. Raw scripts have no runs.host.",
 	})),
-	args: Type.Optional(Type.Unsafe({ type: "object", maxProperties: MAX_ARGS_FIELDS, additionalProperties: true, description: `Plain-JSON args for workflow; ${MAX_ARGS_FIELDS} fields/object, ${MAX_ARGS_ITEMS} items/array, depth ${MAX_ARGS_DEPTH}, ${MAX_ARGS_BYTES / 1024} KiB total; raw-script args are exposed deeply frozen and persisted, so do not include secrets.` })),
+	args: Type.Optional(Type.Unsafe({ type: "object", maxProperties: MAX_ARGS_FIELDS, additionalProperties: true, description: `Plain-JSON args for workflow; ${MAX_ARGS_FIELDS} fields/object, ${MAX_ARGS_ITEMS} items/array, depth ${MAX_ARGS_DEPTH}, ${MAX_ARGS_BYTES / 1024} KiB total; raw-script args are deeply frozen and persisted; no secrets.` })),
 	reuseFrom: Type.Optional(Type.String({ minLength: 1, description: "Exact id of a workflow run stopped by a session handoff or reload; this async workflow reuses its finished children and re-attaches to its running ones." })),
 	globalConcurrencyLimit: Type.Optional(Type.Integer({ minimum: 1 })),
 	maxSubagentSpawnsPerRun: Type.Optional(Type.Integer({ minimum: 1 })),
@@ -265,7 +264,8 @@ const SubagentParamProperties = {
 	outputMode: Type.Optional(OutputModeOverride),
 	maxOutput: Type.Optional(Type.Object({ bytes: Type.Optional(Type.Integer({ minimum: 1 })), lines: Type.Optional(Type.Integer({ minimum: 1 })) }, { additionalProperties: false })),
 	skill: Type.Optional(SkillOverride),
-	model: Type.Optional(Type.String({ description: "Child model provider/id; bare id only if unique. Suffix :off/minimal/low/medium/high/xhigh/max overrides agent thinking default." })),
+	model: Type.Optional(Type.String({ description: "Child model provider/id; :level suffix overrides thinking." })),
+	thinking: Type.Optional(Type.Unsafe({ anyOf: [{ type: "string" }, { type: "boolean" }], description: "off/minimal/low/medium/high/xhigh/max; false=off. Omit: agent default. Model :suffix wins." })),
 	fast: Type.Optional(Type.Boolean({ description: "Native OpenAI-Codex priority tier; default false, may cost more/quota." })),
 	outputSchema: Type.Optional(OutputSchemaOverride),
 	agentContract: Type.Optional(AgentContractOverride),
@@ -282,6 +282,8 @@ const SubagentParamProperties = {
 /** Full flat parameter shape accepted by RPC, slash, scheduled and workflow callers. */
 export const SubagentFlatParams = Type.Object(SubagentParamProperties);
 
+const thinking = SubagentParamProperties.thinking;
+
 // Management/control fields go inside one opaque `options` object, so they are not sent on every request.
 const { runId: _runId, maxRuntimeMs: _maxRuntimeMs, isolation: _isolation, ...ModelProperties } = SubagentParamProperties;
 const { agent, task, workflow, args, async, model, cwd, worktree, output, action, id, message, ...SubagentOptionProperties } = ModelProperties;
@@ -292,8 +294,8 @@ export const SUBAGENT_OPTION_KEYS: readonly string[] = Object.keys(SubagentOptio
 export const SubagentOptionParams = Type.Object(SubagentOptionProperties, { additionalProperties: false });
 
 const ModelTopLevelProperties = {
-	agent, task, workflow, args, async, model, cwd, worktree, output, action, id, message,
-	options: Type.Optional(Type.Unsafe<Record<string, unknown>>({ type: "object", additionalProperties: true, description: "Every field not listed here, such as acceptance, timeoutMs, context, view and index; guide tool-reference/parameter-reference." })),
+	agent, task, workflow, args, async, model, thinking, cwd, worktree, output, action, id, message,
+	options: Type.Optional(Type.Unsafe<Record<string, unknown>>({ type: "object", additionalProperties: true, description: "Other fields: acceptance, timeoutMs, context, view, index; guide tool-reference/parameter-reference." })),
 };
 
 export const SubagentParams = keepTopLevelParameterDescriptions(Type.Object(ModelTopLevelProperties));
