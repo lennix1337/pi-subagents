@@ -176,11 +176,12 @@ describe("async stale-run reconciliation", () => {
 			write("run-dead-past-deadline", 111);
 			const kill = (pid: number) => { if (pid === 222) return true; throw errno("ESRCH"); };
 			const now = () => 61_000 + 11 * 60_000;
-			const readState = (runId: string) => JSON.parse(fs.readFileSync(path.join(runs, runId, "status.json"), "utf-8"));
 
 			assert.deepEqual(reconcileOrphanedAsyncRuns(runs, { resultsDir: results, kill, now }), ["run-dead-past-deadline"]);
-			assert.equal(readState("run-live-past-deadline").state, "running");
-			assert.equal(readState("run-dead-past-deadline").state, "failed");
+			for (const [runId, expected] of [["run-live-past-deadline", "running"], ["run-dead-past-deadline", "failed"]]) {
+				const statusPath = path.join(runs, runId, "status.json");
+				assert.equal(JSON.parse(fs.readFileSync(statusPath, "utf-8")).state, expected, runId);
+			}
 
 			const owner = reconcileAsyncRun(path.join(runs, "run-live-past-deadline"), { resultsDir: results, kill, now });
 			assert.equal(owner.repaired, true);
