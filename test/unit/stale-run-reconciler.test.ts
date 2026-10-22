@@ -162,6 +162,57 @@ describe("async stale-run reconciliation", () => {
 		}
 	});
 
+	it("leaves a live run past its timeout deadline alone in the cross-session sweep but repairs it for its owner", () => {
+		const root = tempRoot("pi-stale-run-sweep-deadline-");
+		try {
+			const runs = path.join(root, "runs");
+			const results = path.join(root, "results");
+			const write = (runId: string, pid: number) => writeStatus(path.join(runs, runId), {
+				runId, sessionId: "previous-pi-session", mode: "single", state: "running", pid,
+				startedAt: 1000, lastUpdate: 2000, timeoutMs: 60_000, deadlineAt: 61_000,
+				steps: [{ agent: "worker", status: "running", startedAt: 1000 }],
+			});
+			write("run-live-past-deadline", 222);
+			write("run-dead-past-deadline", 111);
+			const kill = (pid: number) => { if (pid === 222) return true; throw errno("ESRCH"); };
+			const now = () => 61_000 + 11 * 60_000;
+			const readState = (runId: string) => JSON.parse(fs.readFileSync(path.join(runs, runId, "status.json"), "utf-8"));
+
+			assert.deepEqual(reconcileOrphanedAsyncRuns(runs, { resultsDir: results, kill, now }), ["run-dead-past-deadline"]);
+			assert.equal(readState("run-live-past-deadline").state, "running");
+			assert.equal(readState("run-dead-past-deadline").state, "failed");
+
+			const owner = reconcileAsyncRun(path.join(runs, "run-live-past-deadline"), { resultsDir: results, kill, now });
+			assert.equal(owner.repaired, true);
+			assert.equal(owner.status?.state, "failed");
+			assert.match(owner.message ?? "", /past its 60000ms timeout deadline/);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("still repairs a live run in the cross-session sweep once its status is stale for 24 hours and isolates per-run read failures", () => {
+		const root = tempRoot("pi-stale-run-sweep-stale-");
+		try {
+			const runs = path.join(root, "runs");
+			const write = (runId: string, lastUpdate: number) => writeStatus(path.join(runs, runId), {
+				runId, mode: "single", state: "running", pid: 222,
+				startedAt: 1000, lastUpdate, timeoutMs: 60_000, deadlineAt: 61_000,
+				steps: [{ agent: "worker", status: "running", startedAt: 1000 }],
+			});
+			const now = 61_000 + 25 * 60 * 60 * 1000;
+			write("run-stale-live", 2000);
+			write("run-fresh-live", now - 1000);
+			fs.mkdirSync(path.join(runs, "run-corrupt"), { recursive: true });
+			fs.writeFileSync(path.join(runs, "run-corrupt", "status.json"), "{not json", "utf-8");
+			const repaired = reconcileOrphanedAsyncRuns(runs, { resultsDir: path.join(root, "results"), kill: () => true, now: () => now });
+			assert.deepEqual(repaired, ["run-stale-live"]);
+			assert.equal(JSON.parse(fs.readFileSync(path.join(runs, "run-fresh-live", "status.json"), "utf-8")).state, "running");
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("repairs a run whose PID belongs to another namespace only after status goes stale", () => {
 		const root = tempRoot("pi-stale-run-pid-namespace-");
 		try {
