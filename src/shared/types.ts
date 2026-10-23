@@ -2448,8 +2448,20 @@ export const SUBAGENT_CONTROL_EVENT = "subagent:control-event";
 export const SUBAGENT_CONTROL_INTERCOM_EVENT = "subagent:control-intercom";
 export const SUBAGENT_STEERING_NOTICE_EVENT = "subagent:steering-notice";
 export const SUBAGENT_CHILD_STATUS_EVENT = "subagent:child-status";
+export const SUBAGENT_CHILD_TOOL_ACTIVITY_EVENT = "subagent:child-tool-activity";
 export const SUBAGENT_RESULT_INTERCOM_EVENT = "subagent:result-intercom";
 export const SUBAGENT_RESULT_INTERCOM_DELIVERY_EVENT = "subagent:result-intercom-delivery";
+
+/** Privacy-safe native child tool boundaries; never add arguments, results, or prompt content. */
+export interface SubagentChildToolActivityEvent {
+	runId: string;
+	childId: string;
+	agent: string;
+	toolName: string;
+	phase: "start" | "end";
+	isError: boolean;
+	sessionId?: string;
+}
 
 export interface SubagentChildStatusEvent {
 	type: "subagent.child-status";
@@ -2524,6 +2536,8 @@ export interface RunSyncOptions {
 	allowZeroToolBudget?: boolean;
 	allowIntercomDetach?: boolean;
 	intercomEvents?: IntercomEventBus;
+	/** Workflow root/key identity; otherwise tool activity uses runId and step:<index>. */
+	childToolActivityIdentity?: Pick<SubagentChildToolActivityEvent, "runId" | "childId">;
 	onUpdate?: (r: import("@earendil-works/pi-agent-core").AgentToolResult<Details>) => void;
 	/** Internal structured-delegation transport optimization: skip unchanged live snapshots. */
 	suppressUnchangedDelegationUpdates?: boolean;

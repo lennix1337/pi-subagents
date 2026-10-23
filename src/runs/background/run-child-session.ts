@@ -60,6 +60,7 @@ export interface ChildEvent {
 	message?: ChildMessage;
 	toolName?: string;
 	toolCallId?: string;
+	isError?: boolean;
 	args?: Record<string, unknown>;
 	willRetry?: unknown;
 }

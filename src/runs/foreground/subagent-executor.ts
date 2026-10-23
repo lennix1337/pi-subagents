@@ -4390,6 +4390,9 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 			interruptSignal: interruptController.signal,
 			allowIntercomDetach: agentConfig.systemPrompt?.includes(INTERCOM_BRIDGE_MARKER) === true,
 			intercomEvents: deps.pi.events,
+			childToolActivityIdentity: params.workflowParentRunId && params.workflowKey
+				? { runId: params.workflowParentRunId, childId: params.workflowKey }
+				: undefined,
 			runId,
 			sessionDir: sessionDirForIndex(0),
 			sessionFile: childSessionFile,

@@ -93,6 +93,40 @@ The parent evaluates child findings and ordinary command logs/status/terminal re
 
 The existing shell runner uses workflow cwd and inherited environment. Exact matching does not pin PATH resolution, executable bytes, repository helpers, or credentials. Those remain operator/extension trust responsibilities. `JSON.stringify` embeds data in JavaScript source; **it is not shell escaping**. Keep commands fixed as above, or validate strictly bounded numeric/hex tokens before binding known positions; never concatenate arbitrary task text or flags into shell commands. No new runner, cwd confinement, CI/merge policy, or SDK lifecycle framework is provided.
 
+## Native child tool activity
+
+```typescript
+import {
+  SUBAGENT_CHILD_TOOL_ACTIVITY_EVENT,
+  type SubagentChildToolActivityEvent,
+} from "pi-subagents/shared-types";
+
+pi.events.on(SUBAGENT_CHILD_TOOL_ACTIVITY_EVENT, (data) => {
+  const activity = data as SubagentChildToolActivityEvent;
+  // Metadata only: activity.toolName, activity.phase, activity.isError.
+});
+```
+
+`SUBAGENT_CHILD_TOOL_ACTIVITY_EVENT` is exactly `"subagent:child-tool-activity"`. Its payload contains only:
+
+```typescript
+interface SubagentChildToolActivityEvent {
+  runId: string;
+  childId: string;
+  agent: string;
+  toolName: string;
+  phase: "start" | "end";
+  isError: boolean;
+  sessionId?: string;
+}
+```
+
+Native `tool_execution_start` and `tool_execution_end` produce these events; updates, messages, and results do not. `isError` is always false on start, and reflects the native error flag on end. Arguments, results, tasks, prompts, paths, tool-call IDs, and journal envelope fields are never copied to this bus payload. Current producers omit optional `sessionId`; consumers must not require it.
+
+`runId` is the owning run and `childId` uses the same canonical identity as `subagent:child-status` (explicit child ID, workflow key, child run ID, then `step:<index>`). A single native workflow child reports the workflow root's `runId` and its keyed `childId`, for both foreground and background execution. Multi-step runner children report their own run and canonical step identities instead of collapsing several children onto one workflow key.
+
+Foreground native sessions emit directly, including their detached continuation. Background native single, chain, and parallel sessions append an allowlisted record to the existing `events.jsonl` transport; the existing async job tracker validates and bridges it through its filesystem notifications (no additional polling loop). This is an activity notification, not a durable exactly-once stream or completion proof: tracker restoration can replay journal entries, bounded journal retention can lose old entries, and abrupt termination need not produce an end event. Subscriber failures are diagnosed without interrupting child execution or subsequent replay. No synthetic tool events are promised for external CLI/ACP agents, remote runtimes that do not supply native tool events, workflow host commands, or nested descendants not tracked by this parent runtime.
+
 ## In-process event-bus RPC
 
 Other Pi extensions can use the in-process event-bus RPC instead of scraping slash output or calling internal modules. Listen for `subagents:rpc:v1:ready`, send requests on `subagents:rpc:v1:request`, and read replies from `subagents:rpc:v1:reply:<requestId>`.

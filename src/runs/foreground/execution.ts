@@ -114,6 +114,7 @@ import {
 import { buildInProcessChildLaunch, createReportedChildSessionInput } from "../shared/child-launch.ts";
 import { childSessionFactory, childSessionHasQueuedMessages, projectChildSessionEventForJson, type ChildSession, type ChildSessionEvent } from "../shared/child-session.ts";
 import { reconcileAttemptUsage } from "../shared/usage-reconciliation.ts";
+import { emitChildToolActivity, projectChildToolActivity } from "../shared/child-tool-activity.ts";
 
 const artifactOutputByResult = new WeakMap<SingleResult, string>();
 const acceptanceOutputByResult = new WeakMap<SingleResult, string>();
@@ -1055,6 +1056,15 @@ async function runSingleAttempt(
 				}
 				fireUpdate();
 				return;
+			}
+
+			if (options.intercomEvents && (evt.type === "tool_execution_start" || evt.type === "tool_execution_end")) {
+				const activity = projectChildToolActivity(evt, {
+					runId: options.childToolActivityIdentity?.runId ?? options.runId,
+					childId: options.childToolActivityIdentity?.childId ?? `step:${options.index ?? 0}`,
+					agent: agent.name,
+				});
+				if (activity) emitChildToolActivity(options.intercomEvents, activity);
 			}
 
 			const now = Date.now();

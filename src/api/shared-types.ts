@@ -1,4 +1,6 @@
 export {
+	SUBAGENT_CHILD_TOOL_ACTIVITY_EVENT,
+	type SubagentChildToolActivityEvent,
 	DEFAULT_FORK_PREAMBLE,
 	wrapForkTask,
 	type AcceptanceEvidenceKind,

@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterEach, describe, it } from "node:test";
 import { registerExternalJobProvider } from "../../src/api/external-job-provider.ts";
 import { getArtifactsDir } from "../../src/shared/artifacts.ts";
-import { SUBAGENT_CHILD_STATUS_EVENT, SUBAGENT_CONTROL_EVENT, SUBAGENT_CONTROL_INTERCOM_EVENT, type ControlEvent } from "../../src/shared/types.ts";
+import { SUBAGENT_CHILD_TOOL_ACTIVITY_EVENT, SUBAGENT_CHILD_STATUS_EVENT, SUBAGENT_CONTROL_EVENT, SUBAGENT_CONTROL_INTERCOM_EVENT, type ControlEvent } from "../../src/shared/types.ts";
 import { ACTIVE_RUN_INDEX_DIR, updateActiveRunIndex } from "../../src/runs/background/active-run-index.ts";
 import { EXTERNAL_JOB_BRIDGE_REQUEST_DIR } from "../../src/runs/shared/external-job-bridge.ts";
 import { createNativeSupervisorChannel, ensureSupervisorChannelDir, resolveSupervisorChannelDir } from "../../src/intercom/native-supervisor-channel.ts";
@@ -2325,6 +2325,36 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 			assert.ok(controlEvent);
 			assert.match((controlEvent.data as { noticeText?: string }).noticeText ?? "", /subagent-worker-run-3-1/);
 			assert.equal(recorder.events.some((event) => event.channel === "subagent:control-intercom"), true);
+		} finally {
+			removeTempDir(asyncRoot);
+		}
+	});
+
+	it("bridges live child tool activity with exact identities and no private fields, without a poll tick", async () => {
+		const asyncRoot = createTempDir("pi-tool-activity-tracker-");
+		try {
+			const runDir = path.join(asyncRoot, "child-run");
+			fs.mkdirSync(runDir, { recursive: true });
+			fs.writeFileSync(path.join(runDir, "status.json"), JSON.stringify({
+				runId: "child-run", mode: "single", state: "running", startedAt: Date.now(), lastUpdate: Date.now(),
+				steps: [{ agent: "worker", status: "running" }],
+			}));
+			fs.writeFileSync(path.join(runDir, "events.jsonl"), "");
+			const recorder = createEventRecorder();
+			const tracker = createTracker(recorder.pi, createState() as never, asyncRoot, { pollIntervalMs: 60_000 });
+			tracker.handleStarted({ id: "child-run", asyncDir: runDir, agent: "worker" });
+			const identity = { runId: "workflow-root", childId: "review", agent: "worker" };
+			const record = { type: "subagent.child-tool-activity", version: 1, ...identity, toolName: "bash", phase: "start", isError: false };
+			fs.appendFileSync(path.join(runDir, "events.jsonl"), [
+				{ ...record, phase: "update" }, { ...record, toolName: 5 },
+				{ ...record, args: { command: "private" }, task: "private", prompt: "private" },
+				{ ...record, phase: "end", isError: true, result: "private" },
+			].map((event) => JSON.stringify(event)).join("\n") + "\n");
+			await waitForCondition(() => recorder.events.filter((event) => event.channel === SUBAGENT_CHILD_TOOL_ACTIVITY_EVENT).length === 2, "live child tool activity");
+			assert.deepEqual(recorder.events.filter((event) => event.channel === SUBAGENT_CHILD_TOOL_ACTIVITY_EVENT).map((event) => event.data), [
+				{ ...identity, toolName: "bash", phase: "start", isError: false },
+				{ ...identity, toolName: "bash", phase: "end", isError: true },
+			]);
 		} finally {
 			removeTempDir(asyncRoot);
 		}

@@ -24,6 +24,8 @@ import { ACTIVE_ASYNC_CAPACITY_DIR, acquireActiveAsyncCapacity, activeAsyncCapac
 import {
 	SUBAGENT_ASYNC_STARTED_EVENT,
 	SUBAGENT_CHILD_STATUS_EVENT,
+	SUBAGENT_CHILD_TOOL_ACTIVITY_EVENT,
+	type SubagentChildToolActivityEvent,
 	type SubagentChildStatusEvent,
 	type SubagentState,
 } from "../../src/shared/types.ts";
@@ -120,6 +122,73 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			assert.equal(mockPi.callCount(), 0);
 		} finally { registration.dispose(); }
 	});
+
+	for (const mode of ["single", "chain", "parallel"] as const) {
+		it(`journals privacy-safe native background ${mode} tool boundaries with canonical step identities`, { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
+			const id = `tool-activity-${mode}-${Date.now().toString(36)}`;
+			const response = { jsonl: [
+				{ type: "tool_execution_start", toolName: "bash", args: { command: "private command" } },
+				{ type: "tool_execution_update", toolName: "bash", partialResult: "private partial" },
+				{ type: "tool_execution_end", toolName: "bash", isError: true, result: "private result" },
+				events.assistantMessage("Done"),
+			] };
+			mockPi.onCall(response);
+			if (mode !== "single") mockPi.onCall(response);
+			const options = {
+				ctx: { pi: { events: { emit() {} } }, cwd: tempDir, currentSessionId: "session-1" },
+				artifactConfig: { enabled: false, includeInput: false, includeOutput: false, includeJsonl: false, includeMetadata: false, cleanupDays: 7 },
+				shareEnabled: false, sessionRoot: path.join(tempDir, "sessions"), maxSubagentDepth: 2, acceptance: false,
+			};
+			const steps = [{ agent: "worker", task: "private task A" }, { agent: "worker", task: "private task B" }];
+			const receipt = mode === "single"
+				? executeAsyncSingle(id, { ...options, agent: "worker", task: "private task", agentConfig: makeAgent("worker") })
+				: executeAsyncChain(id, { ...options, chain: mode === "chain" ? steps : [{ parallel: steps }], agents: [makeAgent("worker")] });
+			assert.notEqual(receipt.isError, true);
+			await waitForAsyncResultFile(id);
+			const records = fs.readFileSync(path.join(ASYNC_DIR, id, "events.jsonl"), "utf8").trim().split("\n")
+				.map((line) => JSON.parse(line)).filter((event) => event.type === "subagent.child-tool-activity");
+			assert.equal(records.length, mode === "single" ? 2 : 4);
+			for (const index of mode === "single" ? [0] : [0, 1]) {
+				assert.deepEqual(records.filter((event) => event.childId === `step:${index}`), [
+					{ type: "subagent.child-tool-activity", version: 1, runId: id, childId: `step:${index}`, agent: "worker", toolName: "bash", phase: "start", isError: false },
+					{ type: "subagent.child-tool-activity", version: 1, runId: id, childId: `step:${index}`, agent: "worker", toolName: "bash", phase: "end", isError: true },
+				]);
+			}
+		});
+	}
+
+	for (const childAsync of [false, true]) {
+		it(`identifies native ${childAsync ? "background" : "foreground"} workflow tool activity by lifecycle root/key`, { skip: !isAsyncAvailable() || !createSubagentExecutor ? "executor unavailable" : undefined }, async () => {
+			const bus = createEventBus();
+			const activity: SubagentChildToolActivityEvent[] = [];
+			const statuses: SubagentChildStatusEvent[] = [];
+			bus.on(SUBAGENT_CHILD_TOOL_ACTIVITY_EVENT, (event) => activity.push(event as SubagentChildToolActivityEvent));
+			bus.on(SUBAGENT_CHILD_STATUS_EVENT, (event) => statuses.push(event as SubagentChildStatusEvent));
+			mockPi.onCall({ jsonl: [events.toolStart("read", { path: "private path" }), events.toolEnd("read"), events.assistantMessage("Done")] });
+			const executor = makeLifecycleExecutor(bus);
+			const receipt = await executor.execute(`workflow-tool-activity-${childAsync}`, {
+				workflowScript: `return await runs.run("review", { agent: "worker", task: "private task", async: ${childAsync} });`,
+				async: true, mission: false,
+			}, new AbortController().signal, undefined, makeMinimalCtx(tempDir));
+			const runId = receipt.details.asyncId;
+			assert.ok(runId);
+			await waitForAsyncResultFile(runId);
+			const child = statuses.find((event) => event.runId === runId && event.childId === "review" && event.status === "started");
+			assert.ok(child);
+			const expected = [
+				{ runId, childId: child.childId, agent: "worker", toolName: "read", phase: "start", isError: false },
+				{ runId, childId: child.childId, agent: "worker", toolName: "read", phase: "end", isError: false },
+			];
+			if (childAsync) {
+				assert.ok(child.childRunId);
+				await waitForAsyncResultFile(child.childRunId);
+				const records = fs.readFileSync(path.join(ASYNC_DIR, child.childRunId, "events.jsonl"), "utf8").trim().split("\n")
+					.map((line) => JSON.parse(line)).filter((event) => event.type === "subagent.child-tool-activity")
+					.map(({ type: _type, version: _version, ...event }) => event);
+				assert.deepEqual(records, expected);
+			} else assert.deepEqual(activity, expected);
+		});
+	}
 
 	it("reports jiti availability as boolean", () => {
 		const result = isAsyncAvailable();

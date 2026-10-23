@@ -84,6 +84,7 @@ import { buildRunnerChildLaunch } from "./runner-child-launch.ts";
 import { normalizeExtensionBindings } from "../shared/extension-bindings.ts";
 import type { ChildSessionFactory, DefaultChildSessionFactoryOptions } from "../shared/child-session.ts";
 import { runChildSession, type ChildEvent, type RunChildSessionInput, type RunChildSessionResult, type SteerDelivery, type StepSteerHandler } from "./run-child-session.ts";
+import { projectChildToolActivity } from "../shared/child-tool-activity.ts";
 import { loadRunnerChildSessionFactory } from "./runner-child-sessions.ts";
 import { SUBAGENT_CHILD_ENV, SUBAGENT_RUNNER_PID_ENV } from "../shared/child-runtime-config.ts";
 import { deriveChildSessionName } from "../../shared/child-session-name.ts";
@@ -3054,6 +3055,13 @@ export async function runSubagent(
 	const updateStepFromChildEvent = (flatIndex: number, event: ChildEvent): void => {
 		const step = statusPayload.steps[flatIndex];
 		if (!step) return;
+		if (event.type === "tool_execution_start" || event.type === "tool_execution_end") {
+			const identity = config.parentWorkflowRunId && config.workflowKey && flatSteps.length === 1
+				? { runId: config.parentWorkflowRunId, childId: config.workflowKey, agent: step.agent }
+				: { runId: id, childId: childStopTargetId(flatIndex), agent: step.agent };
+			const activity = projectChildToolActivity(event, identity);
+			if (activity) appendJsonl(eventsPath, JSON.stringify({ type: "subagent.child-tool-activity", version: 1, ...activity }));
+		}
 		const previousActivityState = step.activityState;
 		const now = Date.now();
 		statusPayload.currentStep = flatIndex;
