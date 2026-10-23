@@ -82,7 +82,7 @@ interface Waiter {
 
 interface MainWatchdogRuntimeOptions {
 	cwd?: string;
-	resolveConfig?: (cwd: string, options?: { session?: Record<string, unknown> }) => WatchdogSettingsResult;
+	resolveConfig?: (cwd: string, options?: { session?: Record<string, unknown>; projectTrusted?: boolean }) => WatchdogSettingsResult;
 	review?: WatchdogReviewFunction;
 	reviewDescription?: string;
 	displayWarning?: (warning: WatchdogWarningDetails, options?: WatchdogWarningSendOptions) => void;
@@ -96,7 +96,7 @@ interface MainWatchdogRuntimeOptions {
 
 export type WatchdogWarningSendOptions = { deliverAs: "steer" } | { triggerTurn: false };
 
-type ContextLike = Pick<ExtensionContext, "cwd"> & { signal?: AbortSignal };
+type ContextLike = Pick<ExtensionContext, "cwd"> & Partial<Pick<ExtensionContext, "isProjectTrusted">> & { signal?: AbortSignal };
 type ReviewDeltaOutcome = "completed" | "timeout" | "stale" | NonNullable<WatchdogReviewResult["clarification"]>;
 
 const DEFAULT_REVIEW: WatchdogReviewFunction = () => ({ warnings: [] });
@@ -128,7 +128,9 @@ function reviewInputSignature(input: string): string {
 
 export class MainWatchdogRuntime {
 	private cwd: string;
-	private readonly resolveConfig: (cwd: string, options?: { session?: Record<string, unknown> }) => WatchdogSettingsResult;
+	private readonly resolveConfig: (cwd: string, options?: { session?: Record<string, unknown>; projectTrusted?: boolean }) => WatchdogSettingsResult;
+	/** The bound session's project trust; undefined (no host signal) keeps Pi's default of reading project settings. */
+	private projectTrusted: boolean | undefined;
 	private readonly review: WatchdogReviewFunction;
 	private readonly reviewConnected: boolean;
 	private readonly reviewDescription: string;
@@ -205,6 +207,7 @@ export class MainWatchdogRuntime {
 
 	bindSession(ctx: ContextLike): void {
 		this.cwd = ctx.cwd;
+		this.projectTrusted = ctx.isProjectTrusted?.();
 		this.sessionOverrideEnabled = undefined;
 		this.sessionModelOverride = undefined;
 		this.refreshConfig(ctx.cwd);
@@ -212,8 +215,9 @@ export class MainWatchdogRuntime {
 		this.resetBoundaryRepeats();
 	}
 
-	refreshConfig(cwd = this.cwd): WatchdogSettingsResult {
+	refreshConfig(cwd = this.cwd, projectTrusted = this.projectTrusted): WatchdogSettingsResult {
 		this.cwd = cwd;
+		this.projectTrusted = projectTrusted;
 		const wasEnabled = this.isEnabled();
 		const hadClarification = this.configResult.config.clarification;
 		const previousMain = this.configResult.config.main;
@@ -226,7 +230,7 @@ export class MainWatchdogRuntime {
 					...(this.sessionModelOverride ?? {}),
 				},
 			};
-		this.configResult = this.resolveConfig(this.cwd, session === undefined ? undefined : { session });
+		this.configResult = this.resolveConfig(this.cwd, { session, projectTrusted: this.projectTrusted });
 		if (this.configResult.config.maxWarnings !== this.guardMaxWarnings) {
 			this.guardMaxWarnings = this.configResult.config.maxWarnings;
 			this.guard = new WatchdogEmissionGuard({ maxWarnings: this.guardMaxWarnings });
@@ -333,7 +337,7 @@ export class MainWatchdogRuntime {
 		this.askedThisPrompt = false;
 		this.activityReviewUsed = false;
 		this.resetBoundaryRepeats();
-		this.refreshConfig(ctx.cwd);
+		this.refreshConfig(ctx.cwd, ctx.isProjectTrusted?.());
 		this.userPrompt = incomingPrompt;
 		if (this.userPrompt?.trim()) {
 			this.includeUserPromptInNextDelta = true;
@@ -346,7 +350,7 @@ export class MainWatchdogRuntime {
 
 	handleTurnEnd(event: unknown, ctx: ContextLike, structuredTerminal = false): void {
 		if (this.disposed) return;
-		this.refreshConfig(ctx.cwd);
+		this.refreshConfig(ctx.cwd, ctx.isProjectTrusted?.());
 		if (!this.isEnabled()) return;
 		try {
 			if (this.displayClarification && this.configResult.config.clarification && this.boundaryRepeats === 0) {
@@ -378,7 +382,7 @@ export class MainWatchdogRuntime {
 
 	handleToolResult(ctx: ContextLike): void {
 		if (this.disposed) return;
-		this.refreshConfig(ctx.cwd);
+		this.refreshConfig(ctx.cwd, ctx.isProjectTrusted?.());
 		if (!this.isEnabled()) return;
 		const everyNTools = this.configResult.config.cadence.everyNTools;
 		if (everyNTools === null) return;
@@ -392,7 +396,7 @@ export class MainWatchdogRuntime {
 
 	async handleAgentEnd(_event: unknown, ctx: ContextLike): Promise<void> {
 		if (this.disposed) return;
-		this.refreshConfig(ctx.cwd);
+		this.refreshConfig(ctx.cwd, ctx.isProjectTrusted?.());
 		if (!this.isEnabled()) return;
 		if (ctx.signal?.aborted) return;
 		const changeSignature = this.resolveReviewChangeSignature(this.currentRepoChangeSignature(ctx.cwd), ctx.cwd);

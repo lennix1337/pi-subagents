@@ -378,6 +378,7 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 		effectiveCwd,
 		agent.skillPath,
 		agent.filePath ? path.dirname(agent.filePath) : effectiveCwd,
+		input.projectTrusted,
 	);
 	if (resolvedSkills.missing.includes("pi-subagents")) {
 		return { ok: false, code: "missing_skill", message: "The pi-subagents orchestration skill is not child-injectable.", diagnostics };
@@ -507,7 +508,7 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 		model,
 		...(fast !== undefined ? { fast } : {}),
 		...(effectiveThinking ? { thinking: effectiveThinking } : {}),
-		systemPrompt: buildEffectiveSystemPrompt({ agent, resolvedSkills: resolvedSkills.resolved, cwd: effectiveCwd }),
+		systemPrompt: buildEffectiveSystemPrompt({ agent, resolvedSkills: resolvedSkills.resolved, cwd: effectiveCwd, projectTrusted: input.projectTrusted }),
 		skills: requestedSkills,
 		toolPlan,
 		...(outputPath ? { outputPath } : {}),

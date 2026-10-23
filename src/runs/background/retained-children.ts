@@ -109,7 +109,9 @@ export function listRetainedChildren(asyncDirRoot: string, sessionId: string): R
 
 export function formatRetainedChildren(children: RetainedChild[]): string {
 	const noKnownEligibleTargetGuidance = 'children.list is workflow-only and is not an exhaustive list of direct native children. If the exact run id of the intended child is known, inspect it with subagent({ action: "status", id: "..." }); if status identifies the candidate, attempt subagent({ action: "resume", id: "...", message: "..." }), which authoritatively checks eligibility and may reject it. Launch a same-role fallback challenge, labeled as fallback, only when there is no known candidate or resume rejects eligibility.';
-	if (children.length === 0) return `No retained workflow children in the active parent session. ${noKnownEligibleTargetGuidance}`;
+	// The roster is built from a bounded scan, so it never claims to be the session's whole history.
+	const scanScope = `the latest ${MAX_RETAINED_CHILD_CANDIDATES} finished runs of the active parent session (older runs are not scanned)`;
+	if (children.length === 0) return `No retained workflow children in ${scanScope}. ${noKnownEligibleTargetGuidance}`;
 	const retained = children.slice(0, MAX_RETAINED_CHILDREN);
 	if (!retained.some((child) => child.resumability.state === "resumable")) {
 		const resumable = children.slice(MAX_RETAINED_CHILDREN).find((child) => child.resumability.state === "resumable");
@@ -117,7 +119,8 @@ export function formatRetainedChildren(children: RetainedChild[]): string {
 	}
 	const hasResumableChild = retained.some((child) => child.resumability.state === "resumable");
 	return [
-		`Retained workflow children (up to ${MAX_RETAINED_CHILDREN}; newest first, with a resumable child retained when available):`,
+		`Retained workflow children (up to ${MAX_RETAINED_CHILDREN}; newest first, with a resumable child retained when available; from ${scanScope}):`,
+		...(children.length > retained.length ? [`Showing ${retained.length} of ${children.length} retained workflow children found; ${children.length - retained.length} not shown.`] : []),
 		...retained.flatMap((child) => [
 			`- ${child.runId} | ${child.agent} | ${child.state} | ${new Date(child.completedAt).toISOString()}`,
 			...(child.parentRunId ? [`  workflow: ${child.parentRunId}${child.workflowKey ? ` (${child.workflowKey})` : ""}`] : []),

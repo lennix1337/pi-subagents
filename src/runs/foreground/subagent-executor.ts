@@ -19,7 +19,7 @@ import {
 } from "./foreground-control.ts";
 import { getLivePromptAudit, rewritePromptWithGuidance, updateLiveEffectivePrompt } from "./prompt-audit.ts";
 import { persistForegroundRunHistory, MAX_REMEMBERED_FOREGROUND_RUNS } from "./foreground-history.ts";
-import { projectScopeRequiresTrustMessage, resolveExecutionAgentScope } from "../../agents/agent-scope.ts";
+import { projectScopeRequiresTrustMessage, projectStateRequiresTrustMessage, resolveExecutionAgentScope } from "../../agents/agent-scope.ts";
 import { handleManagementAction } from "../../agents/agent-management.ts";
 import { handleRefinementAction } from "../../agents/agent-refinements.ts";
 import { buildDoctorReport } from "../../extension/doctor.ts";
@@ -635,17 +635,45 @@ function sessionProjectTrust(ctx: ExtensionContext): boolean | undefined {
 	return typeof ctx.isProjectTrusted === "function" ? ctx.isProjectTrusted() : undefined;
 }
 
-/** Agent and settings discovery follows the launching session's trust, like the child itself. */
+/** Agent and settings discovery, including management's catalog reads, follows the launching session's trust, like the child itself. */
 function withSessionProjectTrust(deps: ExecutorDeps, ctx: ExtensionContext): ExecutorDeps {
 	if (sessionProjectTrust(ctx) !== false) return deps;
-	return { ...deps, discoverAgents: (cwd, scope, preferredModelProvider) => deps.discoverAgents(cwd, scope, preferredModelProvider, { projectTrusted: false }) };
+	const discoverCatalog = deps.discoverAgentsAll ?? discoverAgentsAll;
+	return {
+		...deps,
+		discoverAgents: (cwd, scope, preferredModelProvider) => deps.discoverAgents(cwd, scope, preferredModelProvider, { projectTrusted: false }),
+		discoverAgentsAll: (cwd, preferredModelProvider, options) => discoverCatalog(cwd, preferredModelProvider, { ...options, projectTrusted: false }),
+	};
 }
 
+const PROJECT_MANAGEMENT_ACTIONS: ReadonlySet<string> = new Set(["list", "get", "models", "create", "update", "delete", "eject", "disable", "enable", "reset"]);
+
+/** Management's create takes its scope from config.scope, which may arrive as a JSON string. */
+function managementConfigScope(config: unknown): unknown {
+	if (typeof config === "string") {
+		try {
+			config = JSON.parse(config);
+		} catch {
+			return undefined;
+		}
+	}
+	return config && typeof config === "object" ? (config as { scope?: unknown }).scope : undefined;
+}
+
+/** Actions whose only target is project state: refinement overlays live under the project's .pi/subagents. */
+const PROJECT_STATE_ACTIONS: ReadonlySet<string> = new Set(["refine", "refine.show", "refine.rollback"]);
+
 function projectScopeTrustError(params: SubagentParamsLike, ctx: ExtensionContext): AgentToolResult<Details> | undefined {
-	if (sessionProjectTrust(ctx) !== false || resolveExecutionAgentScope(params.agentScope) !== "project") return undefined;
+	if (sessionProjectTrust(ctx) !== false) return undefined;
 	const action = typeof params.action === "string" ? params.action.trim() : undefined;
-	// These actions resolve agents in the requested scope; management actions are left to their own handlers.
-	if (action !== undefined && action !== "resume" && action !== "validate" && action !== "append-step") return undefined;
+	if (action !== undefined && (PROJECT_STATE_ACTIONS.has(action) || (action === "watchdog.configure" && params.scope === "project"))) {
+		return buildRequestedModeError(params, projectStateRequiresTrustMessage(action, resolveRequestedCwd(ctx.cwd, params.cwd)));
+	}
+	const isManagementAction = action !== undefined && PROJECT_MANAGEMENT_ACTIONS.has(action);
+	const requestsProject = resolveExecutionAgentScope(params.agentScope) === "project" || (isManagementAction && managementConfigScope(params.config) === "project");
+	if (!requestsProject) return undefined;
+	// These actions resolve or write agents in the requested scope; other actions do not take a project scope.
+	if (action !== undefined && action !== "resume" && action !== "validate" && action !== "append-step" && !isManagementAction) return undefined;
 	return buildRequestedModeError(params, projectScopeRequiresTrustMessage(resolveRequestedCwd(ctx.cwd, params.cwd)));
 }
 
@@ -3653,7 +3681,7 @@ async function runAsyncPath(data: ExecutionContextData, deps: ExecutorDeps): Pro
 				source: modelOrigin === "explicit" ? "explicit" : "inherited",
 			});
 		const modelOverrideFromParent = modelOrigin === "inherited";
-		const launchRuleError = applyWatchdogLaunchRules({ cwd: effectiveCwd, agent: a.name, model: modelOverride ?? (parentModel && `${parentModel.provider}/${parentModel.id}`), warn: (violation) => deps.watchdog?.displayRuleWarning(violation) });
+		const launchRuleError = applyWatchdogLaunchRules({ cwd: effectiveCwd, agent: a.name, model: modelOverride ?? (parentModel && `${parentModel.provider}/${parentModel.id}`), projectTrusted: sessionProjectTrust(ctx), warn: (violation) => deps.watchdog?.displayRuleWarning(violation) });
 		if (launchRuleError) return toExecutionErrorResult(params, new Error(launchRuleError), data.contextPolicy.contextSummary);
 		const asyncResult = await executeAsyncSingle(id, compactOptional<Parameters<typeof executeAsyncSingle>[1]>({
 			toolCallId: data.toolCallId,
@@ -4192,7 +4220,7 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 		},
 	);
 	const modelOverrideFromParent = modelOrigin === "inherited";
-	const launchRuleError = applyWatchdogLaunchRules({ cwd: effectiveCwd, agent: agentConfig.name, model: modelOverride ?? (parentModel && `${parentModel.provider}/${parentModel.id}`), warn: (violation) => deps.watchdog?.displayRuleWarning(violation) });
+	const launchRuleError = applyWatchdogLaunchRules({ cwd: effectiveCwd, agent: agentConfig.name, model: modelOverride ?? (parentModel && `${parentModel.provider}/${parentModel.id}`), projectTrusted: sessionProjectTrust(ctx), warn: (violation) => deps.watchdog?.displayRuleWarning(violation) });
 	if (launchRuleError) return toExecutionErrorResult(params, new Error(launchRuleError), data.contextPolicy.contextSummary);
 	let skillOverride: string[] | false | undefined = normalizeSkillInput(params.skill);
 	let readsOverride: string[] | false | undefined = params.reads;
@@ -7146,6 +7174,7 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 							orchestratorTarget,
 							sessionError,
 							expandTilde: deps.expandTilde,
+							deps: deps.discoverAgentsAll ? { discoverAgentsAll: deps.discoverAgentsAll } : undefined,
 						})),
 					}],
 					details: { mode: "management", results: [], spawnBudget, activeAsyncCapacity },

@@ -200,6 +200,15 @@ describe("disabled feature discovery", () => {
 		assert.match(disabled.slice(0, -guide.length), /^Disabled by config[^\n]*\n- disabledFeatures "watchdog": options scope, target, thinking; actions watchdog\.status, watchdog\.check, watchdog\.configure, watchdog\.recommend-model\n\n$/);
 	});
 
+	it("reports an unknown guide topic or section as a tool error", async () => {
+		for (const topic of ["tool-refrence", "tool-reference/no-such-section"]) {
+			const result = await createExecutor({}).executePublic("guide-error", { action: "guide", topic }, new AbortController().signal, undefined, ctx());
+			assert.equal(result.isError, true, topic);
+			assert.match(resultText(result), /^Unknown (subagents guide topic|section) /, topic);
+			assert.match(resultText(result), /No files were changed\./, topic);
+		}
+	});
+
 	it("keeps every tool-reference section within the 8,000-char guide cap when every feature is disabled", async () => {
 		const executor = createExecutor({ disabledFeatures: Object.keys(SUBAGENT_FEATURES) as SubagentFeature[], scheduledRuns: { enabled: false } });
 		const read = async (topic: string) => resultText(await executor.executePublic("guide", { action: "guide", topic }, new AbortController().signal, undefined, ctx()));

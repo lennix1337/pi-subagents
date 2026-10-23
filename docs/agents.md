@@ -31,7 +31,7 @@ Discovery notes:
 - Use `subagents.agentExcludeDirs` to prune literal directory subtrees without disabling legacy agents. See [configuration.md](configuration.md#excluded-agent-directories-settings) for path resolution, scope, and exemptions.
 - Installed Pi packages can expose agent directories from either `{"pi-subagents":{"agents":["./agents"]}}` or `{"pi":{"subagents":{"agents":["./agents"]}}}` in their package manifest. Package agents load above builtins and below user/project agents.
 - Use `agentScope: "user" | "project" | "both"` to control discovery. `both` is the default, and project definitions win runtime-name collisions.
-- When the session declined Pi project trust, discovery ignores project agents and chains, packages installed for the project or declared in its `package.json`, and project subagent settings, so `both` behaves as `user` and an explicit `project` scope is rejected.
+- When the session declined Pi project trust, discovery ignores project agents and chains, packages installed for the project or declared in its `package.json`, and project subagent settings, so `both` behaves as `user` and an explicit `project` scope is rejected. Management actions follow the same rule: `list`, `get`, `models`, `create`, `update`, `delete`, `eject`, `disable`, `enable` and `reset` with `agentScope` or `config.scope` set to `project` return the trust error and write nothing. `refine`, `refine.show`, `refine.rollback` and `watchdog.configure` with `scope: "project"` are refused the same way.
 
 ## Builtin agents
 
@@ -261,7 +261,7 @@ A custom agent file that shadows a bundled agent replaces the bundled definition
 
 ## Running external CLI agents on a Herdr saved machine
 
-Native Pi and the six code-owned Claude Code, Codex, and Cursor profiles can run on a Herdr machine (`herdr machine add <target> --label <name>`). Herdr owns each visible agent process in a fresh no-focus pane; SSH is used only as bounded transport for Herdr RPC and ownership checks. Herdr's catalog is the host allowlist; raw ssh targets are rejected.
+Native Pi and the six code-owned Claude Code, Codex, and Cursor profiles can run on a Herdr machine (`herdr machine add <target> --label <name>`). Herdr owns each visible agent process in a fresh no-focus pane; SSH is used only as bounded transport for Herdr RPC and ownership checks. Herdr's catalog is the host allowlist; raw ssh targets are rejected. A native Pi child resolves its agent, skills, memory and refinement on the remote machine under that remote Pi's own project trust (`isProjectTrusted()` there); the local session's trust never grants it. If the remote Pi declined trust, the remote project's agents, skills, memory and refinement are not read, and a remote session that has not started yet cannot be configured.
 
 `machine` is a top-level frontmatter key, a settings override (`subagents.agentOverrides.<agent>.machine`, project beats user, `false` clears a pin), and a launch option on the `subagent` tool, workflow `runs.run`, chain, parallel, and dynamic-fanout steps. The launch option wins. Placement survives `subagent({ action: "disable" })`, `reset`, and model profile switches.
 
@@ -490,6 +490,8 @@ Scopes:
 - Project: resolves under `<project>/.pi/agent-memory/<path>` and travels with the repo.
 - User: resolves under `~/.pi/agent/agent-memory/<path>` and is shared across projects for that agent.
 
+When the session declined Pi project trust, project-scope memory is left out of the child prompt and of the launch contract digest, while user-scope memory still applies.
+
 ## Refinement overlays
 
 A refinement overlay is bounded, project-local guidance layered on top of one agent's system prompt without editing the agent file. Use it when an agent repeatedly stumbles on the same project-specific issue and recent run evidence shows what to correct.
@@ -509,7 +511,7 @@ How it works:
 - `refine` collects bounded evidence from that agent's recent runs in the project (statuses, errors, review findings, residual risks, output tails), then launches a fresh read-only proposal child to draft small guidance edits from that evidence.
 - Proposed guidance is validated before it is written. Edits that try to override safety, policy, tool, output, acceptance, developer, or system instructions are rejected, as are edits that target all agents or base agent files.
 - The accepted overlay is stored at `.pi/subagents/refinements/<agent>.md` with revision metadata and snapshots. Each `refine` or `refine.rollback` adds a snapshot, and `refine.rollback` restores the previous revision.
-- At launch, the current overlay is injected into that agent's child system prompt as a `<pi-subagents-refinement>` block scoped to this project. The base agent definition is never modified.
+- At launch, the current overlay is injected into that agent's child system prompt as a `<pi-subagents-refinement>` block scoped to this project. The base agent definition is never modified. When the session declined project trust, the overlay is left out of every launch and of the launch contract digest, including for user-level agents.
 
 `refine.show` prints the current overlay and revision history. Delete the overlay file to remove the refinement entirely.
 
@@ -586,6 +588,8 @@ Discovery uses project-first precedence:
 5. `~/.pi/agent/skills/{name}/SKILL.md`
 6. User packages and user settings packages via `package.json -> pi.skills`
 7. `~/.pi/agent/settings.json -> skills`
+
+When the session declined Pi project trust, steps 1 to 4 are skipped without being read, so a skill name resolves only from the user sources (5 to 7) and any agent-local `skillPath`. A skill that only the project provides is reported as missing: preflight returns `missing_skill`, and a foreground launch warns `Skills not found`. Trusted sessions and hosts without a trust concept keep the order above.
 
 Use agent defaults, override them at runtime, or disable them inside the ```` ```js workflow ```` block:
 

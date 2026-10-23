@@ -97,6 +97,16 @@ describe("watchdog tool actions", () => {
 		assert.equal(fs.existsSync(path.join(tempHome, ".pi", "agent", "settings.json")), false);
 	});
 
+	it("reads project watchdog settings in the no-runtime fallback only when the session trusts the project", () => {
+		fs.mkdirSync(path.join(tempProject, ".pi"), { recursive: true });
+		fs.writeFileSync(path.join(tempProject, ".pi", "settings.json"), JSON.stringify({ subagents: { watchdog: { enabled: true, main: { model: "openai-codex/gpt-5.5", thinking: false } } } }), "utf-8");
+		// SAFETY: the fallback reads only cwd, model, modelRegistry and isProjectTrusted from the context.
+		const ctxWithTrust = (trusted: boolean) => ({ ...createCtx({ provider: "openai-codex", id: "gpt-5.5" }), isProjectTrusted: () => trusted }) as never;
+
+		assert.match(text(handleWatchdogToolAction("watchdog.recommend-model", {}, ctxWithTrust(true))), /Keep configured watchdog: openai-codex\/gpt-5\.5:off/);
+		assert.doesNotMatch(text(handleWatchdogToolAction("watchdog.recommend-model", {}, ctxWithTrust(false))), /Keep configured watchdog/);
+	});
+
 	it("preserves omitted session model fields when configuring thinking", () => {
 		const runtime = new MainWatchdogRuntime({ cwd: tempProject });
 		const ctx = createCtx({ provider: "openai-codex", id: "gpt-5.5" });

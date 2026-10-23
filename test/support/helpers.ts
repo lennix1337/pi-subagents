@@ -21,6 +21,15 @@ export function createTempDir(prefix = "pi-subagent-test-"): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
+/** Writes `[path relative to root, content]` fixture files, creating their parent directories. */
+export function writeFixtureTree(root: string, files: ReadonlyArray<readonly [string, string]>): void {
+	for (const [relativePath, content] of files) {
+		const file = path.join(root, relativePath);
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(file, content, "utf-8");
+	}
+}
+
 export function removeTempDir(dir: string): void {
 	try {
 		fs.rmSync(dir, { recursive: true, force: true });

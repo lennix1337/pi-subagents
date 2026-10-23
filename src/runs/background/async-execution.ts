@@ -1139,10 +1139,11 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 			ctx.cwd,
 			a.skillPath,
 			a.filePath ? path.dirname(a.filePath) : stepCwd,
+			ctx.projectTrusted,
 		);
 		if (missingSkills.includes("pi-subagents")) throw new UnavailableSubagentSkillError(UNAVAILABLE_SUBAGENT_SKILL_ERROR);
 
-		const systemPrompt = buildEffectiveSystemPrompt({ agent: a, resolvedSkills, cwd: stepCwd });
+		const systemPrompt = buildEffectiveSystemPrompt({ agent: a, resolvedSkills, cwd: stepCwd, projectTrusted: ctx.projectTrusted });
 
 		const readInstructions = buildChainInstructions({ ...behavior, output: false, progress: false }, instructionCwd, false, undefined, readExistenceCwd);
 		const isFirstProgressAgent = behavior.progress && !progressPrecreated && !progressInstructionCreated;
@@ -1219,7 +1220,7 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 				throw new AsyncStartValidationError(error instanceof Error ? error.message : String(error));
 			}
 		}
-		const launchRuleError = applyWatchdogLaunchRules({ cwd: machine ? runnerCwd : stepCwd, agent: a.name, model: selectedModel, warn: (violation) => sendRuleViolationWarning(ctx.pi, violation) });
+		const launchRuleError = applyWatchdogLaunchRules({ cwd: machine ? runnerCwd : stepCwd, agent: a.name, model: selectedModel, projectTrusted: ctx.projectTrusted, warn: (violation) => sendRuleViolationWarning(ctx.pi, violation) });
 		if (launchRuleError) throw new AsyncStartValidationError(launchRuleError);
 		const fast = s.fast ?? params.fast ?? a.fast;
 		const requiredExtensions = externalRunner ? [] : params.requiredExtensions ?? ctx.childRuntime?.requiredExtensions ?? registeredExtensions;
@@ -1935,6 +1936,7 @@ export function executeAsyncSingle(
 		ctx.cwd,
 		agentConfig.skillPath,
 		agentConfig.filePath ? path.dirname(agentConfig.filePath) : runnerCwd,
+		ctx.projectTrusted,
 	);
 	if (missingSkills.includes("pi-subagents")) return formatAsyncStartError("single", UNAVAILABLE_SUBAGENT_SKILL_ERROR);
 
@@ -1959,7 +1961,7 @@ export function executeAsyncSingle(
 
 	const effectiveOutput = normalizeSingleOutputOverride(params.output, agentConfig.output);
 	const outputPath = resolveSingleOutputPath(effectiveOutput, ctx.cwd, instructionCwd, params.outputBaseDir ?? (artifactsDir ? path.join(artifactsDir, "outputs", id) : undefined));
-	const systemPrompt = buildEffectiveSystemPrompt({ agent: agentConfig, resolvedSkills, cwd: runnerCwd });
+	const systemPrompt = buildEffectiveSystemPrompt({ agent: agentConfig, resolvedSkills, cwd: runnerCwd, projectTrusted: ctx.projectTrusted });
 	const outputMode = params.outputMode ?? agentConfig.outputMode ?? "inline";
 	const validationError = validateFileOnlyOutputMode(outputMode, outputPath, `Async single run (${agent})`);
 	if (validationError) return formatAsyncStartError("single", validationError);

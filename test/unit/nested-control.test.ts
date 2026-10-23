@@ -770,6 +770,37 @@ describe("nested control routing", () => {
 		}
 	});
 
+	it("registers the fanout child subagent tool as model-only and refuses mutating and project-state actions", async () => {
+		const route = createNestedRoute("root-registration");
+		routeRoots.push(path.dirname(route.eventSink));
+		const tools: Array<{ name: string; description?: string; exposure?: string; execute: (...args: unknown[]) => Promise<unknown> }> = [];
+		const lifecycle = new Map<string, () => void>();
+		const pi = {
+			on(event: string, handler: () => void) { lifecycle.set(event, handler); },
+			events: { emit() {}, on() { return () => {}; } },
+			registerTool(tool: (typeof tools)[number]) { tools.push(tool); },
+			getSessionName() { return "child"; },
+		} as any;
+		registerFanoutChildSubagentExtension(pi, fanoutChildRuntime(route, "root-registration"));
+		try {
+			const tool = tools.find((registered) => registered.name === "subagent");
+			assert.equal(tool?.exposure, "model-only", "codemode scripts must not call the child-safe subagent tool");
+			assert.match(tool?.description ?? "", /Mutating management actions, including .*\bwatchdog\.configure\b.*\brefine\b.*\brefine\.rollback\b.*, are blocked in this mode\./);
+			const ctx = {
+				cwd: os.tmpdir(), hasUI: false, isProjectTrusted: () => false,
+				modelRegistry: { getAvailable: () => [] },
+				sessionManager: { getSessionId: () => "session", getSessionFile: () => undefined },
+			};
+			const run = (params: Record<string, unknown>) => tool!.execute("registration", params, new AbortController().signal, undefined, ctx);
+
+			// A tool error throws from the registered tool, as Pi expects.
+			await assert.rejects(run({ action: "create", config: { name: "blocked", description: "Blocked" } }), /Action 'create' is not available from child-safe subagent fanout mode\./);
+			await assert.rejects(run({ action: "refine.show", agent: "worker" }), /requires project trust\. This session declined trust, so /);
+		} finally {
+			lifecycle.get("session_shutdown")?.();
+		}
+	});
+
 	it("keeps the fanout child control listener alive after control inbox polling errors", async () => {
 		const route = createNestedRoute("root-poll-error");
 		routeRoots.push(path.dirname(route.eventSink));

@@ -61,7 +61,7 @@ Brief-writing rules:
 
 Discover before executing; discovery is read-only and does not launch a child:
 
-1. `{action:"list"}` shows agent types, descriptions, and declared defaults.
+1. `{action:"list"}` shows agent types and descriptions; `options:{capabilities:true}` adds each agent's declared model, thinking, and tools.
 2. `{action:"models"}` shows live models across every authenticated provider and account, with each model's `thinking=` levels.
 3. `{action:"models",agent:"name"}` shows one agent's effective model and supported levels.
 

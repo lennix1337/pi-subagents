@@ -269,26 +269,29 @@ export function readMemoryFile(memoryDir: string): MemoryFileResult {
 	}
 }
 
+/** Memory root for the agent's scope, or undefined when the scope has none to read (no project, or project trust declined). */
+function resolveMemoryRoot(memory: AgentMemoryConfig, cwd: string, projectTrusted: boolean | undefined): string | undefined {
+	if (memory.scope === "user") return path.join(getAgentDir(), AGENT_MEMORY_DIR_NAME);
+	if (projectTrusted === false) return undefined;
+	const projectRoot = findNearestProjectRoot(cwd) ?? findNearestGitRoot(cwd);
+	return projectRoot ? path.join(getProjectConfigDir(resolveProjectMemoryRoot(projectRoot)), AGENT_MEMORY_DIR_NAME) : undefined;
+}
+
 /**
  * Build the memory block to append to a child system prompt.
  *
  * Returns an empty string when the agent has no memory scope, the scope cannot
  * be resolved safely, or a read-only agent has no memory file yet (nothing to
  * recall). Read-write agents always receive the scope block so they can create
- * the memory file on the first run.
+ * the memory file on the first run. A session that declined project trust gets
+ * no project-scope memory; user-scope memory is unaffected.
  */
-export function buildAgentMemoryInjection(agent: AgentConfig, cwd: string): string {
+export function buildAgentMemoryInjection(agent: AgentConfig, cwd: string, projectTrusted?: boolean): string {
 	const memory = agent.memory;
 	if (!memory) return "";
 
-	let rootDir: string;
-	if (memory.scope === "user") {
-		rootDir = path.join(getAgentDir(), AGENT_MEMORY_DIR_NAME);
-	} else {
-		const projectRoot = findNearestProjectRoot(cwd) ?? findNearestGitRoot(cwd);
-		if (!projectRoot) return "";
-		rootDir = path.join(getProjectConfigDir(resolveProjectMemoryRoot(projectRoot)), AGENT_MEMORY_DIR_NAME);
-	}
+	const rootDir = resolveMemoryRoot(memory, cwd, projectTrusted);
+	if (!rootDir) return "";
 
 	const resolved = resolveMemoryDir(rootDir, memory.path);
 	if ("error" in resolved) return "";

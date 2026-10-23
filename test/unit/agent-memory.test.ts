@@ -16,6 +16,7 @@ import {
 import { serializeAgent } from "../../src/agents/agent-serializer.ts";
 import { discoverAgents, findNearestProjectRoot, type AgentConfig, type AgentMemoryConfig } from "../../src/agents/agents.ts";
 import { handleManagementAction } from "../../src/agents/agent-management.ts";
+import { getAgentDir } from "../../src/shared/utils.ts";
 
 const tempDirs: string[] = [];
 
@@ -266,6 +267,21 @@ describe("buildAgentMemoryInjection", () => {
 		assert.match(injection, /Threat: token leakage in logs\./);
 		assert.match(injection, /Gotcha: retry on 429\./);
 		assert.doesNotMatch(injection, /read-only/);
+	});
+
+	it("leaves project-scope memory out when the session declined project trust and keeps user-scope memory", () => {
+		const project = mkProject();
+		writeMemoryFile(path.join(project, ".pi", AGENT_MEMORY_DIR_NAME, "role"), "PROJECT_MEMORY_SENTINEL");
+		withTempHome(() => {
+			writeMemoryFile(path.join(getAgentDir(), AGENT_MEMORY_DIR_NAME, "role"), "USER_MEMORY_SENTINEL");
+			const projectAgent = makeAgent({ memory: { scope: "project", path: "role" } });
+			const userAgent = makeAgent({ memory: { scope: "user", path: "role" } });
+
+			assert.match(buildAgentMemoryInjection(projectAgent, project), /PROJECT_MEMORY_SENTINEL/u, "omitted trust keeps project memory");
+			assert.match(buildAgentMemoryInjection(projectAgent, project, true), /PROJECT_MEMORY_SENTINEL/u);
+			assert.equal(buildAgentMemoryInjection(projectAgent, project, false), "");
+			assert.match(buildAgentMemoryInjection(userAgent, project, false), /USER_MEMORY_SENTINEL/u);
+		});
 	});
 
 	it("injects a creation prompt when a read-write agent has no memory file yet", () => {

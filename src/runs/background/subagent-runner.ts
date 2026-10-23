@@ -1118,7 +1118,7 @@ export async function runSingleStepInner(
 				return omitUndefinedProperties({ agent: step.agent, output: cleanupError, error: cleanupError, exitCode: 1, context: step.context });
 			}
 		}
-		const watchdogConfig = resolveWatchdogConfig(step.cwd ?? ctx.cwd);
+		const watchdogConfig = resolveWatchdogConfig(step.cwd ?? ctx.cwd, { projectTrusted: ctx.projectTrusted });
 		const extensionBindings = normalizeExtensionBindings(step.extensionBindings)?.value;
 		const childWatchdog = watchdogConfig.ok
 			? resolveChildWatchdogConfig({

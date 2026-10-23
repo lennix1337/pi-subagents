@@ -11,8 +11,8 @@ export interface WatchdogRuleViolation {
 	recommendedAction: string;
 }
 
-function loadWatchdogLaunchRules(cwd: string): WatchdogRulesConfig | undefined {
-	const result = resolveWatchdogConfig(cwd);
+function loadWatchdogLaunchRules(cwd: string, projectTrusted: boolean | undefined): WatchdogRulesConfig | undefined {
+	const result = resolveWatchdogConfig(cwd, { projectTrusted });
 	return result.ok ? result.config.rules : undefined;
 }
 
@@ -54,8 +54,8 @@ export function ruleViolationWarning(violation: WatchdogRuleViolation): Watchdog
 	return { severity: "concern", category: "missed-constraint", importance: "high", source: "main", ...violation };
 }
 
-export function applyWatchdogLaunchRules(input: { cwd: string; agent: string; model?: string; warn?: (violation: WatchdogRuleViolation) => void }): string | undefined {
-	const rules = loadWatchdogLaunchRules(input.cwd);
+export function applyWatchdogLaunchRules(input: { cwd: string; agent: string; model?: string; projectTrusted?: boolean; warn?: (violation: WatchdogRuleViolation) => void }): string | undefined {
+	const rules = loadWatchdogLaunchRules(input.cwd, input.projectTrusted);
 	const violation = evaluateLaunchRule(rules, input.agent, input.model);
 	if (!violation) return undefined;
 	if (rules?.action === "block") return `Launch blocked by subagents.watchdog.rules: ${violation.summary}`;

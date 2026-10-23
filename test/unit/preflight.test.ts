@@ -146,6 +146,61 @@ describe("public launch contract preflight", () => {
 		assert.equal(trusted.ok && trusted.contract.model, "openai/astra");
 	});
 
+	it("leaves the project refinement overlay out of the launch contract when the session declined project trust", async () => {
+		const cwd = path.join(tempDir, "untrusted-refinement-repo");
+		fs.mkdirSync(cwd, { recursive: true });
+		writeAgent(path.join(process.env.PI_CODING_AGENT_DIR!, "agents", "probe.md"), "---\nname: probe\ndescription: Probe\n---\nUser body.\n");
+		const digestOf = async (projectTrusted?: boolean) => {
+			const result = await resolveSubagentLaunchContract({ agent: "probe", cwd, projectTrusted });
+			assert.equal(result.ok, true);
+			return result.ok ? result.contract.launchContractDigest : "";
+		};
+		const withoutOverlay = await digestOf();
+		const refinementPath = path.join(cwd, ".pi", "subagents", "refinements", "probe.md");
+		writeAgent(refinementPath, `<!-- pi-subagents-refinement:v1
+${JSON.stringify({ agent: "probe", revision: 1, updatedAt: "2026-01-01T00:00:00.000Z", base: { source: "user", filePath: "probe.md", systemPromptSha256: "0" }, evidence: {} })}
+-->
+
+\`\`\`pi-subagents-refinement-current
+PROJECT_REFINEMENT_SENTINEL
+\`\`\`
+
+\`\`\`pi-subagents-refinement-snapshots-json
+[]
+\`\`\`
+`);
+
+		assert.notEqual(await digestOf(), withoutOverlay, "omitted trust keeps the overlay");
+		assert.notEqual(await digestOf(true), withoutOverlay, "a trusting session keeps the overlay");
+		assert.equal(await digestOf(false), withoutOverlay, "a declining session launches without the project's overlay");
+	});
+
+	it("leaves project skills and project memory out of the launch contract when the session declined project trust", async () => {
+		const cwd = path.join(tempDir, "untrusted-inputs-repo");
+		fs.mkdirSync(cwd, { recursive: true });
+		const agentDir = process.env.PI_CODING_AGENT_DIR!;
+		writeAgent(path.join(agentDir, "agents", "probe.md"), "---\nname: probe\ndescription: Probe\nskills: shared-skill\nmemory: { scope: project, path: probe }\n---\nUser body.\n");
+		writeAgent(path.join(agentDir, "skills", "shared-skill", "SKILL.md"), "---\ndescription: USER_SHARED_SKILL\n---\nbody\n");
+		const contractOf = async (projectTrusted?: boolean) => {
+			const result = await resolveSubagentLaunchContract({ agent: "probe", cwd, projectTrusted });
+			assert.equal(result.ok, true);
+			if (!result.ok) throw new Error(result.message);
+			return { digest: result.contract.launchContractDigest, skills: result.contract.skills.resolved.map((skill) => skill.source) };
+		};
+		const withoutProjectInputs = await contractOf();
+
+		writeAgent(path.join(cwd, ".pi", "agent-memory", "probe", "MEMORY.md"), "PROJECT_MEMORY_SENTINEL\n");
+		assert.notEqual((await contractOf(true)).digest, withoutProjectInputs.digest, "a trusting session launches with the project memory");
+		assert.equal((await contractOf(false)).digest, withoutProjectInputs.digest, "a declining session launches without the project memory");
+
+		writeAgent(path.join(cwd, ".pi", "skills", "shared-skill", "SKILL.md"), "---\ndescription: PROJECT_SHARED_SKILL\n---\nbody\n");
+		clearSkillCache();
+		assert.deepEqual((await contractOf(true)).skills, ["project"]);
+		const declined = await contractOf(false);
+		assert.deepEqual(declined.skills, ["user"], "the user skill of the same name still resolves");
+		assert.equal(declined.digest, withoutProjectInputs.digest);
+	});
+
 	it("resolves an ordinary single-agent contract without creating launch directories", async () => {
 		const cwd = path.join(tempDir, "repo");
 		fs.mkdirSync(cwd, { recursive: true });

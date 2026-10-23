@@ -96,6 +96,9 @@ describe("retained child roster", () => {
 			assert.deepEqual(children.map((child) => child.runId), ["child-52", ...Array.from({ length: 12 }, (_, offset) => `child-${11 - offset}`)]);
 			assert.equal(formatted.match(/^- child-/gm)?.length, 10);
 			assert.doesNotMatch(formatted, /^- child-2 /m);
+			assert.match(formatted, /^Retained workflow children \(up to 10; .*; from the latest 100 finished runs of the active parent session \(older runs are not scanned\)\):$/m);
+			assert.match(formatted, /^Showing 10 of 13 retained workflow children found; 3 not shown\.$/m);
+			assert.doesNotMatch(formatRetainedChildren(children.slice(0, 10)), /not shown/);
 			assert.equal(children[0]?.agent, "worker");
 			assert.equal(children[0]?.completedAt, 1_052);
 			assert.equal(children[0]?.state, "failed");
@@ -122,6 +125,7 @@ describe("retained child roster", () => {
 			const formatted = formatRetainedChildren(children);
 
 			assert.deepEqual(children, []);
+			assert.match(formatted, /^No retained workflow children in the latest 100 finished runs of the active parent session \(older runs are not scanned\)\. /);
 			assert.match(formatted, /children\.list is workflow-only and is not an exhaustive list of direct native children/);
 			assert.match(formatted, /action: "status".*status identifies the candidate.*action: "resume".*authoritatively checks eligibility and may reject it/);
 			assert.match(formatted, /fallback.*only when there is no known candidate or resume rejects eligibility/);
