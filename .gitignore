@@ -7,6 +7,7 @@ dist-pkg/
 *.tgz
 .fallow/
 tmp/
+/scratchpad/
 
 # Fallback ignores for local ad-hoc agent and lane reports.
 /memory.md

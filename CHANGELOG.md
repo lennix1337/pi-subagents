@@ -2,6 +2,44 @@
 
 ## [Unreleased]
 
+### Added
+
+- `machine: "local"` runs a native Pi child in a new background tab of your own Rex session, driven through the same bridge as a Herdr-placed Pi (prompt, steer, follow-up, abort, `contact_supervisor`, results). It fails before launch when the parent Pi is not running inside Rex, and rejects Claude Code, Codex, Cursor, and generic `external-cli` agents. A finished child keeps its tab open, with the idle Pi, until you close it; an aborted or stopped child's tab is closed, and is reported closed only after Rex confirms it is gone. See [docs/agents.md](docs/agents.md#running-a-pi-child-in-a-rex-pane-on-this-machine).
+
+### Fixed
+
+- A host-required child extension (`registerRequiredChildExtensions`) is now recognized when Pi loads it under another spelling of its path, such as a symlink, a case variant, or a path with a Unicode space, so its load, provider-registration and startup failures still stop the launch. A required extension that Pi did not load at all now rejects the launch instead of letting the child start without it. Thanks to [@pandalaohe](https://github.com/pandalaohe) for #3012.
+- Skill discovery no longer fails with `ENOTDIR` when a `settings.json` `packages` entry names a single extension file. Thanks to [@tara-marchand](https://github.com/tara-marchand) for #3011.
+- Herdr-placed native Pi children no longer fail their bridge configure step. The bridge read the child's active tools from the event context, which does not carry them, instead of from the Pi API, so it saw no tools and rejected every configuration.
+
+## [0.81.0] - 2026-10-22
+
+### Highlights
+
+- Pi starts faster on Windows. pi-subagents now loads from about 30 files instead of about 240, which cut its load time from about 2.0 s to about 1.1 s on a Windows machine with Defender.
+- Pi no longer freezes for about 8 seconds on every Windows start when the subagent temp folder has broken permissions.
+- A child with an `outputSchema` that forgets to call `structured_output` gets one more turn to call it instead of failing and losing its work.
+- The parent model can tell subagent notices apart from text you typed.
+- In fullscreen FleetView you can click a child to select it and scroll its output with the mouse wheel or trackpad.
+
+### Added
+
+- In fullscreen mode, the FleetView inspector now selects a child when you click its roster row and scrolls the output pane with the mouse wheel or trackpad, without scrolling the conversation behind it. Keyboard controls are unchanged. Thanks to [@IdrisGit](https://github.com/IdrisGit) for #2992.
+- Structured delegation `:update` and `:response` events now carry an optional `providerDiagnostics` field, so a host extension can tell a child stuck in provider retry backoff (for example HTTP 429) from a long model turn. It reports the count and kind of failed requests and Pi's current retry phase, never the raw provider error. See [docs/extension-api.md](docs/extension-api.md). Thanks to [@IdrisGit](https://github.com/IdrisGit) for #2999 and [@legendtang](https://github.com/legendtang) for [#2991](https://github.com/nicobailon/pi-subagents/issues/2991).
+
+### Changed
+
+- A native Pi child with an `outputSchema` that ends its run without calling `structured_output` now gets one follow-up turn in the same session asking it to call `structured_output` without repeating the work. Before, the run failed at once with "Missing structured_output call" and all of the child's work was lost. If the child still does not call it, the run fails with the same error as before. The extra turn counts toward the run's usage and is still bounded by the run's timeout. A call that `structured_output` rejects does not get this turn, because the tool already returns the validation error to the child. Thanks to [@legendtang](https://github.com/legendtang) for [#2997](https://github.com/nicobailon/pi-subagents/issues/2997).
+- When the `parallel` workflow's args or tasks, a `tasks` item, or a chain step include `worktree` or another setting that only works for the whole call, the error now says to put it on the `subagent` call itself, where it applies to every child. The tool description is unchanged, so ordinary requests use no extra tokens. Thanks to [@jinglebiscuits](https://github.com/jinglebiscuits) for [#3009](https://github.com/nicobailon/pi-subagents/issues/3009) and #3010.
+
+### Fixed
+
+- Loading pi-subagents at Pi startup took 0.3 to 2.7 s on Windows, because Pi loaded about 240 separate files and Windows security software scanned each one. The npm package now ships the extension and its subpath exports as a bundle of about 30 files. On a Windows machine with Defender, loading drops from about 2.0 s to about 1.1 s; on macOS it is about 8% faster. Child processes still run from the unbundled files, and the subagent executor still loads after startup. The unpacked package grows from 6.9 MB to 10.8 MB. Thanks to [@kiote](https://github.com/kiote) for #3006, and to [@tututuhehehe](https://github.com/tututuhehehe) and [@localhedge](https://github.com/localhedge) for the measurements in [#2980](https://github.com/nicobailon/pi-subagents/issues/2980).
+- On Windows, Pi could freeze for about 8 seconds on every start when the subagent temp results folder had broken permissions (`EPERM`/`EACCES`), because the startup check kept retrying before it switched to a fallback folder. The startup check now gives up after at most 85 ms per operation; result writes and other file operations keep their full retries. Thanks to [@821869798](https://github.com/821869798) for [#2998](https://github.com/nicobailon/pi-subagents/issues/2998).
+- The parent model can now tell subagent notices from text you typed. Pi sends extension messages to the model as ordinary user messages, so a completion notice that started a turn on its own looked like a user request. pi-subagents notices the model sees, including completion and supervisor notices, wait results and `/run` results, are now wrapped in a `<pi_subagents_notice>` tag that names the message type and says it is an automated message from pi-subagents. Only the model request changes; the stored transcript and the chat view stay the same. Thanks to [@ktheunlikedoll](https://github.com/ktheunlikedoll) for [#2994](https://github.com/nicobailon/pi-subagents/issues/2994) and [@isjiajia01](https://github.com/isjiajia01) for the context-hook approach.
+- YAML comments in agent frontmatter lists changed the parsed values. An indented `# note` in a `tools:` list became a tool name, a column-zero comment dropped every item after it, and a trailing `# why` stayed on a `- item` line. Comments are now ignored in frontmatter lists; `#` inside quoted values and `|`/`>` block scalars is kept. Thanks to [@builtroller](https://github.com/builtroller) for [#2995](https://github.com/nicobailon/pi-subagents/issues/2995).
+- When a workflow child's process died without writing a result, `mission.show` listed that child as failed in the mission's runs but still running in its workflow children. The failed result recorded for the dead child now keeps its workflow id and key, so the mission marks it failed in both places. Thanks to [@isjiajia01](https://github.com/isjiajia01) for [#3005](https://github.com/nicobailon/pi-subagents/issues/3005).
+
 ## [0.80.0] - 2026-10-21
 
 ### Highlights
