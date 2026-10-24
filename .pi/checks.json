@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "checks": {
+    "typecheck": {
+      "description": "TypeScript check of the whole extension (tsc --noEmit)",
+      "argv": ["node", "node_modules/typescript/bin/tsc", "--noEmit"],
+      "timeoutMs": 180000,
+      "onEdit": true,
+      "watch": ["src", "test", "index.ts", "tsconfig.json"]
+    },
+    "unit": {
+      "description": "node:test unit suite under an isolated temp root; ~70 s, no inference. Known baseline failures: npm/offline discovery, chord, typebox, skills fallback",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", "test/unit/*.test.ts"],
+      "timeoutMs": 600000
+    }
+  }
+}
