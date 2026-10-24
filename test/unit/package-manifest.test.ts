@@ -72,7 +72,6 @@ void result.isError;
 				typeRoots: [path.join(projectRoot, "node_modules", "@types")],
 				skipLibCheck: true,
 				allowImportingTsExtensions: true,
-				baseUrl: consumerRoot,
 				paths: {
 					"pi-subagents": [path.join(projectRoot, "index.ts")],
 					"pi-subagents/workflow-resources": [path.join(projectRoot, "src/api/workflow-resources.ts")],
