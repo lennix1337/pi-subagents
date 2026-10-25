@@ -113,9 +113,9 @@ test("native Pi exposes the full subagent schema on the request immediately afte
 	], ["Use the authorized delegation tools."]);
 
 	assert.equal(captured.length, 2);
-	// Every package tool definition is sent on every request. Raising these budgets needs owner approval (#2770).
+	// Every package tool definition is sent on every request. Raising these budgets needs owner approval (#2770; raised 5500 -> 6000 by the fork owner for the fork's model/thinking/context guidance).
 	assert.ok(captured[0]! <= 500, `cold package tool text exceeded budget: ${captured[0]} (${sizes[0]})`);
-	assert.ok(captured[1]! <= 5_500, `activated package tool text exceeded budget: ${captured[1]} (${sizes[1]})`);
+	assert.ok(captured[1]! <= 6_000, `activated package tool text exceeded budget: ${captured[1]} (${sizes[1]})`);
 	assert.ok(captured[1]! - captured[0]! >= 3_000, "lazy activation should remove the full subagent schema from cold requests");
 	console.log(`package tool characters cold=${captured[0]} (${sizes[0]}) activated=${captured[1]} (${sizes[1]})`);
 });
