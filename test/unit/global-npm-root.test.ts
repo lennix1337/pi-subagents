@@ -17,7 +17,8 @@ function fixture(script: string) {
 	fs.mkdirSync(bin);
 	const npm = path.join(bin, process.platform === "win32" ? "npm.cmd" : "npm");
 	fs.writeFileSync(npm, process.platform === "win32" ? `@echo off\r\n${script}\r\n` : `#!/bin/sh\n${script}\n`, { mode: 0o755 });
-	return { dir, env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}` } };
+	// A real Windows APPDATA npm root would short-circuit the lookup before the fake npm runs.
+	return { dir, env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}`, APPDATA: path.join(dir, "missing-appdata") } };
 }
 
 function printRoot(root: string): string {

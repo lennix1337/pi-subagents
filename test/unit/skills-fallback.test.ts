@@ -392,6 +392,8 @@ describe("skills filesystem fallback", () => {
 					...process.env,
 					HOME: fakeHome,
 					USERPROFILE: fakeHome,
+					// A real Windows APPDATA npm root would answer without invoking the fake npm.
+					APPDATA: path.join(fakeHome, "missing-appdata"),
 					PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
 					PI_DISCOVERY_MARKER: marker,
 					PI_OFFLINE: "1",

@@ -7,8 +7,10 @@ import * as path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { PI_CODING_AGENT_PACKAGE_ROOT_ENV } from "../../src/shared/utils.ts";
+import { assertTempRootHasNoAncestorPackages } from "../support/helpers.ts";
 
 test("executeAsyncSingle preloads all peer aliases before the selected runner loader when aliases exist", async (t) => {
+	assertTempRootHasNoAncestorPackages(["@earendil-works/chord", "typebox"]);
 	const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "async-spawn-preload-")));
 	const host = path.join(root, "host");
 	const expectedAliases: Record<string, string> = {};

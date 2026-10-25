@@ -30,6 +30,25 @@ export function writeFixtureTree(root: string, files: ReadonlyArray<readonly [st
 	}
 }
 
+/**
+ * Fails when a node_modules directory above os.tmpdir() already holds one of `packages`. Node resolves bare
+ * specifiers through every ancestor node_modules, so such a copy (for example under a Windows user profile)
+ * wins over the fixture a test wrote and makes the test measure the machine instead of the code.
+ */
+export function assertTempRootHasNoAncestorPackages(packages: readonly string[]): void {
+	const leaks: string[] = [];
+	for (let dir = path.resolve(os.tmpdir()); ; dir = path.dirname(dir)) {
+		for (const pkg of packages) {
+			const manifest = path.join(dir, "node_modules", pkg, "package.json");
+			if (fs.existsSync(manifest)) leaks.push(manifest);
+		}
+		if (path.dirname(dir) === dir) break;
+	}
+	if (leaks.length > 0) {
+		throw new Error(`Temp root ${os.tmpdir()} sits under a node_modules that already holds peer packages (${leaks.join(", ")}). Node resolves them there instead of the test fixture. Run the unit suite with PI_SUBAGENTS_TEMP_ROOT set to a directory with no node_modules ancestor.`);
+	}
+}
+
 export function removeTempDir(dir: string): void {
 	try {
 		fs.rmSync(dir, { recursive: true, force: true });

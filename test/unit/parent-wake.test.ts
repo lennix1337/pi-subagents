@@ -477,6 +477,7 @@ it("does no idle settle work without delegated work", { timeout: 30_000 }, async
 		session?.dispose();
 		if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 		else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
-		fs.rmSync(root, { recursive: true, force: true });
+		// Windows can hold a just-written session file briefly (the same case as supervisor-ask-registration's cleanup).
+		fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 	}
 });

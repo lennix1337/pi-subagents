@@ -9,6 +9,9 @@ import { HOST_PEER_ALIASES, resolveHostPeerAliases } from "../../src/runs/backgr
 import { resolveInstalledPiPackageRoot } from "../../src/runs/shared/pi-spawn.ts";
 import { resolveCompileFromPackageRoot, validateStructuredOutputValue } from "../../src/runs/shared/structured-output.ts";
 import type { JsonSchemaObject } from "../../src/shared/types.ts";
+import { assertTempRootHasNoAncestorPackages } from "../support/helpers.ts";
+
+const ANCESTOR_LEAK_CHECKED_PACKAGES = ["@earendil-works/chord", "typebox"] as const;
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -146,6 +149,7 @@ function writeFakeTypeboxPackage(typeboxDir: string): void {
 }
 
 test("resolveCompileFromPackageRoot loads typebox/compile from a fake Pi host package root", async () => {
+	assertTempRootHasNoAncestorPackages(ANCESTOR_LEAK_CHECKED_PACKAGES);
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-host-root-"));
 	try {
 		fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "fake-pi-coding-agent", version: "0.0.0" }));
@@ -238,6 +242,7 @@ test("validateStructuredOutputValue validates values against a JSON Schema", asy
 });
 
 test("chord is required only when the host declares it, and aliased host-first whenever present (#2026, #2854)", () => {
+	assertTempRootHasNoAncestorPackages(ANCESTOR_LEAK_CHECKED_PACKAGES);
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-chord-alias-"));
 	const host = path.join(root, "host");
 	const extension = path.join(root, "extension");
