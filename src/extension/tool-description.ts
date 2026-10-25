@@ -25,10 +25,10 @@ const structuredCalls = "One child: {agent,task}. Parallel: tasks:[{agent,task,c
 
 const essentials = (on: FeatureText) => `${on("workflow-scripts", scriptCalls, structuredCalls)}
 Management: {action,id?,options:{...}}; fields not in this schema go in options.
-Discover before executing (read-only): {action:"list"} = agent types; options:{capabilities:true} adds each agent's default model/thinking/tools; {action:"models"} = live models across every authenticated provider/account with supported thinking levels; {action:"models",agent:"name"} = one agent's effective model plus selectable levels.
-Launch: {agent,task,model?:"provider/id",thinking?:"off|minimal|low|medium|high|xhigh|max"}. model and thinking are independent: thinking alone keeps the agent's model; omit both to inherit the agent default. A model :level suffix wins over thinking. Unknown agents/models/levels return the valid choices.
+Discover (read-only): {action:"list"} = agent types; options:{capabilities:true} adds each agent's default model/thinking/tools; {action:"models",agent?} = live models and thinking levels.
+Launch: {agent,task,model?:"provider/id",thinking?:"off|minimal|low|medium|high|xhigh|max"}; thinking alone keeps the agent's model; a model :level suffix wins over thinking. Unknown agents/models/levels return the valid choices.
 Context: fresh for independent work; fork only for inherited decisions. Fresh children need a cold-start brief: goal, target, authority, evidence, success, output, stop. If a child would materially help but delegation is not requested, propose it and ask; do not launch.
-Details: guide delegation/context-and-brief (fresh vs fork, brief, routing), guide workflows/recommended-orchestration-pattern (async, review, failure recovery), ${on("workflow-scripts", "guide workflows/scripted-workflows, ")}guide tool-reference/retained-children, guide tool-reference/external-cli-agent-profiles.
+Details: guide delegation/context-and-brief, guide workflows/recommended-orchestration-pattern, ${on("workflow-scripts", "guide workflows/scripted-workflows, ")}guide tool-reference/retained-children, guide tool-reference/external-cli-agent-profiles.
 
 ${SUBAGENT_SAFETY_GUIDANCE}`;
 
