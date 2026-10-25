@@ -17,7 +17,9 @@ import { findModelInfo, getSupportedThinkingLevels, toModelInfo } from "../share
 import { SelectorComponent, type SelectorItem, type SelectorResult } from "./selector.ts";
 import { canRenderComponents } from "../shared/extension-context.ts";
 
-export const ADMIN_MESSAGE_TYPE = "subagents-admin";
+import { ADMIN_MESSAGE_TYPE } from "./admin-message-type.ts";
+
+export { ADMIN_MESSAGE_TYPE };
 const INHERIT_MODEL_CHOICE = "Default / inherit session model";
 const INHERIT_THINKING_CHOICE = "Default / inherit session thinking";
 

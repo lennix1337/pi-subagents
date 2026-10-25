@@ -25,7 +25,7 @@ import { readStatus } from "../shared/utils.ts";
 import { SubagentFlatParams } from "./schemas.ts";
 import { disabledFeatureUseError, type DisabledFeatureSurface } from "../shared/disabled-features.ts";
 import { normalizePublicSubagentExecution } from "./public-execution.ts";
-import { collectSubagentCost, SUBAGENT_COST_REPORT_VERSION } from "../slash/subagent-cost.ts";
+import { SUBAGENT_COST_REPORT_VERSION } from "../slash/subagent-cost-version.ts";
 import { ASYNC_STATUS_SNAPSHOT_KIND, ASYNC_STATUS_SNAPSHOT_VERSION, buildAsyncStatusSnapshotForState } from "../runs/background/async-status-snapshot.ts";
 import { isStoppableAsyncStatusStep, resolveAsyncStatusChild, stopStoppableAsyncStatusChildren, type ResolvedAsyncStatusChild } from "../runs/shared/child-identity.ts";
 
@@ -798,7 +798,7 @@ async function handleRequest(
 		// Read-only: it walks the current session branch and existing artifacts,
 		// so callers should request it on their own turn boundaries, not on a timer.
 		if (request.params !== undefined && !isRecord(request.params)) throw new SubagentRpcError("invalid_params", "RPC cost params must be an object when provided.");
-		return collectSubagentCost(ctx, options.state ?? { baseCwd: ctx.cwd });
+		return (await import("../slash/subagent-cost.ts")).collectSubagentCost(ctx, options.state ?? { baseCwd: ctx.cwd });
 	}
 	throw new SubagentRpcError("unsupported_method", `Unsupported subagent RPC method: ${String(request.method)}`);
 }

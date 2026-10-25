@@ -7,6 +7,7 @@ import { DIRS, SLASH_RESULT_TYPE, type Details, type SubagentState, type Usage }
 import { readStatus } from "../shared/utils.ts";
 import { readWorkflowReceipt } from "../workflows/workflow-receipt.ts";
 import { resolveSlashMessageDetails } from "./slash-live-state.ts";
+import { SUBAGENT_COST_REPORT_VERSION } from "./subagent-cost-version.ts";
 
 /** Structured parent-plus-child accounting for one session; the source of `/subagent-cost` and the RPC `cost` method. */
 export interface SubagentCostReport {
@@ -27,7 +28,7 @@ export interface SubagentCostChild {
 	sessionFile?: string;
 }
 
-export const SUBAGENT_COST_REPORT_VERSION = 1 as const;
+export { SUBAGENT_COST_REPORT_VERSION };
 
 function emptyUsage(): Usage {
 	return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 };

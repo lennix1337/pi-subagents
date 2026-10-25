@@ -20,14 +20,11 @@ import { findModelInfo, toModelInfo } from "../shared/model-info.ts";
 import { shortenPath } from "../shared/formatters.ts";
 import { canRenderComponents } from "../shared/extension-context.ts";
 import { listAsyncRuns, formatAsyncRunProgressLabel, type AsyncRunSummary } from "../runs/background/async-status.ts";
-import { encodeInspectReply, handleInspectRpcArgs, INSPECT_WIDGET_KEY } from "../runs/background/inspect-rpc.ts";
 import { listScheduledRunSummaries } from "../runs/background/scheduled-runs.ts";
 import { resolveAsyncStatusChild } from "../runs/shared/child-identity.ts";
 import { readStatus } from "../shared/utils.ts";
 import type { SlashSubagentResponse, SlashSubagentUpdate } from "./slash-bridge.ts";
 import { registerPromptWorkflowCommands } from "./prompt-workflows.ts";
-import { collectSubagentCost, formatSubagentCostReport } from "./subagent-cost.ts";
-import { openSubagentsAdmin } from "./subagents-admin.ts";
 import { SUBAGENT_GUIDE_TOPICS } from "../extension/subagent-guide.ts";
 import { getInspectorPlugins } from "../inspectors/plugins.ts";
 import {
@@ -649,6 +646,7 @@ export function registerSlashCommands(
 	pi.registerCommand("subagents", {
 		description: "Administer subagents: inspect metadata and update models, thinking, or prompts",
 		handler: async (args, ctx) => {
+			const { openSubagentsAdmin } = await import("./subagents-admin.ts");
 			await openSubagentsAdmin(pi, ctx, args);
 		},
 	});
@@ -694,6 +692,7 @@ export function registerSlashCommands(
 	pi.registerCommand("subagent-cost", {
 		description: "Show parent and subagent child usage cost for this session",
 		handler: async (_args, ctx) => {
+			const { collectSubagentCost, formatSubagentCostReport } = await import("./subagent-cost.ts");
 			sendSlashText(pi, formatSubagentCostReport(collectSubagentCost(ctx, state)));
 		},
 	});
@@ -713,6 +712,7 @@ export function registerSlashCommands(
 				return;
 			}
 			if (!ctx.hasUI) return;
+			const { encodeInspectReply, handleInspectRpcArgs, INSPECT_WIDGET_KEY } = await import("../runs/background/inspect-rpc.ts");
 			const reply = handleInspectRpcArgs(args, { state });
 			// Emit-then-retract in one handler: stdio delivers the two widget
 			// updates in order, the host buffers the payload by requestId, and

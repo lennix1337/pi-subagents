@@ -48,7 +48,7 @@ import { createResultWatcher } from "../runs/background/result-watcher.ts";
 import { createResultDeliveryOwnership } from "../runs/background/result-delivery-ownership.ts";
 import { createScheduledRunManager } from "../runs/background/scheduled-runs.ts";
 import { registerSlashCommands } from "../slash/slash-commands.ts";
-import { ADMIN_MESSAGE_TYPE } from "../slash/subagents-admin.ts";
+import { ADMIN_MESSAGE_TYPE } from "../slash/admin-message-type.ts";
 import { registerPromptTemplateDelegationBridge } from "../slash/prompt-template-bridge.ts";
 import { registerMainWatchdog } from "../watchdog/register-main.ts";
 import { registerSlashSubagentBridge } from "../slash/slash-bridge.ts";
