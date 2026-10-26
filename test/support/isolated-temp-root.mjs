@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { cleanTempParent, tempParentCandidates } from "./temp-parent.mjs";
 
 // The root test process starts with no inherited Pi runtime env: a host Pi shell (PI_PACKAGE_DIR, ...) or a
 // pi-subagents child shell (PI_SUBAGENT_CHILD, ...) would otherwise change what the tests exercise.
@@ -14,8 +15,9 @@ const configuredTempRoot = process.env.PI_SUBAGENTS_TEMP_ROOT?.trim();
 const tempRoot = configuredTempRoot
 	? path.resolve(configuredTempRoot)
 	// Short on purpose: under macOS's /var/folders/<hash>/T/, a longer name pushes nested Unix socket
-	// paths past the 104-byte limit. Shared /tmp is no alternative; its stray package.json and .pi leak into ancestor walks.
-	: fs.mkdtempSync(path.join(os.tmpdir(), "pst-"));
+	// paths past the 104-byte limit. A temp dir under a stray ~/node_modules, package.json or .pi (the Windows temp dir
+	// sits under the user profile) gives way to the drive root's tmp when that one is clean.
+	: fs.mkdtempSync(path.join(cleanTempParent(tempParentCandidates(os.tmpdir())), "pst-"));
 fs.mkdirSync(tempRoot, { recursive: true });
 if (process.platform === "darwin") fs.closeSync(fs.openSync(path.join(tempRoot, ".metadata_never_index"), "a"));
 process.env.PI_SUBAGENTS_TEMP_ROOT = tempRoot;

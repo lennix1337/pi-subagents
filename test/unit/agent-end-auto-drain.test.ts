@@ -89,9 +89,10 @@ function runScript(root: string, env: Record<string, string | undefined>) {
 			PI_SUBAGENT_CHILD: undefined,
 			...env,
 		},
-		timeout: 10_000,
+		// ~0.6 s alone; a full parallel unit run once took it past 10 s (killed, status null). The bound only stops a hang.
+		timeout: 60_000,
 	});
-	assert.equal(result.status, 0, result.stderr);
+	assert.equal(result.status, 0, result.error ? `${result.error.message}\n${result.stderr}` : result.stderr);
 	return JSON.parse(result.stdout) as {
 		rejected: string | null;
 		preservedCause: boolean;

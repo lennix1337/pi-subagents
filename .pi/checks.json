@@ -9,7 +9,7 @@
       "watch": ["src", "test", "index.ts", "tsconfig.json"]
     },
     "unit": {
-      "description": "node:test unit suite under an isolated temp root; ~70 s, no inference. Known baseline failures: npm/offline discovery, chord, typebox, skills fallback",
+      "description": "node:test unit suite under an isolated temp root; ~70 s, no inference",
       "argv": ["node", "--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", "test/unit/*.test.ts"],
       "timeoutMs": 600000
     }
