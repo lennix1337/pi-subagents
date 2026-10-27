@@ -13,6 +13,7 @@ import { before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 import type { MockPi } from "./helpers.ts";
 import {
 	createMockPi,
@@ -237,7 +238,11 @@ const utils = await tryImport<UtilsModule>("./src/shared/utils.ts");
 const executorMod = await tryImport<ExecutorModule>("./src/runs/foreground/subagent-executor.ts");
 const available = !!(execution && utils);
 
-const runSync = execution?.runSync;
+// Direct execution fixtures bypass the executor that normally assigns run identity.
+const runSync = execution
+	? (...[cwd, agents, agentName, task, options]: Parameters<ExecutionModule["runSync"]>) =>
+		execution.runSync(cwd, agents, agentName, task, { ...options, runId: options.runId ?? randomUUID() })
+	: undefined;
 const getFinalOutput = utils?.getFinalOutput;
 const createSubagentExecutor = executorMod?.createSubagentExecutor;
 

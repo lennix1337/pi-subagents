@@ -48,6 +48,7 @@ import {
 } from "../../src/api/delegation.ts";
 import { CHAIN_RUNS_DIR, DIRS, INTERCOM_DETACH_REQUEST_EVENT, INTERCOM_DETACH_RESPONSE_EVENT, SUBAGENT_CONTROL_EVENT, SUBAGENT_PROCESS_TERMINAL_EVENT, TEMP_ARTIFACTS_DIR, type AsyncStatus, type ChildWatchdogProgress, type ControlEvent, type SubagentState } from "../../src/shared/types.ts";
 import { ACTIVE_RUN_INDEX_DIR } from "../../src/runs/background/active-run-index.ts";
+import { liveForegroundLedgerDir, liveForegroundRecordPath, type LiveForegroundRecord } from "../../src/runs/foreground/panel-ledger.ts";
 import { encodeIndexSegment } from "../../src/runs/background/index-segment.ts";
 import { removeResultIndex, writeAsyncResultFile, writePendingAsyncResultFile } from "../../src/runs/background/result-files.ts";
 import { listAsyncRuns } from "../../src/runs/background/async-status.ts";
@@ -242,6 +243,40 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const output = getFinalOutput(result.messages);
 		assert.equal(output, "Hello from mock agent");
 	});
+
+	for (const identity of ["generated", "explicit"] as const) {
+		it(`publishes fixture foreground ledger with ${identity} identity and removes it on completion`, async () => {
+			mockPi.onCall({ output: "ledger fixture completed" });
+			const records: LiveForegroundRecord[] = [];
+			const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Observe ledger", {
+				...(identity === "explicit" ? { runId: "explicit-ledger-fixture", index: 3 } : {}),
+				onUpdate() {
+					const dir = liveForegroundLedgerDir();
+					if (!fs.existsSync(dir)) return;
+					for (const name of fs.readdirSync(dir)) {
+						const record = JSON.parse(fs.readFileSync(path.join(dir, name), "utf8")) as LiveForegroundRecord;
+						if (record.cwd === tempDir) records.push(record);
+					}
+				},
+			});
+			assert.equal(result.exitCode, 0);
+			assert.ok(records.length > 0, "the running fixture must publish an observable ledger record");
+			const record = records[0];
+			assert.equal(record.agent, "echo");
+			assert.equal(record.state, "running");
+			assert.ok(record.runId.length > 0);
+			assert.ok(records.every((row) => row.runId === record.runId && row.index === record.index));
+			if (identity === "explicit") {
+				assert.equal(record.runId, "explicit-ledger-fixture");
+				assert.equal(record.index, 3);
+			} else {
+				assert.equal(record.index, 0);
+			}
+			// The authoritative receipt resolves before the completion observer cleans up.
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(fs.existsSync(liveForegroundRecordPath(record.runId, record.index)), false);
+		});
+	}
 
 	it("derives a child session name and passes it to the child runtime config", async () => {
 		mockPi.onCall({ output: "hello" });
