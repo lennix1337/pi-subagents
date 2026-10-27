@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -206,6 +207,7 @@ describe("intercom result delivery cutover", { skip: !available ? "executor not 
 
 	function makeExecutor(options: { bridgeMode?: "always" | "off"; resultDelivery?: boolean; agents?: ReturnType<typeof makeAgent>[]; acknowledgeResults?: boolean; kill?: (pid: number, signal?: NodeJS.Signals | 0) => boolean; maxActiveAsyncRunsPerSession?: number } = {}) {
 		const events = createRecordingEventBus({ acknowledgeResults: options.acknowledgeResults ?? true });
+		const sentMessages: Array<Parameters<ExtensionAPI["sendMessage"]>> = [];
 		const state = {
 			baseCwd: tempDir,
 			currentSessionId: null,
@@ -227,6 +229,7 @@ describe("intercom result delivery cutover", { skip: !available ? "executor not 
 		const executor = createSubagentExecutor!({
 			pi: {
 				events,
+				sendMessage: (...args: Parameters<ExtensionAPI["sendMessage"]>) => { sentMessages.push(args); },
 				getSessionName: () => "orchestrator",
 				setSessionName: () => {},
 			},
@@ -245,7 +248,7 @@ describe("intercom result delivery cutover", { skip: !available ? "executor not 
 			discoverAgents: () => ({ agents: options.agents ?? [makeAgent("worker")] }),
 			kill: options.kill,
 		});
-		return { executor, events, state };
+		return { executor, events, state, sentMessages };
 	}
 
 	it("single foreground runs emit one grouped event and return a compact receipt", async () => {
@@ -1391,7 +1394,7 @@ describe("intercom result delivery cutover", { skip: !available ? "executor not 
 			}, null, 2), "utf-8");
 			writeRecoveryDescriptor(sourceAsyncDir, sourceRunId);
 			const competingLease = acquireSessionLease({ sessionFile, runId: "workflow-competing-revival", sourceRunId, parentSessionId });
-			const { executor } = makeExecutor({ maxActiveAsyncRunsPerSession: 1 });
+			const { executor, sentMessages } = makeExecutor({ maxActiveAsyncRunsPerSession: 1 });
 			const ctx = makeMinimalCtx(tempDir);
 			ctx.sessionManager.getSessionId = () => parentSessionId;
 			try {
@@ -1414,6 +1417,13 @@ describe("intercom result delivery cutover", { skip: !available ? "executor not 
 				assert.deepEqual(workflowStatus.steps?.[0]?.lane, { version: 1, key: "resume-child", mode: "mutation", sourceRef: "owner/repo#1621", claims: ["retained.txt"] });
 				assert.match(workflowStatus.error ?? "", /already owned by run 'workflow-competing-revival'/);
 				assert.deepEqual(getActiveAsyncCapacitySnapshot(parentSessionId, 1), { used: 0, limit: 1 });
+				const notifications = sentMessages.filter(([message]) => message.customType === "subagent-incremental-child-notify");
+				assert.equal(notifications.length, 1, "failed resumed child must notify the parent host");
+				const [message, options] = notifications[0];
+				assert.deepEqual(message.details, { childKey: "resume-child", outcome: "failed" });
+				assert.equal(message.display, true);
+				assert.equal(options?.triggerTurn, true, "actionable child failures must wake the parent");
+				assert.match(String(message.content), /Parent action:/);
 			} finally {
 				competingLease.release();
 			}
