@@ -9,8 +9,8 @@
       "watch": ["src", "test", "index.ts", "tsconfig.json"]
     },
     "foreground-ledger": {
-      "description": "Mock-Pi foreground fixture identity, live record and terminal cleanup; no inference",
-      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "--test-name-pattern", "publishes fixture foreground ledger", "test/integration/single-execution.part-1.test.ts"],
+      "description": "Mock-Pi foreground fixture identity and cleanup, including MCP/tool-menu parity; no inference",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "--test-name-pattern", "publishes fixture foreground ledger|with Pi's built-in MCP|preserves the same tool menu and runtime requirements", "test/integration/single-execution.part-1.test.ts", "test/integration/async-execution.part-1.test.ts", "test/integration/async-execution.part-2.test.ts"],
       "timeoutMs": 120000
     },
     "integration": {
