@@ -14,8 +14,8 @@
       "timeoutMs": 600000
     },
     "workflow-notifications": {
-      "description": "Mock-Pi integration: child settlement delivery through default and custom host callbacks; no inference",
-      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "--test-name-pattern", "emits successful async workflow child settlements", "test/integration/single-execution.part-1.test.ts"],
+      "description": "Mock-Pi integration: child settlement delivery through default, custom and registered-background hosts; no inference",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "--test-name-pattern", "emits successful async workflow child settlements|executes a registered mixed background workflow", "test/integration/single-execution.part-1.test.ts", "test/integration/async-execution.part-1.test.ts"],
       "timeoutMs": 120000
     },
     "unit": {

@@ -605,6 +605,7 @@ function readMockPiArgsMatching(mockPi: MockPi, text: string): string[] {
 // Mutable bindings stay live and process-local under the default test isolation.
 let tempDir: string;
 let mockPi: MockPi;
+const sentMessages: Array<{ message: { customType?: string; content?: string; details?: unknown }; options?: { triggerTurn?: boolean } }> = [];
 
 export function installAsyncExecutionHooks(): void {
 	before(() => {
@@ -619,6 +620,7 @@ export function installAsyncExecutionHooks(): void {
 	beforeEach(() => {
 		tempDir = createTempDir();
 		mockPi.reset();
+		sentMessages.length = 0;
 	});
 
 	afterEach(() => {
@@ -632,7 +634,13 @@ export function installAsyncExecutionHooks(): void {
 		discoverOverride?: (cwd: string) => { agents: ReturnType<typeof makeAgent>[]; cwd?: string; scope?: "user" | "project" | "both"; directories?: Array<{ source: "builtin" | "package" | "user" | "project" | "runtime"; path: string; state: "absent" | "empty" | "candidates" | "unreadable" | "not-directory"; candidateCount?: number }> },
 	) {
 		return createSubagentExecutor!({
-			pi: { events: createEventBus(), getSessionName: () => undefined },
+			pi: {
+				events: createEventBus(),
+				getSessionName: () => undefined,
+				sendMessage(message: unknown, options?: unknown) {
+					sentMessages.push({ message, options } as (typeof sentMessages)[number]);
+				},
+			},
 			state: { baseCwd: tempDir, currentSessionId: null, asyncJobs: new Map(), foregroundControls: new Map(), lastForegroundControlId: null },
 			config,
 			asyncByDefault: false,
@@ -670,7 +678,7 @@ export {
 	available, isAsyncAvailable, executeAsyncSingle, executeAsyncChain,
 	resolveTargetedAsyncRun, readStatus, pruneStatusCacheForAsyncRoot,
 	ASYNC_DIR, RESULTS_DIR, TEMP_ROOT_DIR, createSubagentExecutor,
-	tempDir, mockPi, makeAsyncExecutor, readAsyncPayload, launchProtocolTest,
+	tempDir, mockPi, makeAsyncExecutor, sentMessages, readAsyncPayload, launchProtocolTest,
 	waitForMockPiRuntime, writeWatchdogSettings, withIsolatedWatchdogSettings,
 	childWatchdogStatus, mockAssistantMessage, escapeRegExp, createRepo,
 	writePackageSkill, readIfExists, waitForAsyncResultFile, waitForAsyncEvent,
