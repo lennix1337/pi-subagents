@@ -112,6 +112,22 @@ or ask: "Check whether subagents and intercom are set up correctly."
 
 For installed-version help, use `/subagents-guide [topic]` or `subagent({ action: "guide", options: { topic: "workflows" } })`. The default topic is `overview`; available topics are `overview`, `delegation`, `workflows`, `agents`, `missions`, `observability`, `tool-reference`, `configuration`, `models`, `watchdog`, `extension-api`, and `council`.
 
+## Development checks
+
+Run `npm run typecheck` and `npm run test:unit` for the offline baseline. To also
+exercise split-turn compaction, foreground ledger publication/cleanup, and yielded
+watchdog continuation against the installed Pi 1.2.0 SDK, run:
+
+```bash
+node test/support/run-native-scheduling.mjs
+```
+
+This uses synthetic HTTP responses, makes no provider calls, and installs nothing.
+Set `PI_SUBAGENTS_NATIVE_SDK` to another checkout with Pi 1.2.0 installed to override
+the default SDK root (this repository). The same gate is available as
+`native-scheduling` in `.pi/checks.json`; the ordinary unit suite skips these cases
+unless the SDK root is explicitly set.
+
 ## Documentation
 
 The full reference lives in `docs/`:

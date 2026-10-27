@@ -18,6 +18,16 @@
       "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "test/integration/*.test.ts"],
       "timeoutMs": 600000
     },
+    "workflow-notifications": {
+      "description": "Mock-Pi integration: child settlement delivery through default, custom and registered-background hosts; no inference",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "--test-name-pattern", "emits successful async workflow child settlements|executes a registered mixed background workflow", "test/integration/single-execution.part-1.test.ts", "test/integration/async-execution.part-1.test.ts"],
+      "timeoutMs": 120000
+    },
+    "native-scheduling": {
+      "description": "Real installed Pi SDK compaction/continuation and foreground ledger lifecycle; synthetic HTTP only",
+      "argv": ["node", "test/support/run-native-scheduling.mjs"],
+      "timeoutMs": 120000
+    },
     "unit": {
       "description": "node:test unit suite under an isolated temp root; ~70 s, no inference",
       "argv": ["node", "--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", "test/unit/*.test.ts"],
