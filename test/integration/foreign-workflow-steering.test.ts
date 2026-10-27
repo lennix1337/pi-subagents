@@ -1,4 +1,5 @@
 import { describe, it } from "node:test";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -26,8 +27,9 @@ describe("foreign workflow tool steering (separate processes)", () => {
 		const ctx = makeMinimalCtx(tempDir);
 		ctx.sessionManager.getSessionFile = () => sessionFile;
 		ctx.sessionManager.getSessionId = () => "different-runtime-id-in-owner";
+		const sentMessages: Array<Parameters<ExtensionAPI["sendMessage"]>> = [];
 		const state: any = { baseCwd: tempDir, currentSessionId: null, asyncJobs: new Map(), foregroundControls: new Map(), lastForegroundControlId: null };
-		const executor = createSubagentExecutor({ pi: { events: createEventBus(), getSessionName: () => undefined }, state, config: {}, asyncByDefault: false, tempArtifactsDir: tempDir, getSubagentSessionRoot: () => tempDir, expandTilde: p => p, discoverAgents: () => ({ agents: [makeAgent("worker")] }) });
+		const executor = createSubagentExecutor({ pi: { events: createEventBus(), getSessionName: () => undefined, sendMessage: (...args: Parameters<ExtensionAPI["sendMessage"]>) => { sentMessages.push(args); } }, state, config: {}, asyncByDefault: false, tempArtifactsDir: tempDir, getSubagentSessionRoot: () => tempDir, expandTilde: p => p, discoverAgents: () => ({ agents: [makeAgent("worker")] }) });
 		const launch = await executor.execute("owner", { workflowScript: 'return await runs.run("A", { agent: "worker", task: "Wait" });', async: true, mission: false }, new AbortController().signal, undefined, ctx);
 		assert.notEqual(launch.isError, true, JSON.stringify(launch));
 		const runId = launch.details.asyncId!;
@@ -60,6 +62,13 @@ describe("foreign workflow tool steering (separate processes)", () => {
 			const terminal = await hostB(sessionFile, { dir }, "terminal");
 			assert.equal(terminal.result.isError, true);
 			assert.match(terminal.result.content[0].text, /not running or queued/);
+			const notifications = sentMessages.filter(([message]) => message.customType === "subagent-incremental-child-notify");
+			assert.equal(notifications.length, 1, "the steered workflow child must notify its owning parent");
+			const [message, options] = notifications[0];
+			assert.deepEqual(message.details, { childKey: "A", outcome: "completed" });
+			assert.equal(String(message.content).split("\n", 1)[0], "Workflow child completed: **A**");
+			assert.equal(message.display, false);
+			assert.equal(options?.triggerTurn, false);
 		} finally { fs.writeFileSync(release, "go"); }
 	});
 

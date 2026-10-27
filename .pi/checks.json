@@ -34,8 +34,8 @@
       "timeoutMs": 120000
     },
     "workflow-notifications": {
-      "description": "Mock-Pi integration: child settlement delivery through default, custom, registered-background and model-snapshot hosts; no inference",
-      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "--test-name-pattern", "emits successful async workflow child settlements|executes a registered mixed background workflow|async workflows snapshot the parent model", "test/integration/single-execution.part-1.test.ts", "test/integration/async-execution.part-1.test.ts", "test/integration/async-execution.part-3.test.ts"],
+      "description": "Mock-Pi integration: child settlement delivery through default, custom, registered-background, model-snapshot and foreign-steered hosts; no inference",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "--test-name-pattern", "emits successful async workflow child settlements|executes a registered mixed background workflow|async workflows snapshot the parent model|delivers ID and directory requests", "test/integration/single-execution.part-1.test.ts", "test/integration/async-execution.part-1.test.ts", "test/integration/async-execution.part-3.test.ts", "test/integration/foreign-workflow-steering.test.ts"],
       "timeoutMs": 120000
     },
     "native-scheduling": {
