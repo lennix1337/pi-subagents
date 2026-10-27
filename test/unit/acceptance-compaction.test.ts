@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "node:test";
+import { setImmediate } from "node:timers/promises";
 import type { AgentSessionEvent, SessionBeforeCompactEvent } from "@earendil-works/pi-coding-agent";
 import { createDefaultChildSessionFactory, type PiCodingAgentModule } from "../../src/runs/shared/child-session.ts";
 import { runSync } from "../../src/runs/foreground/execution.ts";
+import { liveForegroundRecordPath } from "../../src/runs/foreground/panel-ledger.ts";
 import { runSingleStepInner } from "../../src/runs/background/subagent-runner.ts";
 import { formatAcceptancePrompt, resolveEffectiveAcceptance } from "../../src/runs/shared/acceptance.ts";
 import type { AgentConfig } from "../../src/agents/agents.ts";
@@ -73,7 +75,16 @@ for (const host of ["foreground", "runner"] as const) {
 				result.session.subscribe((event) => events.push(event));
 				return result;
 			} }) });
+			const runId = `compact-${systemPromptMode}-${structured ? "structured" : "fenced"}`;
+			const ledgerPath = liveForegroundRecordPath(runId, 0);
 			const observedFactory = { ...factory, async create(launch: Parameters<typeof factory.create>[0]) {
+				if (host === "foreground") {
+					const record = JSON.parse(readFileSync(ledgerPath, "utf8"));
+					assert.equal(record.runId, runId);
+					assert.equal(record.index, 0);
+					assert.equal(record.agent, "reader");
+					assert.equal(record.state, "running");
+				}
 				creates++;
 				const child = await factory.create({ ...launch, hooks: [...launch.hooks, (api) => {
 					api.on("session_before_compact", (event) => { preparations.push(event.preparation); });
@@ -85,9 +96,12 @@ for (const host of ["foreground", "runner"] as const) {
 			const agent: AgentConfig = { name: "reader", description: "Read marker", source: "project", filePath: join(cwd, "reader.md"), model: "baseten/acceptance", systemPrompt: "Read only.", systemPromptMode, inheritProjectContext: false, inheritGlobalContext: false, inheritSkills: false, tools: ["read"], extensions: [], allowNestedSubagents: false };
 			try {
 				const result = host === "foreground"
-					? await runSync(cwd, [agent], agent.name, task, { acceptance: explicit, structuredOutput, waitToolEnabled: false, childSessionFactory: observedFactory })
+					? await runSync(cwd, [agent], agent.name, task, { runId, acceptance: explicit, structuredOutput, waitToolEnabled: false, childSessionFactory: observedFactory })
 					: await runSingleStepInner({ ...agent, agent: agent.name, task, context: "fresh", effectiveAcceptance: acceptance, structuredOutput, waitToolEnabled: false }, { cwd, id: "compact-runner", flatIndex: 0, flatStepCount: 1, previousOutput: "", placeholder: "{previous}", outputFile: join(cwd, "output.log"), sessionEnabled: false, childSessions: observedFactory });
 				assert.equal(result.exitCode, 0, `${result.error}; ${JSON.stringify(events.filter((e) => e.type.includes("compact") || (e.type === "message_end" && e.message.role === "assistant" && e.message.stopReason === "error")))}`);
+				// runSync returns the result before its terminal observer's finally removes the record.
+				await setImmediate();
+				assert.equal(existsSync(ledgerPath), false, "foreground record is removed on completion");
 				assert.equal(result.acceptance?.status, "checked");
 				if (structured) assert.deepEqual(result.structuredOutput, { ok: true });
 				assert.equal(creates, 1); assert.equal(prompts, 1, "no replay or correction prompt");

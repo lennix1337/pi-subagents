@@ -13,6 +13,7 @@ import { before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 import type { MockPi } from "./helpers.ts";
 import {
 	createMockPi,
@@ -237,7 +238,11 @@ const utils = await tryImport<UtilsModule>("./src/shared/utils.ts");
 const executorMod = await tryImport<ExecutorModule>("./src/runs/foreground/subagent-executor.ts");
 const available = !!(execution && utils);
 
-const runSync = execution?.runSync;
+// Direct execution fixtures bypass the executor that normally assigns run identity.
+const runSync = execution
+	? (...[cwd, agents, agentName, task, options]: Parameters<ExecutionModule["runSync"]>) =>
+		execution.runSync(cwd, agents, agentName, task, { ...options, runId: options.runId ?? randomUUID() })
+	: undefined;
 const getFinalOutput = utils?.getFinalOutput;
 const createSubagentExecutor = executorMod?.createSubagentExecutor;
 
@@ -279,6 +284,7 @@ let tempDir: string;
 let agentDir: string;
 let mockPi: MockPi;
 let previousAgentDir: string | undefined;
+const sentMessages: Array<{ message: { customType?: string; content?: string; details?: unknown }; options?: { triggerTurn?: boolean } }> = [];
 
 export function installSingleExecutionHooks() {
 	before(() => {
@@ -296,6 +302,7 @@ export function installSingleExecutionHooks() {
 		previousAgentDir = process.env.PI_CODING_AGENT_DIR;
 		process.env.PI_CODING_AGENT_DIR = agentDir;
 		mockPi.reset();
+		sentMessages.length = 0;
 	});
 
 	afterEach(() => {
@@ -344,10 +351,12 @@ export function installSingleExecutionHooks() {
 		piEvents = createEventBus(),
 		discoverAgentsForCwd?: (cwd: string, preferredModelProvider?: string) => typeof agents,
 		childRuntime?: ChildRuntimeConfig,
-		sendMessage?: (message: unknown, options: unknown) => void,
+		sendMessage: (message: unknown, options: unknown) => void = (message, options) => {
+			sentMessages.push({ message, options } as (typeof sentMessages)[number]);
+		},
 	) {
 		return createSubagentExecutor!({
-			pi: { events: piEvents, getSessionName: () => undefined, ...(sendMessage ? { sendMessage } : {}) },
+			pi: { events: piEvents, getSessionName: () => undefined, sendMessage },
 			...(childRuntime ? { childRuntime } : {}),
 			state: {
 				baseCwd: tempDir,
@@ -374,7 +383,7 @@ export {
 	createSubagentExecutor, executorMod, escapeRegExp, pathContainsSegments,
 	waitForFileContent, writePackageSkill, writeWatchdogSettings,
 	withIsolatedWatchdogSettings, childWatchdogStatus, mockAssistantMessage,
-	readCall, readCallArgs, readAllCallArgs, makeExecutor,
+	readCall, readCallArgs, readAllCallArgs, makeExecutor, sentMessages,
 };
 export type {
 	ProgressSummary, ArtifactPaths, LaunchResolvedExtensions,

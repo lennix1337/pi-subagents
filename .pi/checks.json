@@ -8,14 +8,29 @@
       "onEdit": true,
       "watch": ["src", "test", "index.ts", "tsconfig.json"]
     },
-    "integration": {
-      "description": "Mock-Pi integration suite; live CLI/provider smokes remain opt-in and disabled",
-      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "test/integration/*.test.ts"],
-      "timeoutMs": 600000
-    },
     "parent-continuation": {
       "description": "Focused offline parent continuation guard tests",
       "argv": ["node", "--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", "test/unit/parent-continuation.test.ts"],
+      "timeoutMs": 120000
+    },
+    "foreground-ledger": {
+      "description": "Mock-Pi foreground fixture identity and cleanup, including MCP/tool-menu parity; no inference",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "--test-name-pattern", "publishes fixture foreground ledger|with Pi's built-in MCP|preserves the same tool menu and runtime requirements", "test/integration/single-execution.part-1.test.ts", "test/integration/async-execution.part-1.test.ts", "test/integration/async-execution.part-2.test.ts"],
+      "timeoutMs": 120000
+    },
+    "integration": {
+      "description": "Mock-Pi integration suite; no live CLI/provider smokes",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "test/integration/*.test.ts"],
+      "timeoutMs": 600000
+    },
+    "workflow-notifications": {
+      "description": "Mock-Pi integration: child settlement delivery through default, custom and registered-background hosts; no inference",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "--test-name-pattern", "emits successful async workflow child settlements|executes a registered mixed background workflow", "test/integration/single-execution.part-1.test.ts", "test/integration/async-execution.part-1.test.ts"],
+      "timeoutMs": 120000
+    },
+    "native-scheduling": {
+      "description": "Real installed Pi SDK compaction/continuation and foreground ledger lifecycle; synthetic HTTP only",
+      "argv": ["node", "test/support/run-native-scheduling.mjs"],
       "timeoutMs": 120000
     },
     "unit": {

@@ -13,7 +13,7 @@ import { describe, it } from "node:test";
 import {
 	tempDir, agentDir, mockPi, available, runSync, getFinalOutput, utils,
 	createSubagentExecutor, escapeRegExp, pathContainsSegments, waitForFileContent,
-	mockAssistantMessage, readCall, readCallArgs, readAllCallArgs, makeExecutor,
+	mockAssistantMessage, readCall, readCallArgs, readAllCallArgs, makeExecutor, sentMessages,
 	installSingleExecutionHooks,
 } from "../support/single-execution-fixture.ts";
 import { waitForAsyncResultFile, waitForAsyncState } from "../support/async-execution-fixture.ts";
@@ -48,6 +48,7 @@ import {
 } from "../../src/api/delegation.ts";
 import { CHAIN_RUNS_DIR, DIRS, INTERCOM_DETACH_REQUEST_EVENT, INTERCOM_DETACH_RESPONSE_EVENT, SUBAGENT_CONTROL_EVENT, SUBAGENT_PROCESS_TERMINAL_EVENT, TEMP_ARTIFACTS_DIR, type AsyncStatus, type ChildWatchdogProgress, type ControlEvent, type SubagentState } from "../../src/shared/types.ts";
 import { ACTIVE_RUN_INDEX_DIR } from "../../src/runs/background/active-run-index.ts";
+import { liveForegroundLedgerDir, liveForegroundRecordPath, type LiveForegroundRecord } from "../../src/runs/foreground/panel-ledger.ts";
 import { encodeIndexSegment } from "../../src/runs/background/index-segment.ts";
 import { removeResultIndex, writeAsyncResultFile, writePendingAsyncResultFile } from "../../src/runs/background/result-files.ts";
 import { listAsyncRuns } from "../../src/runs/background/async-status.ts";
@@ -195,37 +196,39 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		});
 	}
 
-	it("emits successful async workflow child settlements without provider turns", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
-		mockPi.onCall({ matchArgIncludes: "Child A", output: "A done" });
-		mockPi.onCall({ matchArgIncludes: "Child B", output: "B done" });
-		const sent: Array<{ message: { customType?: string; content?: string; details?: unknown }; options?: { triggerTurn?: boolean } }> = [];
-		const sendMessage = (message: unknown, options?: unknown) => {
-			sent.push({
-				message: message as { customType?: string; content?: string; details?: unknown },
-				options: options as { triggerTurn?: boolean } | undefined,
-			});
-		};
-		const executor = makeExecutor([makeAgent("echo")], {}, false, undefined, true, new Map(), undefined, undefined, createEventBus(), undefined, undefined, sendMessage);
-		const launch = await executor.execute("workflow-child-wakes", {
-			async: true,
-			workflowScript: `return await runs.all([{ key: "a", agent: "echo", task: "Child A" }, { key: "b", agent: "echo", task: "Child B" }]);`,
-		}, new AbortController().signal, undefined, makeMinimalCtx(tempDir));
-		assert.equal(launch.isError, undefined, launch.content[0]?.text ?? "workflow launch failed");
+	for (const host of ["default", "custom"] as const) {
+		it(`emits successful async workflow child settlements without provider turns (${host} host)`, { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+			mockPi.onCall({ matchArgIncludes: "Child A", output: "A done" });
+			mockPi.onCall({ matchArgIncludes: "Child B", output: "B done" });
+			const sent: typeof sentMessages = host === "default" ? sentMessages : [];
+			const sendMessage = host === "default" ? undefined : (message: unknown, options?: unknown) => {
+				sent.push({
+					message: message as { customType?: string; content?: string; details?: unknown },
+					options: options as { triggerTurn?: boolean } | undefined,
+				});
+			};
+			const executor = makeExecutor([makeAgent("echo")], {}, false, undefined, true, new Map(), undefined, undefined, createEventBus(), undefined, undefined, sendMessage);
+			const launch = await executor.execute("workflow-child-wakes", {
+				async: true,
+				workflowScript: `return await runs.all([{ key: "a", agent: "echo", task: "Child A" }, { key: "b", agent: "echo", task: "Child B" }]);`,
+			}, new AbortController().signal, undefined, makeMinimalCtx(tempDir));
+			assert.equal(launch.isError, undefined, launch.content[0]?.text ?? "workflow launch failed");
 
-		const childMessages = () => sent.filter(({ message }) => message.customType === "subagent-incremental-child-notify");
-		for (let attempt = 0; attempt < 250 && childMessages().length < 2; attempt++) {
-			await new Promise((resolve) => setTimeout(resolve, 20));
-		}
-		assert.deepEqual(
-			childMessages().map(({ message }) => message.content?.split("\n", 1)[0]).sort(),
-			["Workflow child completed: **a**", "Workflow child completed: **b**"],
-		);
-		assert.deepEqual(
-			childMessages().map(({ message }) => message.details).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
-			[{ childKey: "a", outcome: "completed" }, { childKey: "b", outcome: "completed" }],
-		);
-		assert.ok(childMessages().every(({ options }) => options?.triggerTurn === false));
-	});
+			const childMessages = () => sent.filter(({ message }) => message.customType === "subagent-incremental-child-notify");
+			for (let attempt = 0; attempt < 250 && childMessages().length < 2; attempt++) {
+				await new Promise((resolve) => setTimeout(resolve, 20));
+			}
+			assert.deepEqual(
+				childMessages().map(({ message }) => message.content?.split("\n", 1)[0]).sort(),
+				["Workflow child completed: **a**", "Workflow child completed: **b**"],
+			);
+			assert.deepEqual(
+				childMessages().map(({ message }) => message.details).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
+				[{ childKey: "a", outcome: "completed" }, { childKey: "b", outcome: "completed" }],
+			);
+			assert.ok(childMessages().every(({ options }) => options?.triggerTurn === false));
+		});
+	}
 
 	it("spawns agent and captures output", async () => {
 		mockPi.onCall({ output: "Hello from mock agent" });
@@ -242,6 +245,40 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const output = getFinalOutput(result.messages);
 		assert.equal(output, "Hello from mock agent");
 	});
+
+	for (const identity of ["generated", "explicit"] as const) {
+		it(`publishes fixture foreground ledger with ${identity} identity and removes it on completion`, async () => {
+			mockPi.onCall({ output: "ledger fixture completed" });
+			const records: LiveForegroundRecord[] = [];
+			const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Observe ledger", {
+				...(identity === "explicit" ? { runId: "explicit-ledger-fixture", index: 3 } : {}),
+				onUpdate() {
+					const dir = liveForegroundLedgerDir();
+					if (!fs.existsSync(dir)) return;
+					for (const name of fs.readdirSync(dir)) {
+						const record = JSON.parse(fs.readFileSync(path.join(dir, name), "utf8")) as LiveForegroundRecord;
+						if (record.cwd === tempDir) records.push(record);
+					}
+				},
+			});
+			assert.equal(result.exitCode, 0);
+			assert.ok(records.length > 0, "the running fixture must publish an observable ledger record");
+			const record = records[0];
+			assert.equal(record.agent, "echo");
+			assert.equal(record.state, "running");
+			assert.ok(record.runId.length > 0);
+			assert.ok(records.every((row) => row.runId === record.runId && row.index === record.index));
+			if (identity === "explicit") {
+				assert.equal(record.runId, "explicit-ledger-fixture");
+				assert.equal(record.index, 3);
+			} else {
+				assert.equal(record.index, 0);
+			}
+			// The authoritative receipt resolves before the completion observer cleans up.
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(fs.existsSync(liveForegroundRecordPath(record.runId, record.index)), false);
+		});
+	}
 
 	it("derives a child session name and passes it to the child runtime config", async () => {
 		mockPi.onCall({ output: "hello" });
