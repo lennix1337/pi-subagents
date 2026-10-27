@@ -28,6 +28,11 @@
       "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "test/integration/*.test.ts"],
       "timeoutMs": 600000
     },
+    "intercom-notifications": {
+      "description": "Mock-Pi intercom lifecycle and parent notification delivery; no inference",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "test/integration/intercom-result-delivery.test.ts"],
+      "timeoutMs": 120000
+    },
     "workflow-notifications": {
       "description": "Mock-Pi integration: child settlement delivery through default, custom and registered-background hosts; no inference",
       "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "--test-name-pattern", "emits successful async workflow child settlements|executes a registered mixed background workflow", "test/integration/single-execution.part-1.test.ts", "test/integration/async-execution.part-1.test.ts"],
