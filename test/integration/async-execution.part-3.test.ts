@@ -8,6 +8,7 @@
  */
 
 import { describe, it } from "node:test";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -1290,6 +1291,7 @@ export default function() {
 	it("async workflows snapshot the parent model before workflow setup reads session data", { skip: !isAsyncAvailable() || !createSubagentExecutor ? "jiti or executor not available" : undefined }, async () => {
 		mockPi.onCall({ output: "Inherited model work" });
 		mockPi.onCall({ output: "Explicit model work" });
+		const sentMessages: Array<Parameters<ExtensionAPI["sendMessage"]>> = [];
 		const state = {
 			baseCwd: tempDir,
 			currentSessionId: null,
@@ -1298,7 +1300,11 @@ export default function() {
 			lastForegroundControlId: null,
 		};
 		const executor = createSubagentExecutor!({
-			pi: { events: createEventBus(), getSessionName: () => undefined },
+			pi: {
+				events: createEventBus(),
+				getSessionName: () => undefined,
+				sendMessage: (...args: Parameters<ExtensionAPI["sendMessage"]>) => { sentMessages.push(args); },
+			},
 			state,
 			config: {},
 			asyncByDefault: false,
@@ -1331,6 +1337,15 @@ export default function() {
 		const explicitArgs = readMockPiArgsMatching(mockPi, "Do explicit work");
 		assert.equal(inheritedArgs[inheritedArgs.indexOf("--model") + 1], "router/openai-personal");
 		assert.equal(explicitArgs[explicitArgs.indexOf("--model") + 1], "openai/gpt-5-mini");
+		const notifications = sentMessages.filter(([message]) => message.customType === "subagent-incremental-child-notify");
+		assert.equal(notifications.length, 2, "both model routes must deliver their child settlement to the parent");
+		for (const [index, childKey] of ["inherited", "explicit"].entries()) {
+			const [message, options] = notifications[index];
+			assert.deepEqual(message.details, { childKey, outcome: "completed" });
+			assert.equal(String(message.content).split("\n", 1)[0], `Workflow child completed: **${childKey}**`);
+			assert.equal(message.display, false);
+			assert.equal(options?.triggerTurn, false);
+		}
 	});
 
 	it("background single runs inherit the parent session model when no model is set", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
