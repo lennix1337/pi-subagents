@@ -16,6 +16,10 @@ pi install npm:pi-subagents
 
 That is the only required step. pi-subagents needs Pi 1.2.0 or newer. Background children use the host's SDK: npm Pi keeps its detached Node runner; the official Pi 1.2.0 Linux x64 standalone release loads the same runner through Pi's embedded SDK, without a separate SDK install. See [Standalone background execution](docs/standalone-background.md) for the supported boundary and validation gate.
 
+## Safe self reload with OptChat
+
+OptChat can ask whether this session is safe to reload through the read-only `optchat:reload-check` event. This extension reports active jobs, nested work, workflow controllers and pending supervisor requests as blockers; it never stops them to make reload possible. Session ownership must match. Load both updated extensions once before using OptChat's `self_reload` tool. This is a readiness signal, not authorization or live-job migration.
+
 ## Try this first
 
 You do not need to create agents, write config, or learn slash commands. After installing, ask Pi in plain language:

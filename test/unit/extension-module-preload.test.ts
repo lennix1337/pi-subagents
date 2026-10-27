@@ -41,9 +41,17 @@ it("loads the executor and Fleet within seconds of a session starting, not at se
 	assert.equal(executorLoaded(), false, "session_start must not load the executor on Pi's startup path");
 	assert.equal(fleetLoaded(), false, "session_start must not load Fleet on Pi's startup path");
 
+	const readiness: unknown[][] = [];
+	pi.events.emit("optchat:reload-check", { sessionId: "preload-session", respond: (...args: unknown[]) => readiness.push(args) });
+	assert.deepEqual(readiness, [["pi-subagents", undefined]], "the actual extension exposes its idle readiness without loading the executor");
+	pi.events.emit("optchat:reload-check", { sessionId: "other-session", respond: (...args: unknown[]) => readiness.push(args) });
+	assert.match(String(readiness[1][1]), /ownership/);
+
 	t.mock.timers.tick(5_000);
 	assert.equal(executorLoaded(), true, "the executor loads within seconds of the session starting");
 	assert.equal(fleetLoaded(), true, "Fleet loads within seconds of the session starting");
 
 	for (const handler of handlers.get("session_shutdown") ?? []) await handler({ reason: "quit" }, ctx);
+	pi.events.emit("optchat:reload-check", { sessionId: "preload-session", respond: (...args: unknown[]) => readiness.push(args) });
+	assert.equal(readiness.length, 2, "shutdown removes the readiness handler; stale runtimes cannot acknowledge reload");
 });
