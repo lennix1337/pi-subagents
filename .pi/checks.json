@@ -8,6 +8,16 @@
       "onEdit": true,
       "watch": ["src", "test", "index.ts", "tsconfig.json"]
     },
+    "integration": {
+      "description": "Mock-Pi integration suite; live CLI/provider smokes remain opt-in and disabled",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "test/integration/*.test.ts"],
+      "timeoutMs": 600000
+    },
+    "parent-continuation": {
+      "description": "Focused offline parent continuation guard tests",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", "test/unit/parent-continuation.test.ts"],
+      "timeoutMs": 120000
+    },
     "unit": {
       "description": "node:test unit suite under an isolated temp root; ~70 s, no inference",
       "argv": ["node", "--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", "test/unit/*.test.ts"],

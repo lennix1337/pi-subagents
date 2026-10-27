@@ -1032,10 +1032,11 @@ export default function registerSubagentNotify(
 				unansweredCompletions.delete(content);
 				continue;
 			}
-			const acted = messages.slice(index + 1).some(message => message.role === "assistant"
-				&& message.content.some(part => part.type === "toolCall"
-					|| (part.type === "text" && part.text.trim())));
-			if (acted) {
+			const answered = messages.slice(index + 1).some(message => message.role === "assistant"
+				&& message.stopReason === "stop"
+				&& !message.content.some(part => part.type === "toolCall")
+				&& message.content.some(part => part.type === "text" && part.text.trim()));
+			if (answered) {
 				unansweredCompletions.delete(content);
 				continue;
 			}
@@ -1051,7 +1052,7 @@ export default function registerSubagentNotify(
 			return {
 				entries: [...event.entries, {
 					type: "custom_message", customType: "subagent-completion-unanswered", display: true,
-					content: "Completion wake ended silently. See the subagent completion notices above. " + COMPLETION_ACTION,
+					content: "Completion wake ended without a final user-visible answer. Reading or reviewing results alone is not a report to the user. See the subagent completion notices above. " + COMPLETION_ACTION,
 				}],
 				continue: true,
 			};
@@ -1062,7 +1063,7 @@ export default function registerSubagentNotify(
 		return {
 			entries: [...event.entries, {
 				type: "custom_message", customType: "subagent-completion-unhandled", display: true,
-				content: "UNHANDLED: no response to the subagent completion notices above. Reminder budget exhausted; results remain saved. No work was rerun or approval inferred.",
+				content: "UNHANDLED: no final user-visible answer to the subagent completion notices above. Reading or reviewing results alone is not a report to the user. Reminder budget exhausted; results remain saved. No work was rerun or approval inferred.",
 			}],
 		};
 	};

@@ -129,7 +129,7 @@ const deliver = (overrides = {}) => notifier.deliver({
   agent: 'workflow', mode: 'workflow', success: true, state: 'complete',
   summary: 'Saved results ready.', workflowReceipt: { path: '/tmp/receipt.json' }, ...overrides,
 });
-const assistant = content => messages.push({ role: 'assistant', content });
+const assistant = (content, stopReason = 'stop') => messages.push({ role: 'assistant', content, stopReason });
 try {
   assert.equal(settle(), undefined);
   assert.equal(await deliver(), true);
@@ -155,11 +155,16 @@ try {
   assert.equal(sent.length, 1, 'guard never reruns or resends workflow');
 
   await deliver();
-  assistant([{ type: 'toolCall', name: 'read', arguments: {} }]);
-  assert.equal(settle(), undefined, 'tool action acknowledges response');
+  assistant([{ type: 'toolCall', name: 'read', arguments: {} }], 'toolUse');
+  const readReminder = settle();
+  assert.equal(readReminder.continue, true, 'reading alone does not answer the user');
+  messages.push({ ...readReminder.entries[0], role: 'custom' });
+  assistant([{ type: 'text', text: 'Reviewing the results.' }], 'toolUse');
+  assert.match(settle().entries[0].content, /^UNHANDLED:/, 'intermediate text is not a final answer');
   await deliver();
   assistant([{ type: 'text', text: 'Results ready; approval required before deployment.' }]);
-  assert.equal(settle(), undefined, 'visible escalation/report acknowledges response');
+  assert.equal(settle(), undefined, 'final visible report acknowledges response');
+  assert.equal(handlers.has('agent_before_settle'), false, 'final answer clears guard');
   await deliver({ scheduleOrigin: { id: 'quiet', quiet: true } });
   assert.equal(sent.at(-1).options.triggerTurn, false);
   assert.equal(settle(), undefined, 'quiet schedule never forces continuation');
