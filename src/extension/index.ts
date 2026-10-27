@@ -56,6 +56,7 @@ import { createNativeSupervisorChannel, topLevelSupervisorTool } from "../interc
 import { renderSubagentEntry, renderSubagentMessage, SUBAGENT_ENTRY_TYPES, SUBAGENT_MESSAGE_TYPES } from "../tui/subagent-messages.ts";
 import { registerHerdrStatusBridge, type HerdrStatusRun } from "../integrations/herdr-status.ts";
 import { registerProgramStatusReporter } from "../integrations/program-status.ts";
+import { registerSelfReloadGuard } from "../integrations/self-reload-guard.ts";
 import { hasLiveSubagentWork, registerPiWebSessionLiveness } from "../integrations/pi-web-session-liveness.ts";
 import { createRetainedNestedRouteTracker } from "../runs/background/retained-nested-route-tracker.ts";
 import { listHerdrProjectPaneRoots, restoreHerdrProjectPaneSnapshots } from "../inspectors/herdr/project-panes.ts";
@@ -845,6 +846,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		fleetStatus?.refresh();
 	};
 	const eventUnsubscribes = [
+		registerSelfReloadGuard(pi.events, () => state.currentSessionId, () => hasLiveSubagentWork(state) || (state.workflowControllers?.size ?? 0) > 0 || supervisorChannel.hasPendingRequests()),
 		registerRuntimeAgentEventListener(pi),
 		registerInspectorEventListener(pi),
 		pi.events.on(SUBAGENT_ASYNC_STARTED_EVENT, asyncStartedHandler),
