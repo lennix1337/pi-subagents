@@ -20,6 +20,7 @@ import type { WorkflowReceipt } from "../../src/workflows/workflow-receipt.ts";
 import { resolveSubagentLaunchContract } from "../../src/api/preflight.ts";
 import { discoverAgents } from "../../src/agents/agents.ts";
 import { runSync } from "../../src/runs/foreground/execution.ts";
+import { liveForegroundRecordPath, type LiveForegroundRecord } from "../../src/runs/foreground/panel-ledger.ts";
 import { ACTIVE_ASYNC_CAPACITY_DIR, acquireActiveAsyncCapacity, activeAsyncCapacitySessionKey, getActiveAsyncCapacitySnapshot } from "../../src/runs/background/active-async-capacity.ts";
 import {
 	SUBAGENT_ASYNC_STARTED_EVENT,
@@ -713,7 +714,22 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			getAllTools: () => [["docs", "search"], ["docs", "fetch"], ["ext", "ping"]].map(([server, tool]) => ({ name: `mcp__${server}__${tool}`, exposure: "codemode", namespace: { name: `mcp__${server}` } })),
 			getMcpServers: () => [{ name: "ext" }],
 		};
-		const runForeground = (agent: ReturnType<typeof makeAgent>, projectTrusted?: boolean) => runSync(tempDir, [agent], agent.name, "Use MCP", { runtimeSnapshotHost: host, acceptance: false, projectTrusted });
+		const runForeground = async (agent: ReturnType<typeof makeAgent>, projectTrusted?: boolean) => {
+			const runId = "builtin-mcp-foreground";
+			const recordPath = liveForegroundRecordPath(runId, 0);
+			const records: LiveForegroundRecord[] = [];
+			const result = await runSync(tempDir, [agent], agent.name, "Use MCP", {
+				runId, runtimeSnapshotHost: host, acceptance: false, projectTrusted,
+				onUpdate() {
+					if (fs.existsSync(recordPath)) records.push(JSON.parse(fs.readFileSync(recordPath, "utf8")));
+				},
+			});
+			assert.ok(records.length > 0, "the MCP foreground child must publish its ledger identity");
+			assert.ok(records.every((record) => record.runId === runId && record.agent === agent.name && record.state === "running"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(fs.existsSync(recordPath), false, "the MCP foreground record must be removed after settlement");
+			return result;
+		};
 		const runBackground = async (agent: ReturnType<typeof makeAgent>) => {
 			const id = `async-builtin-mcp-${Date.now().toString(36)}`;
 			executeAsyncSingle(id, {
