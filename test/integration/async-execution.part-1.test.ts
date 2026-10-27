@@ -35,7 +35,7 @@ import {
 	executeAsyncSingle, executeAsyncChain, resolveTargetedAsyncRun, ASYNC_DIR,
 	RESULTS_DIR, createSubagentExecutor, readIfExists, waitForAsyncResultFile,
 	waitForAsyncState, waitForMockPiCall, readMockPiArgs, readMockPiRequiredTools,
-	tempDir, mockPi, makeAsyncExecutor, readAsyncPayload, launchProtocolTest,
+	tempDir, mockPi, makeAsyncExecutor, sentMessages, readAsyncPayload, launchProtocolTest,
 } from "../support/async-execution-fixture.ts";
 
 describe("async execution utilities", { skip: !available ? "pi packages not available" : undefined }, () => {
@@ -83,6 +83,11 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 				assert.equal((await waitForAsyncState(id, (status) => status.state === "complete")).state, "complete");
 				assert.equal(payload.results[0]?.output, "Background review completed");
 				assert.equal(mockPi.callCount(), 1);
+				const childMessages = sentMessages.filter(({ message }) => message.customType === "subagent-incremental-child-notify");
+				assert.equal(childMessages.length, 1, "registered workflow must deliver its child settlement to the parent host");
+				assert.equal(childMessages[0].message.content?.split("\n", 1)[0], "Workflow child completed: **review**");
+				assert.deepEqual(childMessages[0].message.details, { childKey: "review", outcome: "completed" });
+				assert.equal(childMessages[0].options?.triggerTurn, false);
 				assert.equal(fs.readFileSync(path.join(tempDir, "registered-marker"), "utf8"), "ran");
 				assert.match(fs.readFileSync(path.join(tempDir, "registered-check.log"), "utf8"), /background finite check passed/);
 				assert.equal(payload.workflowReceipt.receipt.resource?.name, definition.name);

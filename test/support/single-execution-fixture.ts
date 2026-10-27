@@ -279,6 +279,7 @@ let tempDir: string;
 let agentDir: string;
 let mockPi: MockPi;
 let previousAgentDir: string | undefined;
+const sentMessages: Array<{ message: { customType?: string; content?: string; details?: unknown }; options?: { triggerTurn?: boolean } }> = [];
 
 export function installSingleExecutionHooks() {
 	before(() => {
@@ -296,6 +297,7 @@ export function installSingleExecutionHooks() {
 		previousAgentDir = process.env.PI_CODING_AGENT_DIR;
 		process.env.PI_CODING_AGENT_DIR = agentDir;
 		mockPi.reset();
+		sentMessages.length = 0;
 	});
 
 	afterEach(() => {
@@ -344,10 +346,12 @@ export function installSingleExecutionHooks() {
 		piEvents = createEventBus(),
 		discoverAgentsForCwd?: (cwd: string, preferredModelProvider?: string) => typeof agents,
 		childRuntime?: ChildRuntimeConfig,
-		sendMessage?: (message: unknown, options: unknown) => void,
+		sendMessage: (message: unknown, options: unknown) => void = (message, options) => {
+			sentMessages.push({ message, options } as (typeof sentMessages)[number]);
+		},
 	) {
 		return createSubagentExecutor!({
-			pi: { events: piEvents, getSessionName: () => undefined, ...(sendMessage ? { sendMessage } : {}) },
+			pi: { events: piEvents, getSessionName: () => undefined, sendMessage },
 			...(childRuntime ? { childRuntime } : {}),
 			state: {
 				baseCwd: tempDir,
@@ -374,7 +378,7 @@ export {
 	createSubagentExecutor, executorMod, escapeRegExp, pathContainsSegments,
 	waitForFileContent, writePackageSkill, writeWatchdogSettings,
 	withIsolatedWatchdogSettings, childWatchdogStatus, mockAssistantMessage,
-	readCall, readCallArgs, readAllCallArgs, makeExecutor,
+	readCall, readCallArgs, readAllCallArgs, makeExecutor, sentMessages,
 };
 export type {
 	ProgressSummary, ArtifactPaths, LaunchResolvedExtensions,
