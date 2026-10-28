@@ -222,6 +222,9 @@ export function createResultWatcher(
 	// While deliverPendingResults runs, completions skip the batch delay.
 	let deliveringPending = 0;
 	const identityCache = new Map<string, { signature: string; identity: ResultFileIdentity }>();
+	// Result file -> last logged mission-sync error. A failed sync is retried
+	// every pass, so the same error is logged once per result file.
+	const reportedMissionSyncFailures = new Map<string, string>();
 	let deliveryActive = true;
 	let deliveryEpoch = 0;
 	let resultScanTimer: ReturnType<typeof setInterval> | null = null;
@@ -413,9 +416,14 @@ export function createResultWatcher(
 			let observerSucceeded = true;
 			try {
 				syncMissionFromAsyncCompletion({ ...data, runId });
+				reportedMissionSyncFailures.delete(file);
 			} catch (error) {
 				observerSucceeded = false;
-				console.error(`Mission completion sync failed for '${resultPath}':`, error);
+				const message = error instanceof Error ? error.message : String(error);
+				if (reportedMissionSyncFailures.get(file) !== message) {
+					reportedMissionSyncFailures.set(file, message);
+					console.error(`Mission completion sync failed for '${resultPath}':`, error);
+				}
 			}
 			try {
 				deps.observeCompletion?.({ ...data, runId });

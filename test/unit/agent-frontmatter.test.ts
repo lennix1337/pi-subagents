@@ -8,7 +8,7 @@ import { handleManagementAction } from "../../src/agents/agent-management.ts";
 import { serializeAgent } from "../../src/agents/agent-serializer.ts";
 import { parseChain, serializeChain } from "../../src/agents/chain-serializer.ts";
 import { discoverAgents, discoverAgentsAll, inspectAgentDefinitionDirectory, type AgentConfig } from "../../src/agents/agents.ts";
-import { parseFrontmatter, parseFrontmatterList } from "../../src/agents/frontmatter.ts";
+import { parseFrontmatter, parseFrontmatterList, parseUnquotedList } from "../../src/agents/frontmatter.ts";
 import { buildInProcessChildLaunch } from "../../src/runs/shared/child-launch.ts";
 import { applyThinkingSuffix } from "../../src/runs/shared/child-tool-plan.ts";
 import { THINKING_LEVELS } from "../../src/shared/model-info.ts";
@@ -276,6 +276,48 @@ body`);
 	});
 });
 
+describe("quoted names in tool and extension lists", () => {
+	it("reads each quoted item without its quote marks", () => {
+		const toolsOf = (value: string) => parseUnquotedList(parseFrontmatter(`---\ntools: ${value}\nname: worker\n---\nbody`).frontmatter.tools);
+		assert.deepEqual(toolsOf('"read", "bash"'), ["read", "bash"]);
+		assert.deepEqual(toolsOf("'read', 'bash'"), ["read", "bash"]);
+		assert.deepEqual(toolsOf('"read"'), ["read"]);
+		assert.deepEqual(parseUnquotedList(parseFrontmatter('---\ntools:\n  - "read"\n  - bash\nname: worker\n---\nbody').frontmatter.tools), ["read", "bash"]);
+		assert.deepEqual(toolsOf("false"), ["false"]);
+		assert.equal(parseUnquotedList(undefined), undefined);
+		const description = parseFrontmatter('---\ndescription: "Review \\"a\\", then continue"\nname: worker\n---\nbody');
+		assert.equal(description.frontmatter.description, 'Review \\"a\\", then continue');
+	});
+
+	it("loads quoted tools and extension paths as plain names", () => {
+		const previous = process.env.PI_CODING_AGENT_DIR;
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quoted-name-"));
+		const project = fs.mkdtempSync(path.join(os.tmpdir(), "pi-quoted-project-"));
+		tempDirs.push(home, project);
+		process.env.PI_CODING_AGENT_DIR = home;
+		try {
+			const agentFile = path.join(project, ".pi", "agents", "reviewer.md");
+			writeAgent(agentFile, [
+				"---",
+				"name: reviewer",
+				"description: Reviews with quoted tools",
+				'tools: "read", "bash"',
+				`extensions: "./ext/a.ts", './ext/b.ts'`,
+				"---",
+				"Review.",
+				"",
+			].join("\n"));
+			const agent = discoverAgents(project, "project").agents.find((item) => item.name === "reviewer");
+			assert.deepEqual(agent?.tools, ["read", "bash"]);
+			const agentDir = path.dirname(agentFile);
+			assert.deepEqual(agent?.extensions, [path.resolve(agentDir, "ext/a.ts"), path.resolve(agentDir, "ext/b.ts")]);
+		} finally {
+			if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+			else process.env.PI_CODING_AGENT_DIR = previous;
+		}
+	});
+});
+
 describe("frontmatter comments", () => {
 	const toolsOf = (frontmatter: string) => parseFrontmatterList(parseFrontmatter(`---\n${frontmatter}\nname: worker\n---\nbody`).frontmatter.tools);
 
@@ -301,6 +343,117 @@ body`);
 		assert.equal(parsed.frontmatter.description, "first\n# kept");
 		assert.equal(parsed.frontmatter.notes, "one # two");
 	});
+});
+
+describe("blank lines in nested frontmatter blocks", () => {
+	// Exactly-empty lines are the truncation trigger (issue #77): whitespace-only
+	// lines were always collected, only `trimmed === ""` lines were dropped.
+	const fm = (body: string) => parseFrontmatter(`---\n${body}---\npayload`);
+
+	it("preserves a nested block value across exactly-empty lines", () => {
+		const parsed = fm("runner:\n  type: external-cli\n  command: python3\n  args:\n    - -c\n    - |\n      import hashlib\n\n      x = 1\n      print('ok')\nname: t\n");
+		assert.equal(parsed.frontmatter.runner, "type: external-cli\ncommand: python3\nargs:\n  - -c\n  - |\n    import hashlib\n\n    x = 1\n    print('ok')");
+		assert.equal(parsed.frontmatter.name, "t");
+	});
+
+	it("keeps list items after an exactly-empty line and drops no comment into the list", () => {
+		const withoutBlank = fm("tools:\n  - read\n  - bash\nname: x\n").frontmatter.tools;
+		const withBlank = fm("tools:\n  - read\n\n  - bash\nname: x\n").frontmatter.tools;
+		assert.deepEqual(parseFrontmatterList(withoutBlank), ["read", "bash"]);
+		assert.deepEqual(parseFrontmatterList(withBlank), ["read", "bash"]);
+		const withComment = fm("tools:\n  - read\n\n# note\n\n  - bash\nname: x\n");
+		assert.deepEqual(parseFrontmatterList(withComment.frontmatter.tools), ["read", "bash"]);
+		assert.equal(withComment.frontmatter.name, "x");
+	});
+
+	it("does not leak trailing blanks into a nested block ended by the next key", () => {
+		const parsed = fm("runner:\n  type: x\n\nname: z\n");
+		assert.equal(parsed.frontmatter.runner, "type: x");
+		assert.equal(parsed.frontmatter.name, "z");
+	});
+
+	it("does not leak trailing blanks when a nested block ends the frontmatter", () => {
+		const parsed = fm("runner:\n  type: x\n\n");
+		assert.equal(parsed.frontmatter.runner, "type: x");
+	});
+
+	it("keeps literal and folded blocks byte-identical to the pre-fix parser at their edges", () => {
+		for (const indicator of ["|", "|-"]) {
+			const parsed = fm(`prompt: ${indicator}\n  hello\n\nname: x\n`);
+			assert.equal(parsed.frontmatter.prompt, "hello\n");
+			assert.equal(parsed.frontmatter.name, "x");
+		}
+		const trailingBlankAtEnd = fm("prompt: |\n  hello\n\n");
+		assert.equal(trailingBlankAtEnd.frontmatter.prompt, "hello\n");
+		const folded = fm("description: >\n  normal\n\n  next\nname: x\n");
+		assert.equal(folded.frontmatter.description, "normal\nnext");
+	});
+
+	it("keeps whitespace-only trailing lines collected as before", () => {
+		const nested = fm("runner:\n  type: x\n  \nname: z\n");
+		assert.equal(nested.frontmatter.runner, "type: x\n");
+		assert.equal(fm("async:\n  true\n\n  \nname: x\n").frontmatter.async, "true");
+		const literal = fm("prompt: |\n  a\n  \nname: x\n");
+		assert.equal(literal.frontmatter.prompt, "a\n");
+	});
+
+	it("strips leading exactly-empty lines from a nested block value", () => {
+		assert.equal(fm("runner:\n\n  type: x\n").frontmatter.runner, "type: x");
+		assert.equal(fm("runner:\n\n\n  type: x\n").frontmatter.runner, "type: x");
+	});
+
+	it("honors an indented plain scalar after an exactly-empty line", () => {
+		assert.equal(fm("model:\n\n  stray\n").frontmatter.model, "stray");
+	});
+
+	it("keeps comment lines out of nested block values", () => {
+		const parsed = fm("runner:\n  type: x\n  # note\n  command: y\nname: z\n");
+		assert.equal(parsed.frontmatter.runner, "type: x\ncommand: y");
+		assert.equal(parsed.frontmatter.name, "z");
+	});
+
+	it("parses an external-cli runner whose block-scalar arg spans exactly-empty lines", () => withTempHome(() => {
+		const project = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-block-scalar-arg-"));
+		tempDirs.push(project);
+		const script = ["const x = 1;", "", "process.stdout.write(JSON.stringify({ x }));"].join("\n");
+		writeAgent(path.join(project, ".pi", "agents", "loader.md"), [
+			"---",
+			"name: loader",
+			"description: Parses a block-scalar arg spanning empty lines",
+			"runner:",
+			"  type: external-cli",
+			"  command: node",
+			"  promptDelivery: stdin",
+			"  args:",
+			"    - -e",
+			"    - |",
+			...script.split("\n").map((line) => (line ? `      ${line}` : "")),
+			"async: true",
+			"---",
+			"",
+		].join("\n"));
+		const agent = discoverAgents(project, "project").agents.find((item) => item.name === "loader");
+		// `- |` clip-chomps: the delivered arg carries one trailing newline.
+		assert.deepEqual(agent?.runner, { type: "external-cli", command: "node", args: ["-e", `${script}\n`], promptDelivery: "stdin" });
+	}));
+
+	it("honors list items after an exactly-empty line through agent discovery", () => withTempHome(() => {
+		const project = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-blank-list-"));
+		tempDirs.push(project);
+		writeAgent(path.join(project, ".pi", "agents", "tooluser.md"), [
+			"---",
+			"name: tooluser",
+			"description: Tools after a blank line",
+			"tools:",
+			"  - read",
+			"",
+			"  - bash",
+			"---",
+			"",
+		].join("\n"));
+		const agent = discoverAgents(project, "project").agents.find((item) => item.name === "tooluser");
+		assert.deepEqual(agent?.tools, ["read", "bash"]);
+	}));
 });
 
 describe("agent runner frontmatter", () => {

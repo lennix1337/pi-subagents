@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fork integration
+
+- Selectively backport upstream safety, prompt-cache projection, child settlement, session identity, option validation and frontmatter fixes through `2cab20f8`, plus `undici` 8.12.3. Preserve this fork's trust, supervision, notification, reload and tool-budget decisions; do not enable automatic workflow revival or remote Mac placement. See [the selection and exclusions](docs/upstream-selection.md).
+
 ### Added
 
 - `machine: "local"` runs a native Pi child in a new background tab of your own Rex session, driven through the same bridge as a Herdr-placed Pi (prompt, steer, follow-up, abort, `contact_supervisor`, results). It fails before launch when the parent Pi is not running inside Rex, and rejects Claude Code, Codex, Cursor, and generic `external-cli` agents. A finished child keeps its tab open, with the idle Pi, until you close it; an aborted or stopped child's tab is closed, and is reported closed only after Rex confirms it is gone. See [docs/agents.md](docs/agents.md#running-a-pi-child-in-a-rex-pane-on-this-machine).

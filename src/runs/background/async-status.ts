@@ -168,6 +168,8 @@ interface AsyncRunListOptions {
 	includeNested?: boolean;
 	/** Explicit repair/debug escape hatch. Normal runtime paths must not set this. */
 	repairScan?: boolean;
+	/** Receives the warning for a skipped corrupt terminal status, so an open TUI can show it as a notice instead of console output. */
+	onCorruptStatus?: (warning: string) => void;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -182,6 +184,10 @@ function isAsyncStatusIsolationError(asyncDir: string, error: unknown): boolean 
 		|| message.startsWith(`Invalid host step '${statusPath}`)
 		|| /^(workflowChildren|Invalid workflowChildren)/.test(message);
 }
+
+// Status path -> last logged signature. A corrupt run is re-scanned on every
+// status poll, so the line repeats only when the file or the outcome changes.
+const reportedCorruptStatus = new Map<string, string>();
 
 function isolateCorruptActiveRun(asyncDir: string, runId: string, error: unknown, now?: () => number): void {
 	const statusPath = path.join(asyncDir, "status.json");
@@ -205,7 +211,19 @@ function isolateCorruptActiveRun(asyncDir: string, runId: string, error: unknown
 			markerAction = `failed to release active marker: ${getErrorMessage(releaseError)}`;
 		}
 	}
-	console.error(`[pi-subagents] Skipping corrupt active async run '${runId}' at '${statusPath}': ${getErrorMessage(error)}; ${markerAction}.`);
+	const line = `[pi-subagents] Skipping corrupt active async run '${runId}' at '${statusPath}': ${getErrorMessage(error)}; ${markerAction}.`;
+	let fileSignature = "";
+	try {
+		const stat = fs.statSync(statusPath);
+		fileSignature = `${stat.size}:${stat.mtimeMs}`;
+	} catch (statError) {
+		if ((statError as NodeJS.ErrnoException).code !== "ENOENT") throw statError;
+		// A vanished file still gets the original diagnostic once.
+	}
+	const signature = `${fileSignature}\n${line}`;
+	if (reportedCorruptStatus.get(statusPath) === signature) return;
+	reportedCorruptStatus.set(statusPath, signature);
+	console.error(line);
 }
 
 function isNotFoundError(error: unknown): boolean {
@@ -524,7 +542,7 @@ export function listAsyncRuns(asyncDirRoot: string, options: AsyncRunListOptions
 			}
 			if (wantsTerminal) {
 				for (const sessionId of owners ?? [undefined]) {
-					for (const entry of readRecentTerminalRunIndex(asyncDirRoot, { sessionId, ...(options.entryLimit !== undefined ? { limit: options.entryLimit } : {}) })) indexed.add(entry);
+					for (const entry of readRecentTerminalRunIndex(asyncDirRoot, { sessionId, onCorruptStatus: options.onCorruptStatus, ...(options.entryLimit !== undefined ? { limit: options.entryLimit } : {}) })) indexed.add(entry);
 				}
 			}
 			entries = [...indexed];

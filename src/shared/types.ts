@@ -1996,7 +1996,7 @@ export interface AsyncStatus {
 		label?: string;
 		workflowKey?: string;
 		lane?: WorkflowLaneMetadata;
-		/** Display-only worktree path copied at launch; handoff remains authoritative. */
+		/** Worktree path copied at setup. The handoff stays authoritative for the cwd; resume refuses a child that has this but no handoff record. */
 		worktreePath?: string;
 		/** Display-only branch copied at launch; handoff remains authoritative. */
 		branch?: string;
@@ -2335,7 +2335,7 @@ export interface ActiveAsyncCapacitySnapshot {
 export interface SubagentState {
 	baseCwd: string;
 	currentSessionId: string | null;
-	/** Exact SDK runtime session ID for supervisor ownership; never a session file path. */
+	/** Exact SDK runtime session ID (`getSessionId()`) for supervisor ownership and background-work matching; never a session file path. */
 	supervisorOwnerSessionId?: string | null;
 	/** Session for which active status projections were restored successfully. */
 	statusProjectionSessionId?: string | null;
@@ -2464,6 +2464,8 @@ export const SUBAGENT_CONTROL_INTERCOM_EVENT = "subagent:control-intercom";
 export const SUBAGENT_STEERING_NOTICE_EVENT = "subagent:steering-notice";
 export const SUBAGENT_CHILD_STATUS_EVENT = "subagent:child-status";
 export const SUBAGENT_CHILD_TOOL_ACTIVITY_EVENT = "subagent:child-tool-activity";
+/** Payload is only `{ version: 1 }`: a hint for hosts to read `status` again, not a description of the change. */
+export const SUBAGENT_JOBS_CHANGED_EVENT = "subagent:jobs-changed";
 export const SUBAGENT_RESULT_INTERCOM_EVENT = "subagent:result-intercom";
 export const SUBAGENT_RESULT_INTERCOM_DELIVERY_EVENT = "subagent:result-intercom-delivery";
 
