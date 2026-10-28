@@ -2661,6 +2661,47 @@ function workflowValidationOptions(deps: ExecutorDeps, params: SubagentParamsLik
 	};
 }
 
+function canonicalizeExecutionChain(
+	steps: ChainStep[], agents: AgentConfig[], machine: string | undefined,
+	resolve: (name: string, location?: string) => { name?: string; error?: string },
+): { chain?: ChainStep[]; error?: string } {
+	const chain: ChainStep[] = [];
+	for (let index = 0; index < steps.length; index++) {
+		const step = steps[index]!;
+		if (isParallelStep(step)) {
+			const parallel: ParallelTaskItem[] = [];
+			for (let taskIndex = 0; taskIndex < step.parallel.length; taskIndex++) {
+				const task = step.parallel[taskIndex]!;
+				const result = resolve(task.agent, `step ${index + 1}, task ${taskIndex + 1}`);
+				if (result.error) return { error: result.error };
+				const error = formatInstructionFilePlacementError(task.machine ?? step.machine ?? machine ?? agents.find((agent) => agent.name === result.name)?.machine);
+				if (error) return { error };
+				parallel.push({ ...task, agent: result.name! });
+			}
+			chain.push({ ...step, parallel });
+			continue;
+		}
+		if (isDynamicParallelStep(step)) {
+			const result = resolve(step.parallel.agent, `step ${index + 1}`);
+			if (result.error) return { error: result.error };
+			const error = formatInstructionFilePlacementError(step.parallel.machine ?? machine ?? agents.find((agent) => agent.name === result.name)?.machine);
+			if (error) return { error };
+			chain.push({ ...step, parallel: { ...step.parallel, agent: result.name! } });
+			continue;
+		}
+		if ("agent" in step && typeof step.agent === "string") {
+			const result = resolve(step.agent, `step ${index + 1}`);
+			if (result.error) return { error: result.error };
+			const error = formatInstructionFilePlacementError(step.machine ?? machine ?? agents.find((agent) => agent.name === result.name)?.machine);
+			if (error) return { error };
+			chain.push({ ...step, agent: result.name! });
+			continue;
+		}
+		chain.push(step);
+	}
+	return { chain };
+}
+
 function canonicalizeExecutionParams(params: SubagentParamsLike, agents: AgentConfig[], diagnostics: AgentDiscoveryDiagnostic[] | undefined, context: UnknownAgentDiagnosticContext): { params?: SubagentParamsLike; error?: string } {
 	const resolve = (name: string, location?: string): { name?: string; error?: string } => {
 		const result = canonicalizeAgentName(name, agents, diagnostics, context);
@@ -2695,41 +2736,9 @@ function canonicalizeExecutionParams(params: SubagentParamsLike, agents: AgentCo
 		params = { ...params, tasks };
 	}
 	if (params.chain) {
-		const chain: ChainStep[] = [];
-		for (let index = 0; index < params.chain.length; index++) {
-			const step = params.chain[index]!;
-			if (isParallelStep(step)) {
-				const parallel: ParallelTaskItem[] = [];
-				for (let taskIndex = 0; taskIndex < step.parallel.length; taskIndex++) {
-					const task = step.parallel[taskIndex]!;
-					const result = resolve(task.agent, `step ${index + 1}, task ${taskIndex + 1}`);
-					if (result.error) return { error: result.error };
-					const error = formatInstructionFilePlacementError(task.machine ?? step.machine ?? params.machine ?? agents.find((agent) => agent.name === result.name)?.machine);
-					if (error) return { error };
-					parallel.push({ ...task, agent: result.name! });
-				}
-				chain.push({ ...step, parallel });
-				continue;
-			}
-			if (isDynamicParallelStep(step)) {
-				const result = resolve(step.parallel.agent, `step ${index + 1}`);
-				if (result.error) return { error: result.error };
-				const error = formatInstructionFilePlacementError(step.parallel.machine ?? params.machine ?? agents.find((agent) => agent.name === result.name)?.machine);
-				if (error) return { error };
-				chain.push({ ...step, parallel: { ...step.parallel, agent: result.name! } });
-				continue;
-			}
-			if ("agent" in step && typeof step.agent === "string") {
-				const result = resolve(step.agent, `step ${index + 1}`);
-				if (result.error) return { error: result.error };
-				const error = formatInstructionFilePlacementError(step.machine ?? params.machine ?? agents.find((agent) => agent.name === result.name)?.machine);
-				if (error) return { error };
-				chain.push({ ...step, agent: result.name! });
-				continue;
-			}
-			chain.push(step);
-		}
-		params = { ...params, chain };
+		const result = canonicalizeExecutionChain(params.chain, agents, params.machine, resolve);
+		if (result.error) return { error: result.error };
+		params = { ...params, chain: result.chain! };
 	}
 	return { params };
 }
