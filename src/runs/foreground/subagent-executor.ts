@@ -115,7 +115,7 @@ import { inspectSubagentStatus } from "../background/run-status.ts";
 import { getExternalJobProvider } from "../../api/external-job-provider.ts";
 import { externalJobFollowUpRequestDigest, externalJobFollowUpRequestId, externalJobFollowUpRunId, externalJobPromptDigest, externalJobStableJson } from "../shared/external-job-runner.ts";
 import { externalCliReceiptMetadata, normalizeExternalCliRunnerStatus } from "../shared/external-cli-contract.ts";
-import { formatHerdrMachineRunnerUnsupported, resolveMachinePlacement } from "../shared/herdr-machine.ts";
+import { formatHerdrMachineRunnerUnsupported, formatInstructionFilePlacementError, resolveMachinePlacement } from "../shared/herdr-machine.ts";
 import { lookupRunnerLauncher, resolveAgentRunnerLauncher } from "../shared/runner-launcher.ts";
 import { applyForceTopLevelAsyncOverride } from "../background/top-level-async.ts";
 import { handleMissionAction, MISSION_ACTIONS } from "../../missions/actions.ts";
@@ -2688,6 +2688,8 @@ function canonicalizeExecutionParams(params: SubagentParamsLike, agents: AgentCo
 			const task = params.tasks[index]!;
 			const result = resolve(task.agent, `task ${index + 1}`);
 			if (result.error) return { error: result.error };
+			const error = formatInstructionFilePlacementError(task.machine ?? params.machine ?? agents.find((agent) => agent.name === result.name)?.machine);
+			if (error) return { error };
 			tasks.push({ ...task, agent: result.name! });
 		}
 		params = { ...params, tasks };
@@ -2702,6 +2704,8 @@ function canonicalizeExecutionParams(params: SubagentParamsLike, agents: AgentCo
 					const task = step.parallel[taskIndex]!;
 					const result = resolve(task.agent, `step ${index + 1}, task ${taskIndex + 1}`);
 					if (result.error) return { error: result.error };
+					const error = formatInstructionFilePlacementError(task.machine ?? step.machine ?? params.machine ?? agents.find((agent) => agent.name === result.name)?.machine);
+					if (error) return { error };
 					parallel.push({ ...task, agent: result.name! });
 				}
 				chain.push({ ...step, parallel });
@@ -2710,12 +2714,16 @@ function canonicalizeExecutionParams(params: SubagentParamsLike, agents: AgentCo
 			if (isDynamicParallelStep(step)) {
 				const result = resolve(step.parallel.agent, `step ${index + 1}`);
 				if (result.error) return { error: result.error };
+				const error = formatInstructionFilePlacementError(step.parallel.machine ?? params.machine ?? agents.find((agent) => agent.name === result.name)?.machine);
+				if (error) return { error };
 				chain.push({ ...step, parallel: { ...step.parallel, agent: result.name! } });
 				continue;
 			}
 			if ("agent" in step && typeof step.agent === "string") {
 				const result = resolve(step.agent, `step ${index + 1}`);
 				if (result.error) return { error: result.error };
+				const error = formatInstructionFilePlacementError(step.machine ?? params.machine ?? agents.find((agent) => agent.name === result.name)?.machine);
+				if (error) return { error };
 				chain.push({ ...step, agent: result.name! });
 				continue;
 			}

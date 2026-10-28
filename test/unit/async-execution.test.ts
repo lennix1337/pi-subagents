@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { buildAsyncRunnerSteps, assertClaudeCodeOverrideIsLocal, DEFAULT_ASYNC_TIMEOUT_MS, emitProcessTerminalEvent, formatAsyncStartedMessage, resolveAsyncRunnerLogPaths } from "../../src/runs/background/async-execution.ts";
+import { buildAsyncRunnerSteps, executeAsyncChain, executeAsyncSingle, assertClaudeCodeOverrideIsLocal, DEFAULT_ASYNC_TIMEOUT_MS, emitProcessTerminalEvent, formatAsyncStartedMessage, resolveAsyncRunnerLogPaths } from "../../src/runs/background/async-execution.ts";
+import { formatHerdrMachineRunnerUnsupported } from "../../src/runs/shared/herdr-machine.ts";
 import type { AgentConfig } from "../../src/agents/agents.ts";
-import { SUBAGENT_PROCESS_TERMINAL_EVENT } from "../../src/shared/types.ts";
+import { DIRS, SUBAGENT_PROCESS_TERMINAL_EVENT } from "../../src/shared/types.ts";
 import { registerRequiredChildExtensions } from "../../src/api/required-child-extensions.ts";
 
 const agent = (name: string, toolBudget?: AgentConfig["toolBudget"]): AgentConfig => ({
@@ -30,6 +33,55 @@ const ctx = {
 };
 
 describe("async runner execution", () => {
+	it("rejects configured instruction pointers for placed single and chain runs before creating artifacts", async (t) => {
+		const spawn = t.mock.method(childProcess, "spawn", () => { throw new Error("unexpected runner spawn"); });
+		const spawnSync = t.mock.method(childProcess, "spawnSync", () => { throw new Error("unexpected placement command"); });
+		syncBuiltinESMExports();
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "instruction-placement-"));
+		const previous = process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
+		const file = path.join(root, "standards.md");
+		fs.writeFileSync(file, "standards");
+		process.env.PI_SUBAGENTS_INSTRUCTION_FILE = file;
+		const base = {
+			ctx: { pi: { events: { emit() {} } }, cwd: root, currentSessionId: "instruction-placement" },
+			artifactConfig: { enabled: false, includeInput: false, includeOutput: false, includeJsonl: false, includeMetadata: false, cleanupDays: 7 },
+			shareEnabled: false, maxSubagentDepth: 1,
+		};
+		try {
+			for (const [index, input] of [
+				{ machine: "remote", agentConfig: agent("worker") },
+				{ agentConfig: { ...agent("worker"), machine: "remote" } },
+			].entries()) {
+				const id = `instruction-single-${index}-${Date.now()}`;
+				const result = await executeAsyncSingle(id, { ...base, agent: "worker", task: "Review", ...input });
+				assert.equal(result.isError, true);
+				assert.match(result.content[0]?.text ?? "", /PI_SUBAGENTS_INSTRUCTION_FILE.*cannot.*validat/iu);
+				assert.equal(fs.existsSync(path.join(DIRS.async, id)), false);
+			}
+			for (const [index, chain] of [
+				[{ agent: "worker", task: "local" }, { agent: "worker", task: "remote", machine: "remote" }],
+				[{ machine: "remote", parallel: [{ agent: "worker", task: "remote" }] }],
+			].entries()) {
+				const id = `instruction-chain-${index}-${Date.now()}`;
+				const progressDir = path.join(root, `progress-${index}`);
+				const result = await executeAsyncChain(id, { ...base, chain, agents: [agent("worker")], progressDir });
+				assert.equal(result.isError, true);
+				assert.match(result.content[0]?.text ?? "", /PI_SUBAGENTS_INSTRUCTION_FILE.*cannot.*validat/iu);
+				assert.equal(fs.existsSync(path.join(DIRS.async, id)), false);
+				assert.equal(fs.existsSync(progressDir), false);
+			}
+			assert.equal(spawn.mock.callCount(), 0);
+			assert.equal(spawnSync.mock.callCount(), 0);
+			delete process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
+			assert.doesNotMatch(formatHerdrMachineRunnerUnsupported({ machine: "remote", agentName: "worker" }) ?? "", /PI_SUBAGENTS_INSTRUCTION_FILE/);
+		} finally {
+			if (previous === undefined) delete process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
+			else process.env.PI_SUBAGENTS_INSTRUCTION_FILE = previous;
+			t.mock.restoreAll();
+			syncBuiltinESMExports();
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
 	it("propagates static parallel machine placement before agent pins and rejects group worktrees", { skip: process.platform === "win32" ? "Herdr saved-machine launches are unsupported on Windows" : undefined }, (t) => {
 		const bin = fs.mkdtempSync(path.join(os.tmpdir(), "herdr-bin-"));
 		const herdr = path.join(bin, "herdr");
