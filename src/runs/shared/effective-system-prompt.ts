@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { AgentConfig } from "../../agents/agents.ts";
 import { buildAgentMemoryInjection } from "../../agents/agent-memory.ts";
 import { appendAgentRefinementOverlay } from "../../agents/agent-refinements.ts";
@@ -17,15 +20,31 @@ function appendSection(prompt: string, section: string): string {
 	return prompt ? `${prompt}\n\n${section}` : section;
 }
 
+function instructionFilePointer(): string | undefined {
+	const configured = process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
+	if (configured === undefined) return undefined;
+	const expanded = configured === "~" ? os.homedir() : /^~[\\/]/.test(configured) ? path.join(os.homedir(), configured.slice(2)) : configured;
+	if (!path.isAbsolute(expanded)) throw new Error(`PI_SUBAGENTS_INSTRUCTION_FILE must be an absolute path or start with ~/: '${configured}'.`);
+	const file = path.resolve(expanded);
+	try {
+		fs.readFileSync(file);
+	} catch (cause) {
+		throw new Error(`Cannot read PI_SUBAGENTS_INSTRUCTION_FILE '${file}': ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+	}
+	return `Read the instruction file before doing the task: ${file}`;
+}
+
 /**
  * Child system prompt in the order preflight and every execution path hash:
- * base prompt, skills, memory, refinement overlay. The per-run output path goes
+ * base prompt, optional instruction-file pointer, skills, memory, refinement overlay. The per-run output path goes
  * in the task message, so a child resumed with a new output path keeps the same
  * system prompt and its provider prompt cache. Runtime acceptance prose is
  * appended later and stays outside launch identity.
  */
 export function buildEffectiveSystemPrompt(input: EffectiveSystemPromptInput): string {
 	let prompt = input.agent.systemPrompt?.trim() ?? "";
+	const instructionFile = instructionFilePointer();
+	if (instructionFile) prompt = appendSection(prompt, instructionFile);
 	if (input.resolvedSkills.length > 0) prompt = appendSection(prompt, buildSkillInjection(input.resolvedSkills));
 	const memoryInjection = buildAgentMemoryInjection(input.agent, input.cwd, input.projectTrusted);
 	if (memoryInjection) prompt = appendSection(prompt, memoryInjection);

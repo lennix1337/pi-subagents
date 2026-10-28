@@ -580,6 +580,16 @@ export PI_PACKAGE_DIR=/path/to/pi-coding-agent-package
 
 Pi's own package/assets root. Npm background children receive the detected npm host root as `PI_PACKAGE_DIR`, which overrides an inherited bundled layout; Bun-compiled hosts pass the parent's value through so children keep their release assets.
 
+## `PI_SUBAGENTS_INSTRUCTION_FILE`
+
+Set this environment variable in the Pi process to an absolute file path or a `~/` home-relative path. For example, on Windows in PowerShell:
+
+```powershell
+$env:PI_SUBAGENTS_INSTRUCTION_FILE = "$HOME\.codex-shared\CODING_STANDARDS.md"
+```
+
+For each locally assembled child system prompt, pi-subagents checks that the file can be read and adds an instruction to read its resolved absolute path. An invalid, missing, or unreadable file fails prompt construction with the variable and path in the error; it is never searched for elsewhere. Unset the variable to disable this forwarding. This forwards only the pointer, not global AGENTS instructions, and does not change `inheritGlobalContext`. Use a path available to the child; a local path is not automatically translated for remote machines.
+
 ## `PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT`
 
 ```bash
