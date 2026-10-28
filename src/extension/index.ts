@@ -899,7 +899,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		fleetStatus?.refresh();
 	};
 	const eventUnsubscribes = [
-		registerSelfReloadGuard(pi.events, () => state.currentSessionId, () => hasLiveSubagentWork(state) || (state.workflowControllers?.size ?? 0) > 0 || supervisorChannel.hasPendingRequests()),
+		// OptChat asks with Pi's session id; currentSessionId is the session file path whenever one exists.
+		registerSelfReloadGuard(pi.events, () => state.supervisorOwnerSessionId ?? null, () => hasLiveSubagentWork(state) || (state.workflowControllers?.size ?? 0) > 0 || supervisorChannel.hasPendingRequests()),
 		registerRuntimeAgentEventListener(pi),
 		registerInspectorEventListener(pi),
 		pi.events.on(SUBAGENT_ASYNC_STARTED_EVENT, asyncStartedHandler),
