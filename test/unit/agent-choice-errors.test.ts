@@ -43,7 +43,7 @@ describe("agent choice errors at launch", () => {
 			]) {
 				const result = await launch(params);
 				assert.equal(result.isError, true);
-				assert.match(text(result), /PI_SUBAGENTS_INSTRUCTION_FILE cannot be validated/);
+				assert.match(text(result), /PI_SUBAGENTS_INSTRUCTION_FILE cannot be delivered/);
 				assert.deepEqual(fs.readdirSync(tempProject), []);
 			}
 		} finally {

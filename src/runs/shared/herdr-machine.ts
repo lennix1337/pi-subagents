@@ -274,7 +274,7 @@ export const PLACED_RESTORE_UNSUPPORTED = "Pane-native remote Pi does not suppor
 
 export function formatInstructionFilePlacementError(machine: string | undefined): string | undefined {
 	if (machine === undefined || process.env.PI_SUBAGENTS_INSTRUCTION_FILE === undefined) return undefined;
-	return `PI_SUBAGENTS_INSTRUCTION_FILE cannot be validated on machine '${machine}'. Run locally, or unset PI_SUBAGENTS_INSTRUCTION_FILE and provide the required instructions on the target separately.`;
+	return `PI_SUBAGENTS_INSTRUCTION_FILE cannot be delivered to machine '${machine}' by pane-native transport. Run locally, or unset PI_SUBAGENTS_INSTRUCTION_FILE and provide the required instructions on the target separately.`;
 }
 
 export function formatHerdrMachineRunnerUnsupported(input: {

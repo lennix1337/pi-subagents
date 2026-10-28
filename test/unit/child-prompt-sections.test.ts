@@ -94,16 +94,16 @@ describe("child provider system prompt", () => {
 	}
 
 	for (const role of ["worker", "reviewer"] as const) {
-		it(`forwards a readable configured instruction file to the default ${role} without global context`, async () => {
+		it(`forwards configured instruction content to the default ${role} without global context`, async () => {
 			const file = path.join(root, "shared standards.md");
 			fs.writeFileSync(file, "standards fixture");
 			const previous = process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
 			process.env.PI_SUBAGENTS_INSTRUCTION_FILE = file;
 			try {
 				const [prompt] = await providerPrompts({ role, flags: { inheritProjectContext: true, inheritGlobalContext: false, inheritSkills: false } });
-				assert.ok(prompt!.includes(file), "provider prompt contains the absolute file path");
+				assert.ok(prompt!.includes(`Configured instruction file (${file}):\nstandards fixture`), "provider prompt contains labeled source content");
 				assert.doesNotMatch(prompt!, /GLOBAL-CONTEXT-MARKER/);
-				assert.equal(fs.readFileSync(file, "utf8"), "standards fixture");
+				assert.doesNotMatch(prompt!, /Read the instruction file before doing the task/);
 			} finally {
 				if (previous === undefined) delete process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
 				else process.env.PI_SUBAGENTS_INSTRUCTION_FILE = previous;
@@ -145,6 +145,10 @@ console.log(buildEffectiveSystemPrompt({ agent: { name: 'worker', systemPrompt: 
 			assert.throws(() => buildEffectiveSystemPrompt({ agent, resolvedSkills: [], cwd: repo }), /PI_SUBAGENTS_INSTRUCTION_FILE must be an absolute path/);
 			process.env.PI_SUBAGENTS_INSTRUCTION_FILE = root;
 			assert.throws(() => buildEffectiveSystemPrompt({ agent, resolvedSkills: [], cwd: repo }), /Cannot read PI_SUBAGENTS_INSTRUCTION_FILE/);
+			const invalidUtf8 = path.join(root, "invalid-utf8.md");
+			fs.writeFileSync(invalidUtf8, Buffer.from([0xff]));
+			process.env.PI_SUBAGENTS_INSTRUCTION_FILE = invalidUtf8;
+			assert.throws(() => buildEffectiveSystemPrompt({ agent, resolvedSkills: [], cwd: repo }), /PI_SUBAGENTS_INSTRUCTION_FILE.*UTF-8/);
 		} finally {
 			if (previous === undefined) delete process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
 			else process.env.PI_SUBAGENTS_INSTRUCTION_FILE = previous;

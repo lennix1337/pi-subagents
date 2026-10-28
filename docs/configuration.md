@@ -588,7 +588,7 @@ Set this environment variable in the Pi process to an absolute file path or a `~
 $env:PI_SUBAGENTS_INSTRUCTION_FILE = "$HOME\.codex-shared\CODING_STANDARDS.md"
 ```
 
-For each locally assembled child system prompt, pi-subagents checks that the file can be read and adds an instruction to read its resolved absolute path. An invalid, missing, or unreadable file fails prompt construction with the variable and path in the error; it is never searched for elsewhere. Unset the variable to disable this forwarding. This forwards only the pointer, not global AGENTS instructions, and does not change `inheritGlobalContext`. Machine-placed launches are rejected while the variable is set because the target cannot validate the local pointer. Run locally, or unset it and provide the required instructions on the target separately.
+For each locally assembled child system prompt, pi-subagents reads the UTF-8 file and includes its content as configured instructions, labeled with its resolved absolute source path. An invalid, missing, unreadable, or non-UTF-8 file fails prompt construction with the variable and path in the error; it is never searched for elsewhere. Unset the variable to disable this forwarding. This forwards only the configured file, not global AGENTS instructions, and does not change `inheritGlobalContext`. Machine-placed launches are rejected while the variable is set because pane-native transport does not forward the parent's prompt. Run locally, or unset it and provide the required instructions on the target separately.
 
 ## `PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT`
 

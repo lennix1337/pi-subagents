@@ -55,7 +55,7 @@ describe("async runner execution", () => {
 				const id = `instruction-single-${index}-${Date.now()}`;
 				const result = await executeAsyncSingle(id, { ...base, agent: "worker", task: "Review", ...input });
 				assert.equal(result.isError, true);
-				assert.match(result.content[0]?.text ?? "", /PI_SUBAGENTS_INSTRUCTION_FILE.*cannot.*validat/iu);
+				assert.match(result.content[0]?.text ?? "", /PI_SUBAGENTS_INSTRUCTION_FILE.*cannot.*deliver/iu);
 				assert.equal(fs.existsSync(path.join(DIRS.async, id)), false);
 			}
 			for (const [index, chain] of [
@@ -66,7 +66,7 @@ describe("async runner execution", () => {
 				const progressDir = path.join(root, `progress-${index}`);
 				const result = await executeAsyncChain(id, { ...base, chain, agents: [agent("worker")], progressDir });
 				assert.equal(result.isError, true);
-				assert.match(result.content[0]?.text ?? "", /PI_SUBAGENTS_INSTRUCTION_FILE.*cannot.*validat/iu);
+				assert.match(result.content[0]?.text ?? "", /PI_SUBAGENTS_INSTRUCTION_FILE.*cannot.*deliver/iu);
 				assert.equal(fs.existsSync(path.join(DIRS.async, id)), false);
 				assert.equal(fs.existsSync(progressDir), false);
 			}
