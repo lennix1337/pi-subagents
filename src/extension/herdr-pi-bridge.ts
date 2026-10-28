@@ -12,10 +12,11 @@ import { buildSkillInjection, resolveSkills } from "../agents/skills.ts";
 import { buildAgentMemoryInjection } from "../agents/agent-memory.ts";
 import { appendAgentRefinementOverlay } from "../agents/agent-refinements.ts";
 import { rewriteSubagentPrompt } from "../runs/shared/subagent-prompt-runtime.ts";
+import { assertNoToolModifierEntries } from "../runs/shared/child-tool-plan.ts";
 import { resolveExistingReadPaths } from "../shared/settings.ts";
 import { MODEL_ONLY_TOOL } from "../shared/extension-context.ts";
 
-interface PendingRequest { operation: "prompt" | "steer" | "follow-up" | "abort" | "supervisor-reply"; text?: string; supervisorId?: string }
+interface PendingRequest { operation: "prompt" | "steer" | "follow-up" | "abort" | "supervisor-reply"; text?: string; supervisorId?: string; error?: string }
 interface BridgeContext {
 	isIdle(): boolean;
 	hasPendingMessages(): boolean;
@@ -43,6 +44,7 @@ export function resolveRemoteHerdrResources(cwd: string, resources: { agent: str
 	const reads = resources.reads === undefined ? agent.defaultReads ?? false : resources.reads; const readPaths = Array.isArray(reads) ? resolveExistingReadPaths(reads, cwd) : [];
 	const basePrompt = `${agent.systemPrompt}${buildAgentMemoryInjection(agent, cwd, projectTrusted)}${skillPrompt ? `\n\n${skillPrompt}` : ""}${readPaths.length ? `\n\n[Read from: ${readPaths.join(", ")}]` : ""}`;
 	const systemPrompt = projectTrusted === false ? basePrompt : appendAgentRefinementOverlay(basePrompt, { cwd, agentName: agent.name });
+	assertNoToolModifierEntries(agent.name, agent.tools ?? []);
 	const denied = new Set(agent.excludeTools ?? []); const tools = (agent.tools === undefined ? remoteDefaultTools : agent.tools).filter((tool) => !denied.has(tool) && (!resources.toolCeiling || resources.toolCeiling.includes(tool))); if (agent.tools === undefined && !tools.length) throw new Error(`Remote agent '${agent.name}' resolved no default active tools within the inherited ceiling.`);
 	return { agent: agent.name, skills: names, tools, systemPrompt, inheritProjectContext: agent.inheritProjectContext, inheritGlobalContext: agent.inheritGlobalContext, inheritSkills: agent.inheritSkills };
 }
@@ -66,7 +68,7 @@ export default function registerHerdrPiBridge(pi: ExtensionAPI): void {
 	let resolvedContextPolicy: { agent: string; inheritProjectContext: boolean; inheritGlobalContext: boolean; inheritSkills: boolean } | undefined;
 	let configured = false;
 	const pending = new Map<string, PendingRequest>();
-	const supervisor = new Map<string, { reason: "need_decision" | "interview_request" | "progress_update"; resolve(answer: string): void }>();
+	const supervisor = new Map<string, { reason: "need_decision" | "interview_request" | "progress_update"; resolve(answer: string): void; reject(error: Error): void }>();
 	let evidenceCursor = 0; let journalBytes = 0; const journal: HerdrPiFrame[] = [];
 	const send = (frame: { type: string; [key: string]: unknown }) => {
 		const record = { protocol: HERDR_PI_PROTOCOL, runId, ...frame, cursor: ++evidenceCursor } as HerdrPiFrame; const size = Buffer.byteLength(JSON.stringify(record)); journal.push(record); journalBytes += size; while (journal.length > 512 || journalBytes > 8 * 1024 * 1024) { const removed = journal.shift(); if (removed) journalBytes -= Buffer.byteLength(JSON.stringify(removed)); }
@@ -87,8 +89,8 @@ export default function registerHerdrPiBridge(pi: ExtensionAPI): void {
 			if (input.reason !== "interview_request" && !input.message?.trim()) throw new Error("message is required for supervisor decisions and progress updates.");
 			const id = `sup_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 			send({ type: "supervisor-request", requestId: id, reason: input.reason, message: input.message?.slice(0, 65_536) ?? "", ...(input.interview !== undefined ? { interview: input.interview } : {}), expectsReply: input.reason !== "progress_update", nativeSessionId });
-			if (input.reason === "progress_update") { await new Promise<string>((resolve) => supervisor.set(id, { reason: input.reason, resolve })); return { content: [{ type: "text", text: "Supervisor progress update queued." }], details: { delivered: true, requestId: id, reason: input.reason } }; }
-			const reason = input.reason as "need_decision" | "interview_request"; const answer = await new Promise<string>((resolve) => supervisor.set(id, { reason, resolve })); const details: Record<string, unknown> = { requestId: id, reason }; if (reason === "interview_request") try { details.structuredReply = JSON.parse(answer.replace(/^```(?:json)?\s*|\s*```$/giu, "")); } catch { details.structuredReplyParseError = "Supervisor interview reply was not valid JSON."; }
+			if (input.reason === "progress_update") { await new Promise<string>((resolve, reject) => supervisor.set(id, { reason: input.reason, resolve, reject })); return { content: [{ type: "text", text: "Supervisor progress update queued." }], details: { delivered: true, requestId: id, reason: input.reason } }; }
+			const reason = input.reason as "need_decision" | "interview_request"; const answer = await new Promise<string>((resolve, reject) => supervisor.set(id, { reason, resolve, reject })); const details: Record<string, unknown> = { requestId: id, reason }; if (reason === "interview_request") try { details.structuredReply = JSON.parse(answer.replace(/^```(?:json)?\s*|\s*```$/giu, "")); } catch { details.structuredReplyParseError = "Supervisor interview reply was not valid JSON."; }
 			return { content: [{ type: "text", text: `**Reply from supervisor:**\n${answer}` }], details };
 		},
 	});
@@ -107,7 +109,7 @@ export default function registerHerdrPiBridge(pi: ExtensionAPI): void {
 		else {
 			const entry = request.supervisorId ? supervisor.get(request.supervisorId) : undefined;
 			if (!entry) throw new Error("Unknown supervisor request.");
-			supervisor.delete(request.supervisorId!); entry.resolve(request.text ?? "");
+			supervisor.delete(request.supervisorId!); if (request.error !== undefined) entry.reject(new Error(request.error)); else entry.resolve(request.text ?? "");
 		}
 		send({ type: "control-ack", requestId, operation: request.operation, nativeSessionId });
 	};
@@ -163,7 +165,8 @@ export default function registerHerdrPiBridge(pi: ExtensionAPI): void {
 					const operation = frame.operation;
 					if (!(["prompt", "steer", "follow-up", "abort", "supervisor-reply"] as unknown[]).includes(operation)) throw new Error("Unsupported bridge operation.");
 					const text = frame.text; if (text !== undefined && (typeof text !== "string" || Buffer.byteLength(text) > 256 * 1024)) throw new Error("Bridge request text is invalid or too large.");
-					pending.set(frame.requestId, { operation: operation as PendingRequest["operation"], ...(text !== undefined ? { text } : {}), ...(typeof frame.supervisorId === "string" ? { supervisorId: frame.supervisorId } : {}) });
+					const error = frame.error; if (error !== undefined && (operation !== "supervisor-reply" || typeof error !== "string" || Buffer.byteLength(error) > 256 * 1024)) throw new Error("Bridge supervisor error is invalid or too large.");
+					pending.set(frame.requestId, { operation: operation as PendingRequest["operation"], ...(text !== undefined ? { text } : {}), ...(typeof frame.supervisorId === "string" ? { supervisorId: frame.supervisorId } : {}), ...(error !== undefined ? { error } : {}) });
 					send({ type: "prepared", requestId: frame.requestId, nativeSessionId });
 				}
 			} catch (error) { socket.destroy(error as Error); }

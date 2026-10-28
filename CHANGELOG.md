@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fork integration
+
+- Add operator-approved remote Mac/Rex placement over SSH and automatic workflow recovery on session reopen. Preserve ownership, project trust, once-only claims and current admission checks. Native Windows placement remains unsupported; use a POSIX coordinator such as WSL. No live Mac or provider validation is implied.
+- Selectively backport upstream safety, prompt-cache projection, child settlement, session identity, option validation and frontmatter fixes through `2cab20f8`, plus `undici` 8.12.3. Preserve this fork's trust, supervision, notification, reload and tool-budget decisions. Operator-approved recovery and remote placement are included separately, with automatic host-command replay refused. See [the selection and exclusions](docs/upstream-selection.md).
+
 ### Added
 
 - `machine: "local"` runs a native Pi child in a new background tab of your own Rex session, driven through the same bridge as a Herdr-placed Pi (prompt, steer, follow-up, abort, `contact_supervisor`, results). It fails before launch when the parent Pi is not running inside Rex, and rejects Claude Code, Codex, Cursor, and generic `external-cli` agents. A finished child keeps its tab open, with the idle Pi, until you close it; an aborted or stopped child's tab is closed, and is reported closed only after Rex confirms it is gone. See [docs/agents.md](docs/agents.md#running-a-pi-child-in-a-rex-pane-on-this-machine).

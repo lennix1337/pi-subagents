@@ -18,6 +18,7 @@ import type { SteerDeliveryMode } from "../runs/background/control-channel.ts";
 import { stopAsyncRun } from "../runs/foreground/async-stop-action.ts";
 import { resolveWorkflowForegroundSteeringTarget, steerWorkflowForegroundTarget } from "../runs/foreground/workflow-foreground-steering.ts";
 import { contextModeBadge, contextModeLabel } from "../runs/shared/context-mode.ts";
+import { foregroundChildStateLabel } from "../runs/foreground/foreground-history.ts";
 import { FLEET_STATUS_WIDGET_KEY, reportFleetWarning } from "./fleet-status.ts";
 import { readFleetTranscript, renderFleetTranscript, type FleetTranscript } from "./fleet-transcript.ts";
 import { runningTone } from "./running-tone.ts";
@@ -278,6 +279,7 @@ export function collectFleetSnapshot(
 				entryLimit: MAX_FLEET_HISTORY_CANDIDATES,
 				resultsDir: options.resultsDir ?? DIRS.results,
 				reconcile: false,
+				onCorruptStatus: (warning) => reportFleetWarning(state, warning),
 			}).filter((run) => !trackedIds.has(run.id));
 			runs = [...trackedRuns, ...history];
 		} else {
@@ -499,7 +501,7 @@ function foregroundRecentDetail(item: Extract<FleetItem, { kind: "foreground-rec
 	const lines = [
 		`Run: ${item.runId}`,
 		"Source: foreground",
-		`State: ${child.status}`,
+		`State: ${foregroundChildStateLabel(run, child)}`,
 		`Mode: ${run.mode}`,
 		`Child: ${child.index} (${child.agent})${contextModeLabel(child.context) ? ` ${contextModeLabel(child.context)}` : ""}`,
 		modelThinking ? `Model: ${modelThinking}` : undefined,
