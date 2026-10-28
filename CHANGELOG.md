@@ -4,7 +4,8 @@
 
 ### Fork integration
 
-- Selectively backport upstream safety, prompt-cache projection, child settlement, session identity, option validation and frontmatter fixes through `2cab20f8`, plus `undici` 8.12.3. Preserve this fork's trust, supervision, notification, reload and tool-budget decisions; do not enable automatic workflow revival or remote Mac placement. See [the selection and exclusions](docs/upstream-selection.md).
+- Add operator-approved remote Mac/Rex placement over SSH and automatic workflow recovery on session reopen. Preserve ownership, project trust, once-only claims and current admission checks. Native Windows placement remains unsupported; use a POSIX coordinator such as WSL. No live Mac or provider validation is implied.
+- Selectively backport upstream safety, prompt-cache projection, child settlement, session identity, option validation and frontmatter fixes through `2cab20f8`, plus `undici` 8.12.3. Preserve this fork's trust, supervision, notification, reload and tool-budget decisions. Operator-approved recovery and remote placement are included separately, with automatic host-command replay refused. See [the selection and exclusions](docs/upstream-selection.md).
 
 ### Added
 

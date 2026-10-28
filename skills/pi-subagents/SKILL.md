@@ -36,6 +36,8 @@ matter. The brief fields and routing rules are in `guide delegation/context-and-
 | JavaScript control flow or data-dependent branching; sequence, fanout, retry, rolling fanout, or aggregation | a workflow script with `runs.run(...)` / `runs.all(...)` |
 | A broad plan split into visible narrow stages per lane | a workflow script with `runs.lanes([{ key, stages: [...] }])` |
 | Independent worktree or repository lanes | `references/multi-lane-orchestration.md` |
+| Remote Mac over SSH/Tailscale | [Remote placement prerequisites](../../docs/agents.md#running-a-pi-child-in-a-rex-pane-on-another-mac); POSIX coordinator, user-owned host allowlist, same-version remote Pi/Rex |
+| Reopen an interrupted workflow | [Workflow recovery](../../docs/workflows.md); owning session only, preserve claims and current admission, inspect uncertain effects before any manual relaunch |
 | Council of advisors | `../council-mode/SKILL.md` |
 | Management, status, steering, authoring, or inspection | `action` |
 

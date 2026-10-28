@@ -144,8 +144,10 @@ function sessionDirs(asyncDirRoot: string, sessionId: string | undefined): strin
 	}
 }
 
-function recentMarkerFiles(dirs: string[], limit: number): string[] {
+function recentMarkerFiles(dirs: string[], limit: number, endedAfter?: number): string[] {
 	return dirs.flatMap(markerFiles)
+		// The name starts with the run's end time, so an old run is skipped without reading its marker.
+		.filter((marker) => endedAfter === undefined || !(Number(marker.name.slice(0, TIMESTAMP_WIDTH)) < endedAfter))
 		.sort((left, right) => right.name.localeCompare(left.name))
 		.slice(0, limit)
 		.map((marker) => path.join(marker.dir, marker.name));
@@ -177,9 +179,9 @@ export function readTerminalRunToolCallIndex(asyncDirRoot: string, toolCallId: s
 	return runIds;
 }
 
-export function readRecentTerminalRunIndex(asyncDirRoot: string, options: { sessionId?: string; limit?: number; onCorruptStatus?: (warning: string) => void } = {}): string[] {
+export function readRecentTerminalRunIndex(asyncDirRoot: string, options: { sessionId?: string; limit?: number; endedAfter?: number; onCorruptStatus?: (warning: string) => void } = {}): string[] {
 	const limit = options.limit === undefined ? Number.POSITIVE_INFINITY : Math.max(0, Math.floor(options.limit));
-	const candidates = recentMarkerFiles(sessionDirs(asyncDirRoot, options.sessionId), limit);
+	const candidates = recentMarkerFiles(sessionDirs(asyncDirRoot, options.sessionId), limit, options.endedAfter);
 	const runIds: string[] = [];
 	const seen = new Set<string>();
 	for (const marker of candidates) {
