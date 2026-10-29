@@ -1625,6 +1625,29 @@ describe("subagent async widget rendering", () => {
 		assert.doesNotMatch(row, /reviewer \(/);
 	});
 
+	it("keeps turns and tool uses visible before the model badge on narrow widgets", () => {
+		const lines = buildWidgetLines([
+			{
+				asyncId: "run-1",
+				asyncDir: "/tmp/1",
+				status: "running",
+				mode: "parallel",
+				agents: ["worker", "worker"],
+				activeParallelGroup: true,
+				runningSteps: 2,
+				completedSteps: 0,
+				stepsTotal: 2,
+				steps: [
+					{ agent: "worker", status: "running", turnCount: 61, toolCount: 63, model: "anthropic-account-2/claude-sonnet-5-5", thinking: "high" },
+					{ agent: "worker", status: "running", turnCount: 59, toolCount: 65, model: "anthropic-account-2/claude-sonnet-5-5", thinking: "high" },
+				],
+			},
+		], theme, 90);
+
+		const row = lines.find((line) => line.includes("worker ") && line.includes("running") && line.includes("61 turns")) ?? "";
+		assert.match(row, /running \u00b7 61 turns \u00b7 63 tool uses/);
+	});
+
 	it("shows inline live detail for expanded async parallel widget rows", () => {
 		const now = Date.now();
 		const job = {
