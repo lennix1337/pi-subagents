@@ -70,6 +70,13 @@ export function childThinkingLevel(...sources: Array<{ thinking?: string } | und
 	return undefined;
 }
 
+/** `provider/id` into its parts (the id may itself contain `/`); undefined without both parts. */
+export function splitProviderModel(value: string): { provider: string; id: string } | undefined {
+	const slash = value.indexOf("/");
+	if (slash <= 0 || slash === value.length - 1) return undefined;
+	return { provider: value.slice(0, slash), id: value.slice(slash + 1) };
+}
+
 export function splitKnownThinkingSuffix(model: string): { baseModel: string; thinkingSuffix: string } {
 	const colonIdx = model.lastIndexOf(":");
 	if (colonIdx === -1) return { baseModel: model, thinkingSuffix: "" };

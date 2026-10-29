@@ -4,6 +4,7 @@ import type { WatchdogEndpointConfig } from "./types.ts";
 import {
 	getSupportedThinkingLevels,
 	splitKnownThinkingSuffix,
+	splitProviderModel,
 	THINKING_LEVELS,
 	toModelInfo,
 	type ModelInfo,
@@ -58,12 +59,6 @@ function fullModelId(model: Pick<ModelInfo, "provider" | "id">): string {
 
 function modelRegistryEntries(ctx: ExtensionContext): ModelInfo[] {
 	return ctx.modelRegistry.getAvailable().map(toModelInfo);
-}
-
-function splitProviderModel(value: string): { provider: string; id: string } | undefined {
-	const slashIndex = value.indexOf("/");
-	if (slashIndex <= 0 || slashIndex === value.length - 1) return undefined;
-	return { provider: value.slice(0, slashIndex), id: value.slice(slashIndex + 1) };
 }
 
 function assertSupportedThinking(value: string, source: string): ThinkingLevel {

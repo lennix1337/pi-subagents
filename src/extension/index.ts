@@ -24,6 +24,7 @@ import { resolveGlobalNpmRoot } from "../agents/global-npm-root.ts";
 import { buildAdvertisedAgentCatalog, buildAdvertisedAgentPrompt } from "../agents/advertised-agent-prompt.ts";
 import { clearRuntimeAgentsForPi, listRuntimeAgentConfigs, mergeRuntimeAgents } from "../agents/runtime-agent-registry.ts";
 import { registerRuntimeAgentEventListener } from "../agents/runtime-agent-events.ts";
+import { installModelRouteBus } from "../shared/model-route.ts";
 import { ensureAccessibleDir } from "../shared/accessible-dir.ts";
 import { cleanupAllArtifactDirs, cleanupOldArtifacts, getArtifactsDir } from "../shared/artifacts.ts";
 import { resolveCurrentSessionId } from "../shared/session-identity.ts";
@@ -903,6 +904,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		registerSelfReloadGuard(pi.events, () => state.supervisorOwnerSessionId ?? null, () => hasLiveSubagentWork(state) || (state.workflowControllers?.size ?? 0) > 0 || supervisorChannel.hasPendingRequests()),
 		registerRuntimeAgentEventListener(pi),
 		registerInspectorEventListener(pi),
+		installModelRouteBus(pi.events),
 		pi.events.on(SUBAGENT_ASYNC_STARTED_EVENT, asyncStartedHandler),
 		pi.events.on(SUBAGENT_ASYNC_COMPLETE_EVENT, asyncCompleteHandler),
 		pi.events.on(SUBAGENT_PROCESS_TERMINAL_EVENT, () => {

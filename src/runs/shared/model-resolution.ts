@@ -1,12 +1,16 @@
 import { splitKnownThinkingSuffix as splitThinkingSuffix, type ModelInfo as AvailableModelInfo } from "../../shared/model-info.ts";
 import { checkModelScope, SCOPED_PATTERN, type ModelScopeCheckRule, type ModelScopeViolation, type ModelSource } from "./model-scope.ts";
 import { editDistance } from "../../shared/edit-distance.ts";
+import { routeLaunchModel, type LaunchModelRoute } from "../../shared/model-route.ts";
 
 export type { AvailableModelInfo };
 
 export interface ModelSelectionEvidence {
 	model?: string;
 	requestedModel?: string;
+	/** Set when the account manager moved a configured model off a spent account. */
+	routedFrom?: string;
+	routeReason?: string;
 }
 
 export { splitThinkingSuffix };
@@ -464,6 +468,18 @@ export function resolveModelSelection(
 	preferredProvider?: string,
 	options?: ResolveModelSelectionOptions,
 ): ModelSelectionEvidence {
+	const selection = selectConfiguredModel(model, availableModels, preferredProvider, options);
+	const origin = options?.origin ?? (options?.primaryModelFromParent ? "inherited" : "configured");
+	const route = selection.model && origin !== "explicit" ? acceptableRoute(selection.model, availableModels, configuredScopes(options?.scope)) : undefined;
+	return route ? { ...selection, model: route.model, routedFrom: route.from, routeReason: route.reason } : selection;
+}
+
+function selectConfiguredModel(
+	model: string | undefined,
+	availableModels: AvailableModelInfo[] | undefined,
+	preferredProvider?: string,
+	options?: ResolveModelSelectionOptions,
+): ModelSelectionEvidence {
 	if (!model) throwForUnresolvedEnforcedReservedScope(options?.scope, true);
 	const origin = options?.origin ?? (options?.primaryModelFromParent ? "inherited" : "configured");
 	const requestedModel = origin === "inherited" ? undefined : model;
@@ -480,6 +496,19 @@ export function resolveModelSelection(
 		enforceModelScopes(resolved, scopes, "inherited", options?.onWarn);
 	}
 	return { ...(resolved ? { model: resolved } : {}), ...(requestedModel ? { requestedModel } : {}) };
+}
+
+/**
+ * A configured or inherited model follows the parent's account failover; an explicit pick never
+ * moves. The replacement must be a model this session knows and inside every enforced scope.
+ */
+function acceptableRoute(model: string, availableModels: AvailableModelInfo[] | undefined, scopes: ModelScopeCheckRule[]): LaunchModelRoute | undefined {
+	const route = routeLaunchModel(model);
+	if (!route) return undefined;
+	const base = splitThinkingSuffix(route.model).baseModel;
+	if (availableModels?.length && !availableModels.some((entry) => entry.fullId === base)) return undefined;
+	if (scopes.some((scope) => scope.enforce === true && checkModelScope(route.model, scope, "inherited") !== undefined)) return undefined;
+	return route;
 }
 /** Context-overflow signals used to surface a clear input-too-large error. */
 const CONTEXT_OVERFLOW_PATTERNS = [
