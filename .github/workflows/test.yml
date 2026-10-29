@@ -14,8 +14,65 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Picks the jobs this change needs (.github/scripts/ci-scope.mjs): a docs or single-test
+  # change skips the full cross-platform matrix; anything uncertain runs everything.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      full: ${{ steps.scope.outputs.full }}
+      typecheck: ${{ steps.scope.outputs.typecheck }}
+      focused: ${{ steps.scope.outputs.focused }}
+      unit: ${{ steps.scope.outputs.unit }}
+      integration: ${{ steps.scope.outputs.integration }}
+      calendar: ${{ steps.scope.outputs.calendar }}
+      worktree: ${{ steps.scope.outputs.worktree }}
+      schedule: ${{ steps.scope.outputs.schedule }}
+      bun: ${{ steps.scope.outputs.bun }}
+      loader: ${{ steps.scope.outputs.loader }}
+      runtime: ${{ steps.scope.outputs.runtime }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+      - id: scope
+        env:
+          CI_BEFORE: ${{ github.event.before }}
+        run: node .github/scripts/ci-scope.mjs
+
+  focused:
+    name: focused (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.focused == 'true'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Install devDependencies
+        run: npm ci --ignore-scripts
+      - name: Typecheck
+        if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.typecheck == 'true'
+        run: npm run typecheck
+      - name: Changed unit tests
+        if: needs.changes.outputs.unit != ''
+        run: node --experimental-strip-types --import ./test/support/isolated-temp-root.mjs --test --test-concurrency=2 ${{ needs.changes.outputs.unit }}
+      - name: Changed integration tests
+        if: needs.changes.outputs.integration != ''
+        env:
+          NODE_DISABLE_COMPILE_CACHE: '1'
+        run: node --experimental-strip-types --import ./test/support/register-loader.mjs --test --test-concurrency=2 ${{ needs.changes.outputs.integration }}
+
   test:
     name: test (${{ matrix.label }})
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     strategy:
       matrix:
         # Windows keeps two files at a time per runner (#2207); shards add parallelism across runners instead.
@@ -71,6 +128,8 @@ jobs:
           if-no-files-found: ignore
 
   calendar-timezones:
+    needs: changes
+    if: needs.changes.outputs.calendar == 'true'
     runs-on: macos-latest
     timeout-minutes: 5
     steps:
@@ -83,6 +142,8 @@ jobs:
         run: node --experimental-strip-types --import ./test/support/isolated-temp-root.mjs --test test/unit/calendar-schedule.test.ts test/unit/scheduled-runs.test.ts
 
   worktree-cleanup-recovery:
+    needs: changes
+    if: needs.changes.outputs.worktree == 'true'
     runs-on: macos-latest
     timeout-minutes: 10
     steps:
@@ -95,6 +156,8 @@ jobs:
         run: node --experimental-strip-types --import ./test/support/isolated-temp-root.mjs --test test/unit/worktree-cleanup-plan.test.ts test/unit/worktree-lock.test.ts test/unit/parallel-handoff.test.ts
 
   schedule-claim-contention:
+    needs: changes
+    if: needs.changes.outputs.schedule == 'true'
     runs-on: macos-latest
     timeout-minutes: 5
     steps:
@@ -107,6 +170,8 @@ jobs:
         run: node --experimental-strip-types --import ./test/support/isolated-temp-root.mjs --test test/unit/schedule-claim-preservation.test.ts
 
   native-nested-wait:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
     strategy:
       matrix:
         os: [macos-latest, windows-latest]
@@ -128,6 +193,8 @@ jobs:
         run: node --experimental-strip-types --import ./test/support/isolated-temp-root.mjs --import ./test/support/native-peer-loader.mjs --test test/integration/nested-async-wait.test.ts
 
   native-mcp-readiness:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -149,6 +216,8 @@ jobs:
         run: node --experimental-strip-types --import ./test/support/isolated-temp-root.mjs --import ./test/support/native-peer-loader.mjs --test test/integration/builtin-mcp-readiness.test.ts
 
   bun-workflow-script:
+    needs: changes
+    if: needs.changes.outputs.bun == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -167,6 +236,8 @@ jobs:
           --test-name-pattern "portable workflow parity|regex literals|template expressions|portable plain helper|nested plain helper|unawaited child launch|unawaited runs.all|directly returned runs.run|docs-style awaited|awaited native Promise|Promise.resolve|Promise.all|then chain|new Promise wrapper"
 
   runner-loader-capability:
+    needs: changes
+    if: needs.changes.outputs.loader == 'true'
     strategy:
       matrix:
         include:
@@ -185,6 +256,8 @@ jobs:
       - run: node test/smoke/runner-loader-capability.mjs ${{ matrix.loader }}
 
   clean-install:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -210,6 +283,8 @@ jobs:
             ${{ runner.temp }}/clean-install-smoke-${{ matrix.pi-version }}/extension/package-lock.json
   official-standalone:
     # The official Linux x64 release only; 22.04 permits bubblewrap namespaces.
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
@@ -272,3 +347,17 @@ jobs:
           path: ${{ runner.temp }}/standalone-evidence.tar.gz
           if-no-files-found: error
           retention-days: 7
+
+  # The one check branch protection requires: green when every job this change needed passed.
+  ci-ok:
+    if: always()
+    needs: [changes, focused, test, calendar-timezones, worktree-cleanup-recovery, schedule-claim-contention, native-nested-wait, native-mcp-readiness, bun-workflow-script, runner-loader-capability, clean-install, official-standalone]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Every needed job passed
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          node -e 'const bad = JSON.parse(process.env.RESULTS).filter((r) => r !== "success" && r !== "skipped"); if (bad.length) { console.error(`failed or cancelled: ${bad.join(", ")}`); process.exit(1); }'
