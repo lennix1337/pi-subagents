@@ -44,6 +44,23 @@ describe("deriveChildSessionName", () => {
 		assert.ok(name.endsWith("..."));
 	});
 
+	it("names the child by its goal, not the role boilerplate before it", () => {
+		assert.equal(
+			deriveChildSessionName({ agent: "worker", task: "You are a subagent. Don't write memory pages.\n\nGoal: fix the executor restore.\n\nWhere: worktree X" }),
+			"worker: fix the executor restore.",
+		);
+		assert.equal(
+			deriveChildSessionName({ agent: "worker", task: "You are a subagent. Don't write memory pages. Review the cache layer." }),
+			"worker: Review the cache layer.",
+		);
+		assert.equal(deriveChildSessionName({ agent: "scout", task: "Task: map the auth flow" }), "scout: map the auth flow");
+	});
+
+	it("ignores a label deep in the task body", () => {
+		const task = ["Audit the importer.", "a", "b", "c", "d", "Goal: unrelated detail"].join("\n");
+		assert.equal(deriveChildSessionName({ agent: "worker", task }), "worker: Audit the importer. a b c d Goal: unrelated detail");
+	});
+
 	it("returns undefined when there is nothing to name", () => {
 		assert.equal(deriveChildSessionName({}), undefined);
 	});
