@@ -5,7 +5,7 @@ import * as path from "node:path";
 import type { TextContent } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { resolveModelCandidate } from "../runs/shared/model-resolution.ts";
-import { splitKnownThinkingSuffix, toModelInfo } from "./model-info.ts";
+import { splitKnownThinkingSuffix, splitProviderModel, toModelInfo } from "./model-info.ts";
 import { opencodeSessionHeaders } from "./opencode-session-headers.ts";
 import type { ForkContextConfig } from "./types.ts";
 
@@ -413,12 +413,6 @@ export async function pruneForkSessionFile(sessionFile: string, summarize: Summa
 		throw error;
 	}
 	return true;
-}
-
-function splitProviderModel(value: string): { provider: string; id: string } | undefined {
-	const slash = value.indexOf("/");
-	if (slash <= 0 || slash === value.length - 1) return undefined;
-	return { provider: value.slice(0, slash), id: value.slice(slash + 1) };
 }
 
 export async function createPrunedForkSessionWriter(

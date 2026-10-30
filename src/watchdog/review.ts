@@ -5,7 +5,7 @@ import { Type, type Static } from "typebox";
 import { resolveModelCandidate } from "../runs/shared/model-resolution.ts";
 import { agentStreamOptions } from "../shared/agent-stream-options.ts";
 import { opencodeSessionHeaders } from "../shared/opencode-session-headers.ts";
-import { resolveEffectiveThinking, splitKnownThinkingSuffix, THINKING_LEVELS, toModelInfo } from "../shared/model-info.ts";
+import { resolveEffectiveThinking, splitKnownThinkingSuffix, splitProviderModel, THINKING_LEVELS, toModelInfo } from "../shared/model-info.ts";
 import { createWatchdogDiffTool, WATCHDOG_DIFF_TOOL_NAME, type WatchdogDiffBaseline } from "./diff-tool.ts";
 import { loadWatchdogGuidance } from "./guidance.ts";
 import { boundWatchdogReviewText, type WatchdogReviewFunction, type WatchdogReviewRequest } from "./runtime.ts";
@@ -61,12 +61,6 @@ export interface CreateMainWatchdogReviewOptions {
 
 function fullModelId(model: Pick<RegistryModel, "provider" | "id">): string {
 	return `${model.provider}/${model.id}`;
-}
-
-function splitProviderModel(value: string): { provider: string; id: string } | undefined {
-	const slashIndex = value.indexOf("/");
-	if (slashIndex <= 0 || slashIndex === value.length - 1) return undefined;
-	return { provider: value.slice(0, slashIndex), id: value.slice(slashIndex + 1) };
 }
 
 function assertThinkingLevel(value: string, source: string): ThinkingLevel {

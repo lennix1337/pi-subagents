@@ -2350,7 +2350,7 @@ function foregroundStyleWidgetStepLines(
 	const stageIdentity = stageName && stageName !== displayName ? `${stageName} (${displayName})` : stageName ?? displayName;
 	const rowLabel = collapseDetails ? displayName : (options?.rowLabel ?? `${itemTitle} ${index}/${total}: ${itemTitle === "Stage" ? stageIdentity : displayName}`);
 	const rowMarker = options?.rowMarker ? `${options.rowMarker} ` : "";
-	const lines = [`${rowIndent}${rowMarker}${widgetStepGlyph(step.status, theme, widgetStepRunningSeed(step, index - 1), frame, thinking)} ${themeBold(theme, rowLabel)}${contextModeBadge(theme, step.context)} ${theme.fg("dim", "·")} ${status}${modelDisplay}${stats ? ` ${theme.fg("dim", "·")} ${stats}` : ""}`];
+	const lines = [`${rowIndent}${rowMarker}${widgetStepGlyph(step.status, theme, widgetStepRunningSeed(step, index - 1), frame, thinking)} ${themeBold(theme, rowLabel)}${contextModeBadge(theme, step.context)} ${theme.fg("dim", "·")} ${status}${stats ? ` ${theme.fg("dim", "·")} ${stats}` : ""}${modelDisplay}`];
 	const lane = projectAsyncLane(job, step);
 	if (lane) lines.push(...formatLaneProjectionLines(lane, theme, detailIndent));
 	const task = collapseDetails ? singleChildTask(job, step) : compactTaskText(step.description, step.label);
