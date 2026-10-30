@@ -50,6 +50,26 @@ function writeMcpFixture(): void {
 }
 
 describe("public launch contract preflight", () => {
+	it("changes the launch digest when configured instruction file content changes", async () => {
+		const cwd = path.join(tempDir, "repo");
+		fs.mkdirSync(cwd);
+		const file = path.join(tempDir, "instructions.md");
+		const previous = process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
+		process.env.PI_SUBAGENTS_INSTRUCTION_FILE = file;
+		try {
+			fs.writeFileSync(file, "FIRST-CONTENT");
+			const before = await resolveSubagentLaunchContract({ agent: "worker", cwd, runId: "instruction-digest" });
+			fs.writeFileSync(file, "SECOND-CONTENT");
+			const after = await resolveSubagentLaunchContract({ agent: "worker", cwd, runId: "instruction-digest" });
+			assert.ok(before.ok);
+			assert.ok(after.ok);
+			assert.notEqual(before.contract.launchContractDigest, after.contract.launchContractDigest);
+			assert.equal(before.contract.agent.definitionDigest, after.contract.agent.definitionDigest);
+		} finally {
+			if (previous === undefined) delete process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
+			else process.env.PI_SUBAGENTS_INSTRUCTION_FILE = previous;
+		}
+	});
 	beforeEach(() => {
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-preflight-"));
 		previousHome = process.env.HOME;

@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall, getSystemMessageText, type FauxResponseFactory } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { discoverAgents } from "../../src/agents/agents.ts";
+import { buildEffectiveSystemPrompt } from "../../src/runs/shared/effective-system-prompt.ts";
 import { buildInProcessChildLaunch } from "../../src/runs/shared/child-launch.ts";
 import { createDefaultChildSessionFactory } from "../../src/runs/shared/child-session.ts";
 import { createStructuredOutputRuntime } from "../../src/runs/shared/structured-output.ts";
@@ -12,7 +15,7 @@ import { CHILD_FANOUT_BOUNDARY_INSTRUCTIONS, CHILD_SUBAGENT_BOUNDARY_INSTRUCTION
 
 type Flags = { inheritProjectContext: boolean; inheritGlobalContext: boolean; inheritSkills: boolean };
 type Fixture = { globalContext?: boolean; repoContext?: boolean; orchestrationSkill?: boolean };
-type Run = { flags: Flags; fixture?: Fixture; unsetFlags?: boolean; fanout?: boolean; structured?: boolean; prompts?: string[]; toolTurn?: boolean; hooks?: Array<(pi: ExtensionAPI) => void> };
+type Run = { flags: Flags; fixture?: Fixture; unsetFlags?: boolean; fanout?: boolean; structured?: boolean; prompts?: string[]; toolTurn?: boolean; role?: "worker" | "reviewer"; hooks?: Array<(pi: ExtensionAPI) => void> };
 
 const count = (text: string, part: string) => text.split(part).length - 1;
 
@@ -62,9 +65,17 @@ describe("child provider system prompt", () => {
 		faux.setResponses((run.prompts ?? ["Task"]).flatMap(() => run.toolTurn
 			? [reply(fauxAssistantMessage(fauxToolCall("read", { path: "notes.txt" }), { stopReason: "toolUse" })), reply(fauxAssistantMessage("done"))]
 			: [reply(fauxAssistantMessage("done"))]));
+		const agent = run.role ? discoverAgents(repo, "project").agents.find((item) => item.name === run.role) : undefined;
+		if (run.role) {
+			assert.ok(agent, `default ${run.role} must be discovered`);
+			assert.equal(agent.inheritProjectContext, run.flags.inheritProjectContext);
+			assert.equal(agent.inheritGlobalContext, run.flags.inheritGlobalContext);
+			assert.equal(agent.inheritSkills, run.flags.inheritSkills);
+		}
+		const systemPrompt = agent ? buildEffectiveSystemPrompt({ agent, resolvedSkills: [], cwd: repo }) : "Role instructions.";
 		const { session, config } = buildInProcessChildLaunch({
-			host: "parent", cwd: repo, childAgentName: "worker", childIndex: 0, sessionEnabled: false, waitToolEnabled: false,
-			model: "probe/local", systemPrompt: "Role instructions.", systemPromptMode: "append", ...run.flags,
+			host: "parent", cwd: repo, childAgentName: run.role ?? "worker", childIndex: 0, sessionEnabled: false, waitToolEnabled: false,
+			model: "probe/local", systemPrompt, systemPromptMode: agent?.systemPromptMode ?? "append", ...run.flags,
 			...(run.fanout ? { allowNestedSubagents: true } : {}),
 			...(run.structured ? { structuredOutput: createStructuredOutputRuntime({ type: "object" }, repo) } : {}),
 		});
@@ -81,6 +92,68 @@ describe("child provider system prompt", () => {
 		}
 		return requests;
 	}
+
+	for (const role of ["worker", "reviewer"] as const) {
+		it(`forwards configured instruction content to the default ${role} without global context`, async () => {
+			const file = path.join(root, "shared standards.md");
+			fs.writeFileSync(file, "standards fixture");
+			const previous = process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
+			process.env.PI_SUBAGENTS_INSTRUCTION_FILE = file;
+			try {
+				const [prompt] = await providerPrompts({ role, flags: { inheritProjectContext: true, inheritGlobalContext: false, inheritSkills: false } });
+				assert.ok(prompt!.includes(`Configured instruction file (${file}):\nstandards fixture`), "provider prompt contains labeled source content");
+				assert.doesNotMatch(prompt!, /GLOBAL-CONTEXT-MARKER/);
+				assert.doesNotMatch(prompt!, /Read the instruction file before doing the task/);
+			} finally {
+				if (previous === undefined) delete process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
+				else process.env.PI_SUBAGENTS_INSTRUCTION_FILE = previous;
+			}
+		});
+	}
+
+	it("fails actionably when the configured instruction file is missing", () => {
+		const previous = process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
+		const missing = path.join(root, "missing.md");
+		process.env.PI_SUBAGENTS_INSTRUCTION_FILE = missing;
+		try {
+			const agent = discoverAgents(repo, "project").agents.find((item) => item.name === "worker")!;
+			assert.throws(() => buildEffectiveSystemPrompt({ agent, resolvedSkills: [], cwd: repo }), (error: Error) => error.message.includes("PI_SUBAGENTS_INSTRUCTION_FILE") && error.message.includes(missing));
+		} finally {
+			if (previous === undefined) delete process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
+			else process.env.PI_SUBAGENTS_INSTRUCTION_FILE = previous;
+		}
+	});
+
+	it("resolves a home-relative instruction path using the child process account home", () => {
+		const home = path.join(root, "home");
+		fs.mkdirSync(path.join(home, "instructions"), { recursive: true });
+		const file = path.join(home, "instructions", "standards.md");
+		fs.writeFileSync(file, "standards");
+		const script = `import { buildEffectiveSystemPrompt } from './src/runs/shared/effective-system-prompt.ts';
+console.log(buildEffectiveSystemPrompt({ agent: { name: 'worker', systemPrompt: 'role' }, resolvedSkills: [], cwd: process.cwd(), projectTrusted: false }));`;
+		const output = execFileSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", script], {
+			cwd: process.cwd(), encoding: "utf8", env: { ...process.env, HOME: home, USERPROFILE: home, PI_SUBAGENTS_INSTRUCTION_FILE: "~/instructions/standards.md" },
+		});
+		assert.ok(output.includes(file));
+	});
+
+	it("rejects relative paths and reports read errors", () => {
+		const previous = process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
+		const agent = discoverAgents(repo, "project").agents.find((item) => item.name === "reviewer")!;
+		try {
+			process.env.PI_SUBAGENTS_INSTRUCTION_FILE = "relative.md";
+			assert.throws(() => buildEffectiveSystemPrompt({ agent, resolvedSkills: [], cwd: repo }), /PI_SUBAGENTS_INSTRUCTION_FILE must be an absolute path/);
+			process.env.PI_SUBAGENTS_INSTRUCTION_FILE = root;
+			assert.throws(() => buildEffectiveSystemPrompt({ agent, resolvedSkills: [], cwd: repo }), /Cannot read PI_SUBAGENTS_INSTRUCTION_FILE/);
+			const invalidUtf8 = path.join(root, "invalid-utf8.md");
+			fs.writeFileSync(invalidUtf8, Buffer.from([0xff]));
+			process.env.PI_SUBAGENTS_INSTRUCTION_FILE = invalidUtf8;
+			assert.throws(() => buildEffectiveSystemPrompt({ agent, resolvedSkills: [], cwd: repo }), /PI_SUBAGENTS_INSTRUCTION_FILE.*UTF-8/);
+		} finally {
+			if (previous === undefined) delete process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
+			else process.env.PI_SUBAGENTS_INSTRUCTION_FILE = previous;
+		}
+	});
 
 	it("sends sections that later extensions add to the provider, after the filtered prompt a bridge captured", async () => {
 		const captured: string[] = [];

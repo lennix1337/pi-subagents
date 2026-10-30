@@ -30,6 +30,27 @@ function launch(params: Record<string, unknown>): Promise<{ isError?: boolean; c
 const text = (result: { content: Array<{ text?: string }> }) => result.content.map((part) => part.text ?? "").join("\n");
 
 describe("agent choice errors at launch", () => {
+	it("rejects placed single, parallel and chain launches with a configured instruction file before launch", async () => {
+		const previous = process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
+		const file = path.join(tempHome, "standards.md");
+		fs.writeFileSync(file, "standards");
+		process.env.PI_SUBAGENTS_INSTRUCTION_FILE = file;
+		try {
+			for (const params of [
+				{ agent: "worker", task: "Review", machine: "remote" },
+				{ tasks: [{ agent: "worker", task: "Review", machine: "remote" }] },
+				{ chain: [{ agent: "worker", task: "local" }, { agent: "reviewer", task: "Review", machine: "remote" }] },
+			]) {
+				const result = await launch(params);
+				assert.equal(result.isError, true);
+				assert.match(text(result), /PI_SUBAGENTS_INSTRUCTION_FILE cannot be delivered/);
+				assert.deepEqual(fs.readdirSync(tempProject), []);
+			}
+		} finally {
+			if (previous === undefined) delete process.env.PI_SUBAGENTS_INSTRUCTION_FILE;
+			else process.env.PI_SUBAGENTS_INSTRUCTION_FILE = previous;
+		}
+	});
 	beforeEach(() => {
 		tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "pi-agent-choice-home-"));
 		tempProject = fs.mkdtempSync(path.join(os.tmpdir(), "pi-agent-choice-project-"));

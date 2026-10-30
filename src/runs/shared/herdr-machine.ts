@@ -272,6 +272,11 @@ export function resolveMachinePlacement(input: ResolveHerdrMachinePlacementInput
 /** A placed Pi keeps its transcript on the pane's machine, so it can't start from a local one. */
 export const PLACED_RESTORE_UNSUPPORTED = "Pane-native remote Pi does not support fork, resume, or revival; use fresh context.";
 
+export function formatInstructionFilePlacementError(machine: string | undefined): string | undefined {
+	if (machine === undefined || process.env.PI_SUBAGENTS_INSTRUCTION_FILE === undefined) return undefined;
+	return `PI_SUBAGENTS_INSTRUCTION_FILE cannot be delivered to machine '${machine}' by pane-native transport. Run locally, or unset PI_SUBAGENTS_INSTRUCTION_FILE and provide the required instructions on the target separately.`;
+}
+
 export function formatHerdrMachineRunnerUnsupported(input: {
 	machine?: string;
 	agentName: string;
@@ -280,6 +285,8 @@ export function formatHerdrMachineRunnerUnsupported(input: {
 	worktree?: boolean;
 }): string | undefined {
 	if (input.machine === undefined) return undefined;
+	const instructionFileError = formatInstructionFilePlacementError(input.machine);
+	if (instructionFileError) return instructionFileError;
 	const name = input.machine.trim();
 	let rex: boolean;
 	try { rex = name === REX_LOCAL_MACHINE || userRexMachine(name); } catch (error) { return error instanceof Error ? error.message : String(error); }

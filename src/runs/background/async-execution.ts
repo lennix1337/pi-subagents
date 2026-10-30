@@ -15,7 +15,7 @@ import { childCacheRetentionEnv } from "../../shared/child-cache-retention.ts";
 import { buildEffectiveSystemPrompt } from "../shared/effective-system-prompt.ts";
 import { currentCompletionOwnerId } from "../../shared/completion-owner.ts";
 import { planChildLaunch, projectChainOutputSchemas, resolveStepBehavior, suppressProgressForReadOnlyTask, type ResolvedStepBehavior } from "../shared/child-launch-plan.ts";
-import { formatHerdrMachineRunnerUnsupported, PLACED_RESTORE_UNSUPPORTED, resolveMachinePlacement } from "../shared/herdr-machine.ts";
+import { formatHerdrMachineRunnerUnsupported, formatInstructionFilePlacementError, PLACED_RESTORE_UNSUPPORTED, resolveMachinePlacement } from "../shared/herdr-machine.ts";
 import { applyThinkingSuffix, projectLaunchResolvedChildExtensions, resolvePiLaunchToolPlan } from "../shared/child-tool-plan.ts";
 import { assertClaudeCodeModelScope, isClaudeCodeAdapterId, resolveClaudeCodeOverride, type ClaudeCodeOverride } from "../shared/claude-code-adapter.ts";
 import { injectSingleOutputInstruction, normalizeSingleOutputOverride, resolveSingleOutputPath, validateFileOnlyOutputMode } from "../shared/single-output.ts";
@@ -974,6 +974,19 @@ const UNAVAILABLE_SUBAGENT_SKILL_ERROR = "Skills not found: pi-subagents";
 class UnavailableSubagentSkillError extends Error {}
 class AsyncStartValidationError extends Error {}
 
+function instructionFileChainPlacementError(chain: ChainStep[], agents: AgentConfig[], machine?: string): string | undefined {
+	for (const step of chain) {
+		const tasks = isParallelStep(step) ? step.parallel.map((task) => ({ ...task, machine: task.machine ?? step.machine }))
+			: isDynamicParallelStep(step) ? [step.parallel] : [step as SequentialStep];
+		for (const task of tasks) {
+			const requestedMachine = task.machine ?? machine ?? agents.find((agent) => agent.name === task.agent)?.machine;
+			const error = formatInstructionFilePlacementError(requestedMachine);
+			if (error) return error;
+		}
+	}
+	return undefined;
+}
+
 export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildParams): AsyncRunnerStepBuildResult {
 	const {
 		chain,
@@ -988,6 +1001,8 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 		worktreeBranchPrefix,
 		asyncDir,
 	} = params;
+	const instructionFileError = instructionFileChainPlacementError(chain, agents, params.machine);
+	if (instructionFileError) return { error: instructionFileError };
 	// One runner hosts every new step, so they share one launcher or none. Covers initial chains and
 	// appends to a running runner; the attached root runs in its own runner.
 	const stepLaunchers = [...new Set(chain.flatMap(getStepAgents))].map((name) => ({ name, launcher: agents.find((agent) => agent.name === name)?.launcher }));
@@ -1494,6 +1509,8 @@ export function executeAsyncChain(
 		nestedRoute,
 	} = params;
 	const resultMode = params.resultMode ?? "chain";
+	const instructionFileError = instructionFileChainPlacementError(chain, agents, params.machine);
+	if (instructionFileError) return formatAsyncStartError(resultMode, instructionFileError);
 	const acceptanceErrors = validateExecutionAcceptance({
 		chain: projectChainOutputSchemas(chain, agents,
 			(step, outputSchema) => ({ acceptance: step.acceptance, outputSchema }),

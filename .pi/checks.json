@@ -21,6 +21,11 @@
       "argv": ["node", "--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", "test/unit/self-reload-guard.test.ts", "test/unit/pi-web-session-liveness.test.ts", "test/unit/extension-module-preload.test.ts"],
       "timeoutMs": 30000
     },
+    "child-instructions": {
+      "description": "Offline configured standards content, actual worker/reviewer prompts, launch identity and placed admission; no paid model or remote calls",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", "--test-concurrency=2", "test/unit/child-prompt-sections.test.ts", "test/unit/preflight.test.ts", "test/unit/agent-choice-errors.test.ts", "test/unit/async-execution.test.ts"],
+      "timeoutMs": 120000
+    },
     "typecheck": {
       "description": "TypeScript check of the whole extension (tsc --noEmit)",
       "argv": ["node", "node_modules/typescript/bin/tsc", "--noEmit"],
