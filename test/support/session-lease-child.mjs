@@ -19,7 +19,9 @@ try {
 }
 if (mode === "abandon-with-writer") {
 	lease.updateWriter({ state: "spawning" });
-	const writer = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+	// The test kills this writer itself; the 2-minute cap only matters when the test run is killed first,
+	// since a detached Windows child whose parent exited is out of reach of `taskkill /T`.
+	const writer = spawn(process.execPath, ["-e", "setTimeout(() => {}, 120000)"], {
 		detached: true,
 		stdio: "ignore",
 	});
