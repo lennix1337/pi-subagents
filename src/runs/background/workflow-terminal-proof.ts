@@ -3,11 +3,12 @@ import * as path from "node:path";
 import type { AsyncStatus, ProcessTerminal, WorkflowChildSummary, WorkflowTerminalProof } from "../../shared/types.ts";
 import { readStatus } from "../../shared/utils.ts";
 import { readProcessTerminal } from "./process-terminal.ts";
+import { isFinalAsyncRunState, type FinalAsyncRunState } from "../shared/async-run-state.ts";
 
 const TERMINAL_WORKFLOW_STATES = new Set<WorkflowChildSummary["workflowState"]>(["completed", "failed", "stopped"]);
 
-export function isTerminalAsyncState(state: AsyncStatus["state"]): state is Exclude<AsyncStatus["state"], "queued" | "running" | "paused"> {
-	return state !== "queued" && state !== "running" && state !== "paused";
+export function isTerminalAsyncState(state: AsyncStatus["state"]): state is FinalAsyncRunState {
+	return isFinalAsyncRunState(state);
 }
 
 /**

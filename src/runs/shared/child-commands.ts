@@ -44,7 +44,13 @@ export function readChildCommandState(channelDir: string): ChildCommandState | u
 export function retainsChildCommand(channelDir: string, toolCallId: string): boolean {
 	return readChildCommandState(channelDir)?.commands.some((command) => command.toolCallId === toolCallId) === true;
 }
-function active(job: CommandJob): boolean { return job.snapshot.endedAt === undefined; }
+/**
+ * A command is live until its state says otherwise: running -> yielded -> cancel_requested, then exactly one of
+ * completed | failed | cancelled. Reading liveness from `state` (not from `endedAt`, which is stamped a tick later)
+ * keeps a cancel from overwriting a result that already settled.
+ */
+const LIVE_COMMAND_STATES: ReadonlySet<ChildCommandSnapshot["state"]> = new Set(["running", "yielded", "cancel_requested"]);
+function active(job: CommandJob): boolean { return LIVE_COMMAND_STATES.has(job.snapshot.state); }
 function text(result: AgentToolResult<unknown>): string {
 	return Buffer.from(result.content.filter((part) => part.type === "text").map((part) => part.text).join("\n")).subarray(-MAX_OUTPUT_BYTES).toString("utf8");
 }
@@ -140,7 +146,7 @@ export function createChildCommandRuntime(channelDir: string) {
 					persist();
 					startInbox();
 					let timer: ReturnType<typeof setTimeout> | undefined;
-					if (typeof yieldTimeMs === "number") timer = setTimeout(() => operate("yield", toolCallId), yieldTimeMs);
+					if (typeof yieldTimeMs === "number") timer = setTimeout(() => { if (!closed) operate("yield", toolCallId); }, yieldTimeMs);
 					const execution = Promise.resolve().then(() => tool.execute(toolCallId, args, commandSignal, (update) => {
 						job.snapshot.output = text(update);
 						if (job.snapshot.state === "running") onUpdate?.(update);

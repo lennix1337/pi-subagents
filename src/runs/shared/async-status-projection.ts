@@ -5,6 +5,7 @@ import type { AsyncJobState, AsyncJobStep, HostStepFreshness, HostStepMonitorKin
 import { HOST_STEP_MAX_COUNT, HOST_STEP_MAX_DETAIL_CHARS, HOST_STEP_MAX_LABEL_CHARS, HOST_STEP_MAX_PROVIDER_CHARS, HOST_STEP_MAX_REASON_CHARS, HOST_STEP_MAX_REF_CHARS, HOST_STEP_MAX_ROLE_CHARS, HOST_STEP_MAX_TARGET_CHARS, hostStepReportName, parseHostStepNode, validHostStepNodes } from "./host-step-status.ts";
 import { workflowPreflightLaneForRuntimeKey } from "../../workflows/workflow-preflight.ts";
 import { workflowGraphStageNodes } from "./workflow-graph.ts";
+import { isSettledAsyncRunState } from "./async-run-state.ts";
 
 export const ASYNC_STATUS_SNAPSHOT_KIND = "pi-subagents.async-status-snapshot";
 export const ASYNC_STATUS_SNAPSHOT_VERSION = 1;
@@ -186,10 +187,6 @@ function normalizeState(value: string): AsyncStatusSnapshotState {
 	return "partial";
 }
 
-function terminalState(state: AsyncStatusSnapshotState): boolean {
-	return state === "complete" || state === "failed" || state === "partial" || state === "paused" || state === "stopped" || state === "rejected";
-}
-
 function kindForMode(mode: SubagentRunMode | undefined): AsyncStatusSnapshotKind {
 	return mode === "workflow" ? "workflow" : "subagent";
 }
@@ -255,7 +252,7 @@ function projectStep(step: AsyncJobStep | NestedStepSummary, index: number, dept
 	const state = normalizeState(step.status);
 	const startedAt = publicTime(step.startedAt);
 	const durationMs = "durationMs" in step ? publicTime(step.durationMs) : undefined;
-	const endedAt = publicTime(step.endedAt) ?? (terminalState(state) && startedAt !== undefined && durationMs !== undefined ? publicTime(startedAt + durationMs) : undefined);
+	const endedAt = publicTime(step.endedAt) ?? (isSettledAsyncRunState(state) && startedAt !== undefined && durationMs !== undefined ? publicTime(startedAt + durationMs) : undefined);
 	const updatedAt = endedAt ?? publicTime(step.lastActivityAt) ?? startedAt;
 	const activity = activityFor(step, ctx);
 	const { id, label } = stepIdentity(step, index, ctx);
@@ -267,7 +264,7 @@ function projectStep(step: AsyncJobStep | NestedStepSummary, index: number, dept
 		state,
 		...(startedAt !== undefined ? { startedAt } : {}),
 		...(updatedAt !== undefined ? { updatedAt } : {}),
-		...(terminalState(state) && endedAt !== undefined ? { endedAt } : {}),
+		...(isSettledAsyncRunState(state) && endedAt !== undefined ? { endedAt } : {}),
 		...(activity ? { activity } : {}),
 	};
 	if (agent) node.agent = agent;
@@ -296,7 +293,7 @@ function projectNestedRun(child: NestedRunSummary, index: number, depth: number,
 		state,
 		...(startedAt !== undefined ? { startedAt } : {}),
 		...(updatedAt !== undefined ? { updatedAt } : {}),
-		...(terminalState(state) && endedAt !== undefined ? { endedAt } : {}),
+		...(isSettledAsyncRunState(state) && endedAt !== undefined ? { endedAt } : {}),
 		...(activity ? { activity } : {}),
 	};
 	if (depth < ctx.caps.maxDepth) {
@@ -341,7 +338,7 @@ function projectHostStep(hostStep: HostStepNode, ctx: ProjectionContext): AsyncS
 		label: publicText(hostStep.label, "host step", ctx.caps.maxStringLength),
 		state,
 		updatedAt: hostStep.updatedAt,
-		...(terminalState(state) ? { endedAt: hostStep.updatedAt } : {}),
+		...(isSettledAsyncRunState(state) ? { endedAt: hostStep.updatedAt } : {}),
 		hostStep: hostMetadata,
 	};
 }
@@ -440,7 +437,7 @@ function projectRun(job: AsyncJobState, ctx: ProjectionContext, depth: number, c
 		state,
 		...(startedAt !== undefined ? { startedAt } : {}),
 		...(updatedAt !== undefined ? { updatedAt } : {}),
-		...(terminalState(state) && updatedAt !== undefined ? { endedAt: updatedAt } : {}),
+		...(isSettledAsyncRunState(state) && updatedAt !== undefined ? { endedAt: updatedAt } : {}),
 		...(activity ? { activity } : {}),
 	};
 	const steps = omitSteps ? [] : job.steps ?? [];

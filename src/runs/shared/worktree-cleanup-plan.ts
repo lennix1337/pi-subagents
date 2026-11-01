@@ -14,6 +14,7 @@ import type {
 	ParallelHandoffManifest,
 } from "../../shared/types.ts";
 import { getAgentDir } from "../../shared/utils.ts";
+import { isSettledAsyncRunState } from "./async-run-state.ts";
 import { isTerminalParallelHandoffChildStatus, readParallelHandoffManifest } from "./parallel-handoff.ts";
 import { MACHINE_DIFF_OPTIONS, validateWorktreePatchRepresentsCurrentWorktree } from "./worktree.ts";
 
@@ -485,16 +486,12 @@ function metadataReportPaths(record: ManifestMetadataRecord): string[] {
 		.map((candidate) => metadataPath(record.manifestPath, candidate));
 }
 
-function terminalRunState(status: AsyncStatus["state"]): boolean {
-	return status === "complete" || status === "failed" || status === "partial" || status === "paused" || status === "stopped" || status === "rejected";
-}
-
 function inspectRunState(record: ManifestMetadataRecord, now: number, foregroundRunOwnership?: (runId: string) => ForegroundRunOwnership): RunStateInspection {
 	if (record.statusError) return { kind: "unknown", reason: record.statusError };
 	if (record.status) {
 		if (record.status.runId !== record.manifest.runId) return { kind: "unknown", reason: `status run id '${record.status.runId}' does not match manifest run '${record.manifest.runId}'` };
 		if (record.status.state === "queued" || record.status.state === "running") return { kind: "active", reason: `owning run is ${record.status.state}` };
-		if (!terminalRunState(record.status.state)) return { kind: "unknown", reason: `owning run has unknown state '${record.status.state}'` };
+		if (!isSettledAsyncRunState(record.status.state)) return { kind: "unknown", reason: `owning run has unknown state '${record.status.state}'` };
 	} else if (record.manifest.source === "async") {
 		return { kind: "unknown", reason: `async status is missing beside ${record.manifestPath}` };
 	}

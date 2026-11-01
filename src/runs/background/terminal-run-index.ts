@@ -5,6 +5,7 @@ import { readStatus } from "../../shared/utils.ts";
 import { writeAtomicJson } from "../../shared/atomic-json.ts";
 import { encodeIndexSegment } from "./index-segment.ts";
 import { isSafeNestedPathId } from "../shared/nested-path.ts";
+import { isSettledAsyncRunState } from "../shared/async-run-state.ts";
 
 export const TERMINAL_RUN_INDEX_DIR = ".terminal-runs";
 
@@ -18,10 +19,6 @@ interface TerminalRunIndexEntry {
 	runId: string;
 	sessionId: string;
 	endedAt: number;
-}
-
-function isTerminalState(state: AsyncStatus["state"]): boolean {
-	return state === "complete" || state === "failed" || state === "partial" || state === "paused" || state === "stopped" || state === "rejected";
 }
 
 function isCorruptStatusError(error: unknown, statusPath: string): boolean {
@@ -86,7 +83,7 @@ function parseEntry(value: unknown): TerminalRunIndexEntry | undefined {
 }
 
 export function updateTerminalRunIndex(asyncDir: string, status: AsyncStatus): void {
-	if (!isTerminalState(status.state) || typeof status.sessionId !== "string" || !status.sessionId) return;
+	if (!isSettledAsyncRunState(status.state) || typeof status.sessionId !== "string" || !status.sessionId) return;
 	const endedAt = status.endedAt ?? status.lastUpdate ?? status.startedAt;
 	const marker = markerPath(asyncDir, status.sessionId, endedAt);
 	const entry: TerminalRunIndexEntry = {
@@ -169,7 +166,7 @@ export function readTerminalRunToolCallIndex(asyncDirRoot: string, toolCallId: s
 			continue;
 		}
 		const status = readStatus(path.join(asyncDirRoot, entry.runId));
-		if (!status || !isTerminalState(status.state) || status.runId !== entry.runId
+		if (!status || !isSettledAsyncRunState(status.state) || status.runId !== entry.runId
 			|| status.sessionId !== entry.sessionId || status.toolCallId !== toolCallId) {
 			removeInvalidMarker(marker);
 			continue;
@@ -205,7 +202,7 @@ export function readRecentTerminalRunIndex(asyncDirRoot: string, options: { sess
 			warnCorruptTerminalStatus(entry.runId, statusPath, error, options.onCorruptStatus);
 			continue;
 		}
-		if (!status || !isTerminalState(status.state) || status.sessionId !== entry.sessionId || (status.runId && status.runId !== entry.runId)) {
+		if (!status || !isSettledAsyncRunState(status.state) || status.sessionId !== entry.sessionId || (status.runId && status.runId !== entry.runId)) {
 			removeInvalidMarker(marker);
 			continue;
 		}
