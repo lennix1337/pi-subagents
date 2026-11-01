@@ -1791,6 +1791,63 @@ describe("result watcher", () => {
 		}
 	});
 
+	for (const failure of [{ code: "ENOSPC", expected: "polling" }, { code: "EIO", expected: "restart" }]) {
+		it(`ignores a ${failure.code} error from a watcher that was already stopped`, () => {
+			const resultsDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-result-watcher-"));
+			try {
+				const pi = { events: { on: () => () => {}, emit() {} } };
+				const state = createState();
+				state.currentSessionId = "session-1";
+				let emitWatcherError: ((error: NodeJS.ErrnoException) => void) | undefined;
+				const armedTimers: string[] = [];
+				// SAFETY: the watcher only needs on/close/unref, the members createResultWatcher calls on it.
+				const fakeWatcher = {
+					on(event: string, handler: (error: NodeJS.ErrnoException) => void) {
+						if (event === "error") emitWatcherError = handler;
+						return fakeWatcher;
+					},
+					close() {},
+					unref() {},
+				} as fs.FSWatcher;
+				const watcher = createResultWatcher(pi, state, resultsDir, 60_000, {
+					fs: { ...fs, watch: () => fakeWatcher },
+					timers: {
+						setTimeout() {
+							armedTimers.push("timeout");
+							// SAFETY: createResultWatcher only calls unref() on a timer handle.
+							return { unref() {} } as NodeJS.Timeout;
+						},
+						clearTimeout() {},
+						setInterval() {
+							armedTimers.push("interval");
+							// SAFETY: createResultWatcher only calls unref() on a timer handle.
+							return { unref() {} } as NodeJS.Timeout;
+						},
+						clearInterval() {},
+					},
+				});
+				const originalError = console.error;
+				console.error = () => {};
+				try {
+					watcher.startResultWatcher();
+					assert.equal(state.watcher, fakeWatcher);
+					watcher.stopResultWatcher();
+					const armedBeforeError = armedTimers.length;
+					const error: NodeJS.ErrnoException = Object.assign(new Error("late watcher failure"), { code: failure.code });
+					emitWatcherError?.(error);
+					assert.equal(state.watcher, null);
+					assert.equal(state.watcherRestartTimer, null, `a stopped watcher must not arm a ${failure.expected} timer`);
+					assert.equal(armedTimers.length, armedBeforeError);
+				} finally {
+					console.error = originalError;
+					watcher.stopResultWatcher();
+				}
+			} finally {
+				fs.rmSync(resultsDir, { recursive: true, force: true });
+			}
+		});
+	}
+
 	it("emits async completion plus one grouped intercom result event when an intercom target is present", async () => {
 		const resultsDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-result-watcher-"));
 		try {

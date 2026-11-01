@@ -824,7 +824,10 @@ export function createResultWatcher(
 					scheduleResult(fileName, true);
 				}
 			});
-			state.watcher.on("error", (error) => {
+			const watcher = state.watcher;
+			watcher.on("error", (error) => {
+				// A watcher that stopResultWatcher() or a restart already replaced must not revive delivery.
+				if (state.watcher !== watcher) return;
 				if (shouldPoll(error)) return startPolling(error);
 				console.error(`Subagent result watcher failed for '${resultsDir}':`, error);
 				state.watcher?.close();

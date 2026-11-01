@@ -22,6 +22,7 @@ import { readMission, resolveMissionStoreLocation, validateMissionId } from "../
 
 import { calendarDateAfter, latestCalendarOccurrence, nextCalendarOccurrence, normalizeCalendarRule, restoreCalendarTrigger, type CalendarTrigger } from "./calendar-schedule.ts";
 import { reconcileAsyncRun } from "./stale-run-reconciler.ts";
+import { isFinalAsyncRunState } from "../shared/async-run-state.ts";
 
 export const SCHEDULED_RUN_ACTIONS = [
 	"schedule.create",
@@ -812,7 +813,7 @@ export class ScheduledRunManager {
 			let terminal = false;
 			if (run?.scheduleId === schedule.id && run.state === "running" && run.asyncId && run.asyncDir) {
 				const status = readJson(path.join(run.asyncDir, "status.json"), "async status") as Partial<AsyncStatus>;
-				terminal = status.runId === run.asyncId && typeof status.state === "string" && ["complete", "failed", "stopped", "rejected"].includes(status.state);
+				terminal = status.runId === run.asyncId && isFinalAsyncRunState(status.state);
 			}
 			if (!terminal) return textResult(`Schedule ${schedule.id} has active run ${schedule.activeRunId}; stop that run before deleting the schedule.`, [schedule], undefined, true);
 		}
@@ -1193,7 +1194,7 @@ export class ScheduledRunManager {
 	private terminalAsyncOutcome(run: ScheduleRunRecord | undefined): { success: boolean; error?: string } | undefined {
 		if (run?.state !== "running" || !run.asyncDir) return undefined;
 		const status = reconcileAsyncRun(run.asyncDir, { now: this.now, kill: this.deps.kill }).status;
-		if (!status || !["complete", "failed", "stopped", "rejected"].includes(status.state)) return undefined;
+		if (!status || !isFinalAsyncRunState(status.state)) return undefined;
 		// Stale-run repair records its reason on the failed steps, not the root status.
 		const error = [status.error, ...(status.steps ?? []).map((step) => step.error)].find((value): value is string => typeof value === "string");
 		return { success: status.state === "complete", error };

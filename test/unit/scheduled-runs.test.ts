@@ -1269,6 +1269,57 @@ describe("recurring schedule execution", () => {
 		assert.match(text(history), /completed.*async async-restart/);
 	});
 
+	it("releases the claim of a run that ended partial when its completion event was missed", async () => {
+		const h = harness();
+		await h.manager.handleToolCall({ action: "schedule.create", id: "partial", every: "1h", workflowScript: "return runs.run('main', { agent: 'worker' })" }, h.ctx);
+		h.clock.now += 3_600_000;
+		h.timers.fireAll();
+		const asyncDir = path.join(h.root, "async-partial");
+		fs.mkdirSync(asyncDir);
+		h.launches[0]!.resolve({ content: [{ type: "text", text: "Async" }], details: { mode: "single", results: [], asyncId: "async-partial", asyncDir } });
+		await flush();
+		h.manager.stop();
+		fs.writeFileSync(path.join(asyncDir, "status.json"), JSON.stringify({ runId: "async-partial", mode: "single", state: "partial", startedAt: h.clock.now, endedAt: h.clock.now }), "utf-8");
+
+		const next = createScheduledRunManager({
+			config: { scheduledRuns: { enabled: true } },
+			storeRoot: path.join(h.root, "stores"),
+			now: () => h.clock.now,
+			randomId: () => "reconciled-partial",
+			timers: new FakeTimers(),
+			launch: async () => ({ content: [{ type: "text", text: "unused" }], details: { mode: "management", results: [] } }),
+		});
+		const nextCtx = context(h.ctx.cwd, "session-b");
+		next.bindSession(nextCtx);
+		const history = await next.handleToolCall({ action: "schedule.history", id: "partial" }, nextCtx);
+		assert.match(text(history), /failed_run.*async async-partial/);
+		assert.doesNotMatch(text(await next.handleToolCall({ action: "schedule.show", id: "partial" }, nextCtx)), /Active run/);
+	});
+
+	it("deletes a schedule whose exact async run ended partial", async () => {
+		const owner = harness({ sessionId: "owner-session" });
+		await owner.manager.handleToolCall({ action: "schedule.create", id: "owner-partial", every: "1h", sessionOnly: true, workflowScript: "return runs.run('main', { agent: 'worker' })" }, owner.ctx);
+		const running = owner.manager.handleToolCall({ action: "schedule.run", id: "owner-partial" }, owner.ctx);
+		await flush();
+		const asyncDir = path.join(owner.root, "async-owner-partial");
+		fs.mkdirSync(asyncDir);
+		owner.launches[0]!.resolve({ content: [{ type: "text", text: "Async" }], details: { mode: "single", results: [], asyncId: "async-owner-partial", asyncDir } });
+		await running;
+		owner.manager.stop();
+
+		fs.writeFileSync(path.join(asyncDir, "status.json"), JSON.stringify({ runId: "async-owner-partial", mode: "single", state: "partial", startedAt: owner.clock.now, endedAt: owner.clock.now }), "utf-8");
+		const other = createScheduledRunManager({
+			config: { scheduledRuns: { enabled: true } },
+			storeRoot: path.join(owner.root, "stores"),
+			now: () => owner.clock.now,
+			timers: new FakeTimers(),
+			launch: async () => ({ content: [{ type: "text", text: "unused" }], details: { mode: "management", results: [] } }),
+		});
+		const otherCtx = context(owner.ctx.cwd, "other-session");
+		other.bindSession(otherCtx);
+		assert.match(text(await other.handleToolCall({ action: "schedule.delete", id: "owner-partial" }, otherCtx)), /Deleted/);
+	});
+
 	it("records elapsed overlap and catch-up-none slots without an immediate rerun", async () => {
 		const latest = harness();
 		await latest.manager.handleToolCall({ action: "schedule.create", id: "overlap", every: "1h", catchUp: "latest", workflowScript: "return runs.run('main', { agent: 'worker' })" }, latest.ctx);

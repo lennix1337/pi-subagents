@@ -16,6 +16,7 @@ import { currentPidNamespaceScope } from "./pid-namespace.ts";
 import { currentBootId } from "./boot-id.ts";
 import { WORKFLOW_STOP_CAUSE_OWNER_EXITED } from "../../workflows/workflow-stop-cause.ts";
 import { isTerminalAsyncState } from "./workflow-terminal-proof.ts";
+import { isSettledAsyncRunState } from "../shared/async-run-state.ts";
 
 export type PidLiveness = "alive" | "dead" | "unknown";
 
@@ -382,10 +383,6 @@ function writeFailedRepair(asyncDir: string, status: AsyncStatus, resultPath: st
 	return { status: repair.status, repaired: true, ...(repair.result.sessionId ? { resultPath } : {}), message: repair.message };
 }
 
-function terminal(state: AsyncStatus["state"]): boolean {
-	return state === "complete" || state === "failed" || state === "partial" || state === "paused" || state === "stopped" || state === "rejected";
-}
-
 function* nestedRuns(children: NestedRunSummary[] | undefined): Generator<NestedRunSummary> {
 	for (const child of children ?? []) {
 		yield child;
@@ -406,10 +403,10 @@ export function reconcileNestedAsyncDescendants(route: NestedRoute, options: Rec
 		});
 		const status = result.status;
 		if (!status) continue;
-		if (!result.repaired && !terminal(status.state)) continue;
+		if (!result.repaired && !isSettledAsyncRunState(status.state)) continue;
 		const ts = options.now?.() ?? Date.now();
 		writeNestedEvent(route, {
-			type: terminal(status.state) ? "subagent.nested.completed" : "subagent.nested.updated",
+			type: isSettledAsyncRunState(status.state) ? "subagent.nested.completed" : "subagent.nested.updated",
 			ts,
 			parentRunId: run.parentRunId,
 			parentStepIndex: run.parentStepIndex,

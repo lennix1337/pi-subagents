@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Type } from "typebox";
-import { Agent } from "@earendil-works/pi-agent-core";
+import { Agent, type AgentToolResult } from "@earendil-works/pi-agent-core";
 import { createAssistantMessageEventStream, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createBashToolDefinition, type ExtensionContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createChildCommandRuntime, controlChildCommand, readChildCommandState } from "../../src/runs/shared/child-commands.ts";
@@ -239,4 +239,41 @@ describe("command identities and bounded observation", () => {
 		} finally { await commands.shutdown(); await fs.promises.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 	});
 
+});
+
+describe("child command lifecycle transitions", () => {
+	const fakeTool = (execute: ToolDefinition["execute"]): ToolDefinition => ({ name: "bash", label: "bash", description: "fake", parameters: Type.Object({}), execute });
+
+	it("does not turn a command that already settled into cancel_requested", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-child-settled-"));
+		const commands = createChildCommandRuntime(dir);
+		try {
+			// Reading isError runs inside the settle callback, one microtask before the run records its end.
+			const result: AgentToolResult<undefined> = { content: [{ type: "text", text: "done" }], details: undefined, get isError() { queueMicrotask(() => commands.operate("cancel", "settled")); return false; } };
+			const tool = commands.wrap(fakeTool(async () => result));
+			await tool.execute("settled", {}, undefined, undefined, ctx);
+			await until(() => commands.state().commands[0].endedAt !== undefined);
+			assert.equal(commands.state().commands[0].state, "completed");
+		} finally { await commands.shutdown(); await fs.promises.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+	});
+
+	it("does not throw from the yield timer after the controller closed", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-child-closed-yield-"));
+		const commands = createChildCommandRuntime(dir);
+		const uncaught: unknown[] = [];
+		const onUncaught = (error: Error) => { uncaught.push(error); };
+		process.on("uncaughtException", onUncaught);
+		try {
+			let release!: () => void;
+			const gate = new Promise<void>((resolve) => { release = resolve; });
+			// The command ignores its abort signal, so it outlives shutdown() and the yield timer.
+			const tool = commands.wrap(fakeTool(async () => { await gate; return { content: [{ type: "text", text: "late" }], details: undefined }; }));
+			const pending = tool.execute("slow", { yieldTimeMs: 20 }, undefined, undefined, ctx);
+			const stopping = commands.shutdown();
+			await delay(80);
+			assert.deepEqual(uncaught, [], "a closed controller must not run the yield transition");
+			release();
+			await Promise.all([pending, stopping]);
+		} finally { process.off("uncaughtException", onUncaught); await commands.shutdown(); await fs.promises.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+	});
 });

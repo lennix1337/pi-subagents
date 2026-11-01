@@ -35,6 +35,7 @@ import { readProcessTerminal } from "./process-terminal.ts";
 import { withCachedUiContext } from "../../shared/extension-context.ts";
 import { OWNING_SESSION_COMPLETION_OWNER } from "../../shared/completion-owner.ts";
 import type { ResultDeliveryOwnership } from "./result-delivery-ownership.ts";
+import { isSettledAsyncRunState } from "../shared/async-run-state.ts";
 
 interface AsyncJobTrackerOptions {
 	completionRetentionMs?: number;
@@ -71,8 +72,7 @@ const SUPERVISOR_NOTICE_GRACE_MS = 60_000;
 type ControlRecord = { event: ControlEvent; channels: string[]; childIntercomTarget?: string; noticeText?: string; intercom?: { to?: string; message?: string } };
 type ControlPayload = { event: ControlEvent; source: "async"; asyncDir: string; childIntercomTarget?: string; noticeText: string };
 
-const isTerminalJobStatus = (status: AsyncJobState["status"]): boolean =>
-	status === "complete" || status === "failed" || status === "partial" || status === "paused" || status === "rejected" || status === "stopped";
+const isTerminalJobStatus = (status: AsyncJobState["status"]): boolean => isSettledAsyncRunState(status);
 
 function rememberFleetJob(state: SubagentState, job: AsyncJobState): void {
 	state.fleetJobs ??= new Map();

@@ -20,6 +20,7 @@ import { isSafeNestedPathId, sanitizeNestedPath, type NestedPathEntry } from "./
 import { writeAtomicJson } from "../../shared/atomic-json.ts";
 import { sanitizeProcessTerminal } from "../background/process-terminal.ts";
 import { THINKING_LEVELS } from "../../shared/model-info.ts";
+import { isSettledAsyncRunState } from "./async-run-state.ts";
 
 export const NESTED_EVENTS_DIR = path.join(TEMP_ROOT_DIR, "nested-subagent-events");
 const ROUTE_FILE = "route.json";
@@ -445,10 +446,6 @@ export function parseNestedEventRecords(content: string, route: NestedRoute): Ne
 		.filter((event): event is NestedEventRecord => Boolean(event));
 }
 
-function terminal(state: NestedRunState): boolean {
-	return state === "complete" || state === "failed" || state === "partial" || state === "paused" || state === "rejected" || state === "stopped";
-}
-
 function mergeBoundedChildren(existing: NestedRunSummary[] | undefined, incoming: NestedRunSummary[] | undefined): NestedRunSummary[] | undefined {
 	if (incoming === undefined) return existing?.slice(0, MAX_CHILDREN);
 	const incomingById = new Map(incoming.map((child) => [child.id, child]));
@@ -486,8 +483,8 @@ function mergeSummary(existing: NestedRunSummary | undefined, event: NestedEvent
 	const existingUpdate = existing.lastUpdate ?? 0;
 	const incomingUpdate = incoming.lastUpdate ?? event.ts;
 	if (incomingUpdate < existingUpdate) return existing;
-	if (terminal(existing.state) && !terminal(incoming.state)) return existing;
-	if (terminal(existing.state) && terminal(incoming.state) && incomingUpdate === existingUpdate) return existing;
+	if (isSettledAsyncRunState(existing.state) && !isSettledAsyncRunState(incoming.state)) return existing;
+	if (isSettledAsyncRunState(existing.state) && isSettledAsyncRunState(incoming.state) && incomingUpdate === existingUpdate) return existing;
 	const existingSteps = existing.steps ?? [];
 	const incomingSteps = incoming.steps;
 	const steps = incomingSteps === undefined
@@ -998,7 +995,7 @@ export function updateForegroundNestedProjection(control: SubagentState["foregro
 export function hasLiveNestedDescendants(children: NestedRunSummary[] | undefined): boolean {
 	if (!children?.length) return false;
 	for (const child of children) {
-		if (!terminal(child.state)) return true;
+		if (!isSettledAsyncRunState(child.state)) return true;
 		if (hasLiveNestedDescendants(child.children)) return true;
 		if (hasLiveNestedDescendants(child.steps?.flatMap((step) => step.children ?? []))) return true;
 	}

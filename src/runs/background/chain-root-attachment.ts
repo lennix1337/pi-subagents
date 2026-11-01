@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { resultFilePath, resultPayloadPathForSessionRun } from "./result-files.ts";
+import { isSettledAsyncRunState } from "../shared/async-run-state.ts";
 import type { AcceptanceLedger, ArtifactPaths, AsyncStatus, CostSummary, EffectsProjection, ExecutionProjection, Usage } from "../../shared/types.ts";
 import { SUBAGENT_STOPPED_MESSAGE, SUBAGENT_TIMED_OUT_MESSAGE, readStatus } from "../../shared/utils.ts";
 
@@ -81,7 +82,6 @@ interface AsyncResultFile {
 	}>;
 }
 
-const TERMINAL_STATES = new Set(["complete", "failed", "partial", "paused", "stopped"]);
 const TERMINAL_STEP_STATUSES = new Set(["complete", "completed", "failed", "partial", "paused", "stopped"]);
 
 function readResultFile(resultPath: string): { data: AsyncResultFile; raw: string } | undefined {
@@ -114,10 +114,10 @@ function isTerminalStatus(status: AsyncStatus | null, index: number): boolean {
 	// step. Keep that window open while root process proof is absent or pending;
 	// explicit terminal/unavailable proof retains the existing step fallback.
 	if (status.mode === "single" && status.parentWorkflowRunId
-		&& (!status.processTerminal || status.processTerminal.state === "pending")) return TERMINAL_STATES.has(status.state);
+		&& (!status.processTerminal || status.processTerminal.state === "pending")) return isSettledAsyncRunState(status.state);
 	const step = selectedStatusStep(status, index);
 	if (step && TERMINAL_STEP_STATUSES.has(step.status)) return true;
-	return TERMINAL_STATES.has(status.state);
+	return isSettledAsyncRunState(status.state);
 }
 
 function resultState(result: AsyncResultFile | undefined, child: NonNullable<AsyncResultFile["results"]>[number] | undefined): "complete" | "failed" | "partial" | "paused" | "stopped" | undefined {
