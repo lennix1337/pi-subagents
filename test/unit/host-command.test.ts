@@ -127,6 +127,26 @@ describe("workflow host commands", () => {
 		assert.equal(fs.existsSync(outsidePath), false);
 	});
 
+	it("keeps the timed-out outcome when the workflow aborts while the timed-out command is still being terminated", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-host-command-timeout-then-abort-"));
+		roots.push(root);
+		// Ignoring SIGTERM keeps the process alive through the termination grace window on POSIX.
+		const command = commandFor(root, `process.on("SIGTERM", () => {}); setTimeout(() => {}, 10000);`);
+		const controller = new AbortController();
+		const timeoutMs = 150;
+		const pending = executeWorkflowHostCommand({
+			key: "timeout-then-abort",
+			params: { kind: "command", command, timeoutMs },
+			cwd: root,
+			defaultOutputPath: path.join(root, "timeout-then-abort.log"),
+			signal: controller.signal,
+		});
+		setTimeout(() => controller.abort(), timeoutMs + 10);
+		const result = await pending;
+		assert.equal(result.state, "timed-out");
+		assert.match(result.error ?? "", /timed out/);
+	});
+
 	it("stops the owned process tree when the workflow aborts", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-host-command-abort-"));
 		roots.push(root);

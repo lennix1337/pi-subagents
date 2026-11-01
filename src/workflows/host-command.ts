@@ -167,8 +167,8 @@ export async function executeWorkflowHostCommand(input: {
 	let stdout = "";
 	let stderr = "";
 	let capture = "";
-	let timedOut = false;
-	let stopped = false;
+	// The first reason a command is terminated is its outcome; a later timeout or abort cannot rewrite it.
+	let stopReason: "timeout" | "abort" | undefined;
 	let settled = false;
 
 	return new Promise((resolve, reject) => {
@@ -183,9 +183,8 @@ export async function executeWorkflowHostCommand(input: {
 		const processTree = typeof child.pid === "number" ? createOwnedProcessTreeController(child.pid, { termGraceMs: 1_000 }) : undefined;
 		let termination: Promise<ProcessTreeCleanup> | undefined;
 		const terminate = (reason: "timeout" | "abort") => {
-			if (settled) return;
-			timedOut = reason === "timeout";
-			stopped = reason === "abort";
+			if (settled || stopReason) return;
+			stopReason = reason;
 			if (processTree && child.pid !== undefined) termination ??= terminateProcessTree(child.pid, processTree);
 			else {
 				child.kill("SIGTERM");
@@ -212,7 +211,7 @@ export async function executeWorkflowHostCommand(input: {
 			input.signal.removeEventListener("abort", onAbort);
 			const terminal = termination ? await termination : await processTree?.finishAfterWriterClose();
 			const cleanupError = process.platform !== "win32" && terminal?.state === "unknown" ? terminal.reason : undefined;
-			const state = timedOut ? "timed-out" : stopped ? "stopped" : exitCode === 0 && !spawnError && !cleanupError ? "passed" : "failed";
+			const state = stopReason === "timeout" ? "timed-out" : stopReason === "abort" ? "stopped" : exitCode === 0 && !spawnError && !cleanupError ? "passed" : "failed";
 			const error = spawnError instanceof Error ? spawnError.message : spawnError ? String(spawnError) : cleanupError ? `Process-tree cleanup failed: ${cleanupError}.` : state === "timed-out" ? `Command timed out after ${input.params.timeoutMs}ms.` : state === "stopped" ? "Command stopped because the workflow was aborted." : state === "failed" ? `Command exited with code ${exitCode ?? "unknown"}.` : undefined;
 			try {
 				if (input.claimedOutputPath && resolveWorkflowHostOutputClaimPath(outputPath) !== input.claimedOutputPath) throw new Error(`output path changed after it was claimed.`);

@@ -388,6 +388,21 @@ describe("main watchdog runtime", () => {
 		assert.equal((displayed[0] as { state?: string }).state, "displayed");
 	});
 
+	it("returns to idle when a review yields no result instead of staying reviewing", async () => {
+		let reviews = 0;
+		const runtime = new MainWatchdogRuntime({
+			resolveConfig: () => configResult(enabledConfig()),
+			review: () => { reviews++; },
+		});
+
+		runtime.enqueueDelta("Assistant:\nWorking");
+		await runtime.handleAgentEnd({ type: "agent_end", messages: [] }, { cwd: "/tmp/project" });
+
+		assert.equal(reviews, 1);
+		assert.equal(runtime.getSnapshot().status, "idle");
+		assert.equal(await runtime.waitForIdle(50), true);
+	});
+
 	it("routes low and medium findings only to persisted user entries, independent of severity", async () => {
 		for (const severity of ["concern", "blocker"] as const) {
 			for (const importance of ["low", "medium", "high"] as const) {

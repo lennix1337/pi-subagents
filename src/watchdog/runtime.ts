@@ -693,6 +693,8 @@ export class MainWatchdogRuntime {
 				this.reviewing = false;
 				this.activeReviewId = undefined;
 				this.activeReviewWarning = undefined;
+				// A review that ended without a verdict (no result, or superseded) must not leave "reviewing" behind.
+				if (this.status === "reviewing") this.status = this.pendingDeltas.length ? "queued" : "idle";
 			}
 			this.resolveWaiters(this.isSettled());
 		}
