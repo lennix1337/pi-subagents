@@ -2,12 +2,12 @@
  * Skill resolution and caching for subagent extension
  */
 
-import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { parseFrontmatter } from "./frontmatter.ts";
+import { resolveGlobalNpmRootSync } from "./global-npm-root.ts";
 import { getAgentDir, getProjectConfigDir } from "../shared/utils.ts";
 
 export type SkillSource =
@@ -30,27 +30,20 @@ interface ResolvedSkill {
 	disableModelInvocation?: boolean;
 }
 
-interface SkillCacheEntry {
-	mtime: number;
-	skill: ResolvedSkill;
-}
-
+/** A discovered skill file; its metadata is read only for the skills a caller actually uses. */
 interface CachedSkillEntry {
 	name: string;
 	filePath: string;
 	source: SkillSource;
-	description?: string;
-	disableModelInvocation?: boolean;
 	order: number;
+	/** Read on first use and kept with the entry, so it lives exactly as long as the TTL walk that found it. */
+	metadata?: { description?: string; disableModelInvocation?: boolean };
 }
 
 interface SkillSearchPath {
 	path: string;
 	source: SkillSource;
 }
-
-const skillCache = new Map<string, SkillCacheEntry>();
-const MAX_CACHE_SIZE = 50;
 
 let loadSkillsCache: { cwd: string; agentDir: string; projectTrusted: boolean; skills: CachedSkillEntry[]; timestamp: number } | null = null;
 const LOAD_SKILLS_CACHE_TTL_MS = 5000;
@@ -124,44 +117,13 @@ function extractSkillPathsFromPackageRoot(packageRoot: string, source: SkillSour
 		.map((entry) => ({ path: path.resolve(packageRoot, entry), source }));
 }
 
-let cachedGlobalNpmRoot: string | null = null;
-
-function getGlobalNpmRoot(): string | null {
-	const offline = process.env.PI_OFFLINE?.toLowerCase();
-	if (offline === "1" || offline === "true" || offline === "yes") return null;
-	if (cachedGlobalNpmRoot !== null) return cachedGlobalNpmRoot;
-
-	const windowsGlobalRoot = process.platform === "win32" && process.env.APPDATA
-		? path.join(process.env.APPDATA, "npm", "node_modules")
-		: undefined;
-	if (windowsGlobalRoot) {
-		try {
-			if (fs.statSync(windowsGlobalRoot).isDirectory()) {
-				cachedGlobalNpmRoot = fs.realpathSync(windowsGlobalRoot);
-				return cachedGlobalNpmRoot;
-			}
-		} catch {
-			// Fall through if the directory disappears while resolving it.
-		}
-	}
-
-	try {
-		cachedGlobalNpmRoot = fs.realpathSync(execSync("npm root -g", { encoding: "utf-8", timeout: 5000, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] }).trim());
-		return cachedGlobalNpmRoot;
-	} catch {
-		// Global npm root is optional in constrained environments.
-		cachedGlobalNpmRoot = ""; // Empty string means "tried but failed"
-		return null;
-	}
-}
-
 function collectInstalledPackageSkillPaths(cwd: string, agentDir: string, includeProject: boolean): SkillSearchPath[] {
 	const dirs: SkillSearchPath[] = [
 		...(includeProject ? [{ path: path.join(getProjectConfigDir(cwd), "npm", "node_modules"), source: "project-package" as const }] : []),
 		{ path: path.join(agentDir, "npm", "node_modules"), source: "user-package" },
 	];
 
-	const globalRoot = getGlobalNpmRoot();
+	const globalRoot = resolveGlobalNpmRootSync();
 	if (globalRoot) {
 		dirs.push({ path: globalRoot, source: "user-package" });
 	}
@@ -373,7 +335,7 @@ function buildSkillPaths(cwd: string, agentDir: string, includeProject: boolean)
 	return [...deduped.values()];
 }
 
-function inferSkillSource(filePath: string, cwd: string, agentDir: string, sourceHint?: SkillSource): SkillSource {
+function inferSkillSource(filePath: string, cwd: string, agentDir: string, globalRoot: string | null, sourceHint?: SkillSource): SkillSource {
 	if (sourceHint) return sourceHint;
 
 	const projectConfigRoot = path.resolve(getProjectConfigDir(cwd));
@@ -393,7 +355,6 @@ function inferSkillSource(filePath: string, cwd: string, agentDir: string, sourc
 	if (isWithinPath(filePath, userSkillsRoot) || isWithinPath(filePath, userAgentsRoot)) return "user";
 	if (isWithinPath(filePath, userAgentRoot)) return "user-settings";
 
-	const globalRoot = getGlobalNpmRoot();
 	if (globalRoot && isWithinPath(filePath, globalRoot)) return "user-package";
 
 	return "unknown";
@@ -412,7 +373,7 @@ function parseSkillDescription(content: string): string | undefined {
 	return parseFrontmatter(content).frontmatter.description;
 }
 
-function maybeReadSkillMetadata(filePath: string): Pick<CachedSkillEntry, "description" | "disableModelInvocation"> {
+function maybeReadSkillMetadata(filePath: string): { description?: string; disableModelInvocation?: boolean } {
 	try {
 		const content = fs.readFileSync(filePath, "utf-8");
 		return { description: parseSkillDescription(content), disableModelInvocation: maybeReadSkillDisableModelInvocation(content) };
@@ -445,36 +406,23 @@ function collectFilesystemSkills(cwd: string, agentDir: string, skillPaths: Skil
 	const seen = new Map<string, number>();
 	const visitedDirectories = new Map<string, number>();
 	let order = 0;
+	// One lookup of the global root per scan; it cannot change between two files of the same scan.
+	const globalRoot = resolveGlobalNpmRootSync();
 
 	const pushEntry = (name: string, filePath: string, sourceHint?: SkillSource) => {
 		const resolvedFile = path.resolve(filePath);
 		if (!fs.existsSync(resolvedFile)) return;
-		const source = inferSkillSource(resolvedFile, cwd, agentDir, sourceHint);
-		const { description, disableModelInvocation } = maybeReadSkillMetadata(resolvedFile);
+		const source = inferSkillSource(resolvedFile, cwd, agentDir, globalRoot, sourceHint);
 		const existingIndex = seen.get(resolvedFile);
 		if (existingIndex !== undefined) {
 			const existing = entries[existingIndex];
 			if (existing && (SOURCE_PRIORITY[source] ?? 0) > (SOURCE_PRIORITY[existing.source] ?? 0)) {
-				const { description: _description, disableModelInvocation: _disableModelInvocation, ...existingWithoutMetadata } = existing;
-				entries[existingIndex] = {
-					...existingWithoutMetadata,
-					name,
-					source,
-					...(description !== undefined ? { description } : {}),
-					...(disableModelInvocation !== undefined ? { disableModelInvocation } : {}),
-				};
+				entries[existingIndex] = { ...existing, name, source };
 			}
 			return;
 		}
 		seen.set(resolvedFile, entries.length);
-		entries.push({
-			name,
-			filePath: resolvedFile,
-			source,
-			...(description !== undefined ? { description } : {}),
-			...(disableModelInvocation !== undefined ? { disableModelInvocation } : {}),
-			order: order++,
-		});
+		entries.push({ name, filePath: resolvedFile, source, order: order++ });
 	};
 
 	const shouldSkipDirectory = (name: string) => name.startsWith(".") || name === "node_modules";
@@ -514,6 +462,11 @@ function collectFilesystemSkills(cwd: string, agentDir: string, skillPaths: Skil
 			if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
 
 			const entryPath = path.join(dirPath, entry.name);
+			// The directory entry already says whether this is a directory; only a symlink needs stat to learn its target.
+			if (entry.isDirectory()) {
+				walkSkillDirectories(entryPath, sourceHint);
+				continue;
+			}
 			let stat: fs.Stats;
 			try {
 				stat = fs.statSync(entryPath);
@@ -568,6 +521,10 @@ function collectFilesystemSkills(cwd: string, agentDir: string, skillPaths: Skil
 			const childPath = path.join(skillPath.path, child.name);
 			if (child.isDirectory() || child.isSymbolicLink()) {
 				if (shouldSkipDirectory(child.name)) continue;
+				if (child.isDirectory()) {
+					walkSkillDirectories(childPath, skillPath.source);
+					continue;
+				}
 				let childStat: fs.Stats;
 				try {
 					childStat = fs.statSync(childPath);
@@ -586,6 +543,11 @@ function collectFilesystemSkills(cwd: string, agentDir: string, skillPaths: Skil
 	return entries;
 }
 
+/**
+ * Every skill visible from `cwd`, one per name, in discovery order.
+ * The walk covers installed npm packages and skill trees on every miss, so it is kept for `LOAD_SKILLS_CACHE_TTL_MS`:
+ * a bounded freshness trade-off for cross-process filesystem state that no cheaper owner tracks.
+ */
 function getCachedSkills(cwd: string, projectTrusted?: boolean): CachedSkillEntry[] {
 	const now = Date.now();
 	const agentDir = getAgentDir();
@@ -625,17 +587,12 @@ function readSkill(
 	source: SkillSource,
 ): ResolvedSkill | undefined {
 	try {
-		const stat = fs.statSync(skillPath);
-		const cached = skillCache.get(skillPath);
-		if (cached && cached.mtime === stat.mtimeMs) {
-			return cached.skill;
-		}
-
+		// Read on every resolution: an mtime-keyed copy returns stale text when a file is rewritten within the same timestamp.
 		const raw = fs.readFileSync(skillPath, "utf-8");
 		const content = stripSkillFrontmatter(raw);
 		const description = parseSkillDescription(raw);
 		const disableModelInvocation = maybeReadSkillDisableModelInvocation(raw);
-		const skill: ResolvedSkill = {
+		return {
 			name: skillName,
 			path: skillPath,
 			content,
@@ -643,14 +600,6 @@ function readSkill(
 			...(disableModelInvocation !== undefined ? { disableModelInvocation } : {}),
 			source,
 		};
-
-		skillCache.set(skillPath, { mtime: stat.mtimeMs, skill });
-		if (skillCache.size > MAX_CACHE_SIZE) {
-			const firstKey = skillCache.keys().next().value;
-			if (firstKey) skillCache.delete(firstKey);
-		}
-
-		return skill;
 	} catch {
 		// Treat unreadable skill files as unresolved so callers can surface as missing.
 		return undefined;
@@ -784,19 +733,22 @@ export function discoverAvailableSkills(cwd: string): Array<{
 	description?: string;
 	disableModelInvocation?: boolean;
 }> {
-	const skills = getCachedSkills(cwd);
-	return skills
+	return getCachedSkills(cwd)
 		.filter((s) => s.name !== SUBAGENT_ORCHESTRATION_SKILL)
-		.map((s) => ({
-			name: s.name,
-			source: s.source,
-			...(s.description !== undefined ? { description: s.description } : {}),
-			...(s.disableModelInvocation !== undefined ? { disableModelInvocation: s.disableModelInvocation } : {}),
-		}))
+		.map((s) => {
+			s.metadata ??= maybeReadSkillMetadata(s.filePath);
+			const { description, disableModelInvocation } = s.metadata;
+			return {
+				name: s.name,
+				source: s.source,
+				...(description !== undefined ? { description } : {}),
+				...(disableModelInvocation !== undefined ? { disableModelInvocation } : {}),
+			};
+		})
 		.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Forget the cached skill walk so the next lookup scans again (for hosts that reload skills in place, and tests). */
 export function clearSkillCache(): void {
-	skillCache.clear();
 	loadSkillsCache = null;
 }
