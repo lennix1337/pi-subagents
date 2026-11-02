@@ -148,7 +148,7 @@ Opt in under `subagents.watchdog.children`. `model` and `thinking` set the defau
 
 ## Progress sweep (deterministic)
 
-Separate from the reviewer above, an opt-in sweep looks at running async children on a schedule and judges progress from facts the runner already records. It makes no model call and never relaunches work.
+Separate from the reviewer above, a sweep looks at running async children on a schedule and judges progress from facts the runner already records. It is on by default and only reports; set `enabled` to `false` to turn it off. It makes no model call and never relaunches work.
 
 ```json
 { "subagents": { "watchdog": { "progress": {

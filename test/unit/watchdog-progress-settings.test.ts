@@ -37,11 +37,11 @@ describe("watchdog progress settings", () => {
 		fs.rmSync(tempProject, { recursive: true, force: true });
 	});
 
-	it("is off by default, reports only, and sweeps every minute", () => {
+	it("is on by default, reports only, and sweeps every minute", () => {
 		const result = resolveWatchdogConfig(tempProject, { projectTrusted: false });
 		assert.equal(result.ok, true);
 		assert.deepEqual(result.config.progress, {
-			enabled: false,
+			enabled: true,
 			intervalMs: 60_000,
 			stallAfterMs: 600_000,
 			actions: { stalled: "report", looping: "report" },
@@ -62,16 +62,16 @@ describe("watchdog progress settings", () => {
 	});
 
 	it("rejects unknown fields and invalid action modes, and keeps the defaults", () => {
-		writeUserSettings({ progress: { enabled: true, retry: true } });
+		writeUserSettings({ progress: { enabled: false, retry: true } });
 		const unknownField = resolveWatchdogConfig(tempProject, { projectTrusted: false });
 		assert.equal(unknownField.ok, false);
-		assert.equal(unknownField.config.progress.enabled, false, "a rejected source does not switch the sweep on");
+		assert.equal(unknownField.config.progress.enabled, true, "a rejected source does not change the sweep");
 		assert.match(unknownField.errors.map((error) => error.message).join("\n"), /progress/);
 
-		writeUserSettings({ progress: { enabled: true, actions: { stalled: "retry" } } });
+		writeUserSettings({ progress: { enabled: false, actions: { stalled: "retry" } } });
 		const badAction = resolveWatchdogConfig(tempProject, { projectTrusted: false });
 		assert.equal(badAction.ok, false);
-		assert.equal(badAction.config.progress.enabled, false);
+		assert.equal(badAction.config.progress.enabled, true);
 	});
 
 	it("refuses a sweep interval below one second", () => {
@@ -79,5 +79,12 @@ describe("watchdog progress settings", () => {
 		const result = resolveWatchdogConfig(tempProject, { projectTrusted: false });
 		assert.equal(result.ok, false);
 		assert.equal(result.config.progress.intervalMs, 60_000);
+	});
+
+	it("can be switched off in user settings", () => {
+		writeUserSettings({ progress: { enabled: false } });
+		const result = resolveWatchdogConfig(tempProject, { projectTrusted: false });
+		assert.equal(result.ok, true);
+		assert.equal(result.config.progress.enabled, false);
 	});
 });
