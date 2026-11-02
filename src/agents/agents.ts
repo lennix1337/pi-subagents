@@ -2,7 +2,6 @@
  * Agent discovery and configuration
  */
 
-import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import { parse as parseYaml } from "yaml";
 import * as os from "node:os";
@@ -26,6 +25,7 @@ import { parseModelScopeConfig, type ModelScopeConfig } from "../runs/shared/mod
 export { BUILTIN_AGENT_NAMES } from "./builtin-names.ts";
 export { buildRuntimeName, frontmatterNameForConfig, parsePackageName } from "./identity.ts";
 import { parseMemoryFrontmatter } from "./agent-memory.ts";
+import { resolveGlobalNpmRootSync } from "./global-npm-root.ts";
 import { validateAcceptanceInput } from "../runs/shared/acceptance.ts";
 import { validatePermissionRules, type PermissionRules } from "../runs/shared/permissions.ts";
 import { parseThinkingLevel, type ThinkingLevel } from "../shared/thinking-ceiling.ts";
@@ -428,8 +428,6 @@ interface PackageSubagentPaths {
 	settingsErrors: Partial<Record<PackageSettingsScope, Error>>;
 }
 
-let cachedGlobalNpmRoot: string | null = null;
-
 function readJsonFileBestEffort(filePath: string): unknown {
 	try {
 		return JSON.parse(fs.readFileSync(filePath, "utf-8"));
@@ -516,34 +514,6 @@ function resolveSettingsPackageRoot(source: string, baseDir: string): string | u
 		return parsed ? path.join(baseDir, "git", parsed.host, parsed.repoPath) : undefined;
 	}
 	return undefined;
-}
-
-function getGlobalNpmRoot(): string | null {
-	const offline = process.env.PI_OFFLINE?.toLowerCase();
-	if (offline === "1" || offline === "true" || offline === "yes") return null;
-	if (cachedGlobalNpmRoot !== null) return cachedGlobalNpmRoot;
-
-	const windowsGlobalRoot = process.platform === "win32" && process.env.APPDATA
-		? path.join(process.env.APPDATA, "npm", "node_modules")
-		: undefined;
-	if (windowsGlobalRoot) {
-		try {
-			if (fs.statSync(windowsGlobalRoot).isDirectory()) {
-				cachedGlobalNpmRoot = fs.realpathSync(windowsGlobalRoot);
-				return cachedGlobalNpmRoot;
-			}
-		} catch {
-			// Fall through if the directory disappears while resolving it.
-		}
-	}
-
-	try {
-		cachedGlobalNpmRoot = fs.realpathSync(execSync("npm root -g", { encoding: "utf-8", timeout: 5000, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] }).trim());
-		return cachedGlobalNpmRoot;
-	} catch {
-		cachedGlobalNpmRoot = "";
-		return null;
-	}
 }
 
 function stringArray(value: unknown): string[] {
@@ -686,7 +656,7 @@ function collectPackageSubagentPaths(cwd: string, options: { includeUser: boolea
 	}
 
 	if (options.includeUser) {
-		const globalRoot = options.globalNpmRoot === undefined ? getGlobalNpmRoot() : options.globalNpmRoot;
+		const globalRoot = options.globalNpmRoot === undefined ? resolveGlobalNpmRootSync() : options.globalNpmRoot;
 		if (globalRoot) {
 			packageRoots.push(...collectPackageRootsFromNodeModules(globalRoot, watchPaths).map((root) => ({ root, scope: "user" as const })));
 		}
@@ -2029,7 +1999,8 @@ export function inspectAgentDefinitionDirectory(dir: string, operations: AgentDe
 				}
 			}
 			if (isDirectory) {
-				if (!shouldPruneDiscoveryDir(root, filePath, entry.name)) visit(filePath);
+				// Every file under a `.agents/skills` subtree is rejected below, so walking it only costs readdir and realpath calls.
+				if (!shouldPruneDiscoveryDir(root, filePath, entry.name) && !isLegacyAgentSkillPath(root, filePath)) visit(filePath);
 				continue;
 			}
 			if ((entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith(".md") && !entry.name.endsWith(".chain.md") && !isLegacyAgentSkillPath(root, filePath)) files.push(filePath);

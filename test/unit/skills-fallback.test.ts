@@ -401,7 +401,8 @@ describe("skills filesystem fallback", () => {
 				stdio: "pipe",
 			},
 		);
-		assert.deepEqual(fs.readFileSync(marker, "utf-8").trim().split(/\r?\n/), ["npm-root-called", "npm-root-called"]);
+		// Skills and agents share one process-wide `npm root -g` answer, so the second lookup does not spawn npm again.
+		assert.deepEqual(fs.readFileSync(marker, "utf-8").trim().split(/\r?\n/), ["npm-root-called"]);
 	});
 
 	it("keeps optional global discovery silent when no package manager is available", () => {

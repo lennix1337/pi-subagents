@@ -389,17 +389,20 @@ export function collectBoundedRefinementEvidence(cwd: string, agentName: string,
 
 	const artifactsDir = path.join(getProjectSubagentsDir(cwd), "artifacts");
 	if (fs.existsSync(artifactsDir)) {
+		// One stat per artifact: sorting by a comparator that stats both sides costs two syscalls per comparison.
 		const files = fs.readdirSync(artifactsDir)
 			.filter((file) => file.endsWith("_meta.json"))
-			.map((file) => path.join(artifactsDir, file))
-			.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-		for (const file of files) {
+			.map((file) => {
+				const filePath = path.join(artifactsDir, file);
+				return { filePath, mtimeMs: fs.statSync(filePath).mtimeMs };
+			})
+			.sort((a, b) => b.mtimeMs - a.mtimeMs);
+		for (const { filePath: file, mtimeMs } of files) {
 			if (items.length >= MAX_EVIDENCE_ITEMS) break;
 			let metadata: Record<string, unknown> | null = null;
 			try { metadata = record(JSON.parse(fs.readFileSync(file, "utf-8")) as unknown); } catch { metadata = null; }
 			if (!metadata || text(metadata.agent) !== agentName) continue;
-			const stat = fs.statSync(file);
-			const at = isoTime(metadata.timestamp ?? stat.mtimeMs);
+			const at = isoTime(metadata.timestamp ?? mtimeMs);
 			if (!withinAge(at)) continue;
 			const outputPath = file.replace(/_meta\.json$/, "_output.md");
 			const outputTail = fs.existsSync(outputPath) ? tailBytes(fs.readFileSync(outputPath, "utf-8"), MAX_ITEM_BYTES) : undefined;
