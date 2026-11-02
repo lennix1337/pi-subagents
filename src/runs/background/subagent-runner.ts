@@ -639,24 +639,40 @@ function expectedMissingGitEvidence(error: unknown): boolean {
 	return /not a git repository|Needed a single revision/i.test(detail);
 }
 
-async function readGitFingerprint(cwd: string, signal: AbortSignal, onError: (error: unknown) => void): Promise<string | undefined> {
+type GitFingerprintRead = (args: string[]) => Promise<Buffer>;
+
+function gitFingerprintRead(cwd: string, signal: AbortSignal): GitFingerprintRead {
+	return async (args) => {
+		const result = await runSetupCommand("git", args, {
+			cwd, signal, maxBuffer: 16 * 1024 * 1024, deadlineAt: Date.now() + 30_000,
+			acceptedExitCodes: Array.from({ length: 256 }, (_, code) => code),
+		});
+		if (result.error) throw result.error;
+		if (result.status !== 0) {
+			throw Object.assign(new Error(result.stderr || `git exited with ${result.status}`), { code: result.status, stderr: result.stderr });
+		}
+		return result.stdoutBuffer;
+	};
+}
+
+export async function readGitFingerprint(cwd: string, signal: AbortSignal, onError: (error: unknown) => void, runGit: GitFingerprintRead = gitFingerprintRead(cwd, signal)): Promise<string | undefined> {
 	try {
-		const runGit = async (args: string[]) => {
-			const result = await runSetupCommand("git", args, {
-				cwd, signal, maxBuffer: 16 * 1024 * 1024, deadlineAt: Date.now() + 30_000,
-				acceptedExitCodes: Array.from({ length: 256 }, (_, code) => code),
-			});
-			if (result.error) throw result.error;
-			if (result.status !== 0) {
-				throw Object.assign(new Error(result.stderr || `git exited with ${result.status}`), { code: result.status, stderr: result.stderr });
-			}
-			return result.stdoutBuffer;
-		};
-		const headOutput = await runGit(["rev-parse", "--verify", "HEAD"]);
-		const head = headOutput.toString("utf-8").trim();
+		// HEAD and status are independent reads: running them together overlaps two git spawns instead of back to back.
+		const [headRead, statusRead] = await Promise.allSettled([
+			runGit(["rev-parse", "--verify", "HEAD"]),
+			runGit(["status", "--porcelain=v1", "-z", "--untracked-files=normal"]),
+		]);
+		// A process-tree failure from either read must surface: its git child may still be running.
+		for (const read of [headRead, statusRead]) {
+			if (read.status !== "rejected") continue;
+			// SAFETY: a rejected read is the Error that runGit threw; only its string `code` is compared.
+			if ((read.reason as NodeJS.ErrnoException)?.code === "PROCESS_TREE_UNVERIFIED") throw read.reason;
+		}
+		if (headRead.status === "rejected") throw headRead.reason;
+		const head = headRead.value.toString("utf-8").trim();
 		if (!head) return undefined;
-		const status = await runGit(["status", "--porcelain=v1", "-z", "--untracked-files=normal"]);
-		return `${head}\0${status.toString("base64")}`;
+		if (statusRead.status === "rejected") throw statusRead.reason;
+		return `${head}\0${statusRead.value.toString("base64")}`;
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException)?.code === "PROCESS_TREE_UNVERIFIED") throw error;
 		if (!signal.aborted && !expectedMissingGitEvidence(error)) onError(error);
