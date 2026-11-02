@@ -9,6 +9,7 @@
 
 ### Added
 
+- Opt-in progress sweep for running async children (`subagents.watchdog.progress`, default off). It classifies each child as healthy, stalled, looping or dead from recorded tool calls, activity time, worktree commits and runner liveness, and reports, nudges or stops it as configured. Failed tool calls are now recorded in run status (`recentTools[].failed`). See [docs/watchdog.md](docs/watchdog.md#progress-sweep-deterministic).
 - `machine: "local"` runs a native Pi child in a new background tab of your own Rex session, driven through the same bridge as a Herdr-placed Pi (prompt, steer, follow-up, abort, `contact_supervisor`, results). It fails before launch when the parent Pi is not running inside Rex, and rejects Claude Code, Codex, Cursor, and generic `external-cli` agents. A finished child keeps its tab open, with the idle Pi, until you close it; an aborted or stopped child's tab is closed, and is reported closed only after Rex confirms it is gone. See [docs/agents.md](docs/agents.md#running-a-pi-child-in-a-rex-pane-on-this-machine).
 
 ### Fixed
