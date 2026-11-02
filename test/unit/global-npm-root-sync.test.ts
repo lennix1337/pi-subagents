@@ -28,6 +28,32 @@ describe("resolveGlobalNpmRootSync", () => {
 		}
 	});
 
+	it("asks npm again when the process PATH points to another npm", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "global-npm-root-path-"));
+		const previousPath = process.env.PATH;
+		const fakeNpm = (name: string) => {
+			const bin = path.join(dir, `${name}-bin`);
+			const root = path.join(dir, `${name}-root`);
+			fs.mkdirSync(bin, { recursive: true });
+			fs.mkdirSync(root, { recursive: true });
+			fs.writeFileSync(path.join(bin, "npm"), `#!/bin/sh\necho "${root}"\n`, { mode: 0o755 });
+			fs.writeFileSync(path.join(bin, "npm.cmd"), `@echo ${root}\r\n`);
+			return { bin, root: fs.realpathSync(root) };
+		};
+		try {
+			const first = fakeNpm("first");
+			const second = fakeNpm("second");
+			process.env.PATH = `${first.bin}${path.delimiter}${previousPath ?? ""}`;
+			assert.equal(resolveGlobalNpmRootSync({ platform: "linux" }), first.root);
+			process.env.PATH = `${second.bin}${path.delimiter}${previousPath ?? ""}`;
+			assert.equal(resolveGlobalNpmRootSync({ platform: "linux" }), second.root);
+		} finally {
+			if (previousPath === undefined) delete process.env.PATH;
+			else process.env.PATH = previousPath;
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("answers nothing while offline, even when APPDATA holds a root", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "global-npm-root-offline-"));
 		try {

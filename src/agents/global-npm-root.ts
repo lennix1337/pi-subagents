@@ -2,8 +2,15 @@ import { exec, execFile, execSync } from "node:child_process";
 import { promises as fs, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 
-/** `npm root -g` answer for the default environment: npm owns the prefix, so the child runs at most once per process. */
-let spawnedGlobalNpmRoot: string | null | undefined;
+/**
+ * `npm root -g` answers keyed by the environment npm reads: the child runs once per distinct environment,
+ * so a changed PATH or prefix is never answered with a root found under the old one.
+ */
+const spawnedGlobalNpmRoots = new Map<string, string | null>();
+
+function npmEnvironmentKey(env: NodeJS.ProcessEnv): string {
+	return [env.PATH, env.Path, env.npm_config_prefix, env.NPM_CONFIG_PREFIX, env.APPDATA, env.ComSpec, env.HOME, env.USERPROFILE].join("\u0000");
+}
 
 /**
  * Synchronous global root for callers that cannot await `resolveGlobalNpmRoot`.
@@ -22,10 +29,11 @@ export function resolveGlobalNpmRootSync(options: { env?: NodeJS.ProcessEnv; pla
 			// Invalid or disappearing APPDATA roots fall back to npm.
 		}
 	}
-	// An injected environment is a test seam; only the process-wide answer is worth remembering.
+	// An injected environment is a test seam; only the process environment's answers are remembered.
 	if (options.env !== undefined) return spawnNpmRootSync(env);
-	if (spawnedGlobalNpmRoot === undefined) spawnedGlobalNpmRoot = spawnNpmRootSync(env);
-	return spawnedGlobalNpmRoot;
+	const key = npmEnvironmentKey(env);
+	if (!spawnedGlobalNpmRoots.has(key)) spawnedGlobalNpmRoots.set(key, spawnNpmRootSync(env));
+	return spawnedGlobalNpmRoots.get(key) ?? null;
 }
 
 function spawnNpmRootSync(env: NodeJS.ProcessEnv): string | null {
