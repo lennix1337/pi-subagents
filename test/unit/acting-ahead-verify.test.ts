@@ -22,10 +22,11 @@ interface Fake {
  * Scripted git and test runner. `testExit` is consumed in order: the first run is
  * the green run with the fix, the second is the red run without it.
  */
-function fake(options: { status?: string; testExit?: number[]; failArgs?: (args: string[]) => boolean }): Fake {
+function fake(options: { status?: string; testExit?: number[]; failArgs?: (args: string[]) => boolean; throwOnCall?: number }): Fake {
 	const gitCalls: string[][] = [];
 	const testRuns: number[] = [];
 	const exits = [...(options.testExit ?? [0, 1])];
+	let calls = 0;
 	return {
 		gitCalls,
 		testRuns,
@@ -39,6 +40,8 @@ function fake(options: { status?: string; testExit?: number[]; failArgs?: (args:
 		},
 		tests: {
 			run: async () => {
+				calls++;
+				if (calls === options.throwOnCall) throw new Error("timed out after 15 min");
 				const exit = exits.shift() ?? 0;
 				testRuns.push(exit);
 				return { exitCode: exit };
@@ -114,6 +117,22 @@ describe("acting ahead red-without / green-with confirmation", () => {
 		assert.equal(verdict.confirmed, false);
 		assert.match((verdict as { reason: string }).reason, /could not revert the fix/);
 		assert.deepEqual(io.gitCalls.at(-2), ["checkout", "HEAD", "--", "src/parse.ts"], "restore runs after a failed revert");
+	});
+
+	it("refuses, and still restores the fix, when the red run cannot execute", async () => {
+		const io = fake({ testExit: [0], throwOnCall: 2 });
+		const verdict = await confirmRedGreen(evidence, io);
+		assert.equal(verdict.confirmed, false);
+		assert.match((verdict as { reason: string }).reason, /could not run without the fix: timed out/);
+		assert.deepEqual(io.gitCalls.at(-2), ["checkout", "HEAD", "--", "src/parse.ts"], "the fix is restored even though the run threw");
+	});
+
+	it("refuses, with nothing reverted, when the green run cannot execute", async () => {
+		const io = fake({ throwOnCall: 1 });
+		const verdict = await confirmRedGreen(evidence, io);
+		assert.equal(verdict.confirmed, false);
+		assert.match((verdict as { reason: string }).reason, /could not run with the fix in place: timed out/);
+		assert.equal(io.gitCalls.some((args) => args[0] === "checkout"), false);
 	});
 
 	it("does not confirm when the fix cannot be restored, because the worktree state is unknown", async () => {

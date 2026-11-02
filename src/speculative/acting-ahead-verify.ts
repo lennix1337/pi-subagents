@@ -46,32 +46,71 @@ export function evidenceProblem(evidence: SpeculativeEvidence): string | undefin
 	return undefined;
 }
 
-async function restoreFix(git: SpeculativeGit, worktreePath: string, fixFiles: string[]): Promise<boolean> {
-	const restored = await git.run(worktreePath, ["checkout", "HEAD", "--", ...fixFiles]);
-	if (restored.exitCode !== 0) return false;
-	const status = await git.run(worktreePath, ["status", "--porcelain"]);
-	return status.exitCode === 0 && status.stdout.trim() === "";
+type RunOutcome = { exitCode: number } | { error: string };
+
+/** Never throws: an execution failure becomes a refusal reason, not a lost restore. */
+async function runTests(tests: SpeculativeTests, cwd: string, argv: string[]): Promise<RunOutcome> {
+	try {
+		return await tests.run(cwd, argv);
+	} catch (error) {
+		return { error: error instanceof Error ? error.message : String(error) };
+	}
 }
+
+function failure(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+/** Returns a problem, or undefined when the revert succeeded. Never throws. */
+async function revertFix(git: SpeculativeGit, baseRef: string, worktreePath: string, fixFiles: string[]): Promise<string | undefined> {
+	try {
+		const result = await git.run(worktreePath, ["checkout", baseRef, "--", ...fixFiles]);
+		return result.exitCode === 0 ? undefined : "the fix file may be missing there";
+	} catch (error) {
+		return failure(error);
+	}
+}
+
+/** Returns a problem, or undefined when the fix is back and the worktree is clean. Never throws. */
+async function restoreFix(git: SpeculativeGit, worktreePath: string, fixFiles: string[]): Promise<string | undefined> {
+	try {
+		const restored = await git.run(worktreePath, ["checkout", "HEAD", "--", ...fixFiles]);
+		if (restored.exitCode !== 0) return "checkout failed";
+		const status = await git.run(worktreePath, ["status", "--porcelain"]);
+		if (status.exitCode !== 0) return "status failed";
+		return status.stdout.trim() === "" ? undefined : "the worktree is still dirty";
+	} catch (error) {
+		return failure(error);
+	}
+}
+
+const refused = (reason: string): SpeculativeVerdict => ({ confirmed: false, reason });
 
 export async function confirmRedGreen(evidence: SpeculativeEvidence, io: { git: SpeculativeGit; tests: SpeculativeTests }): Promise<SpeculativeVerdict> {
 	const problem = evidenceProblem(evidence);
-	if (problem) return { confirmed: false, reason: problem };
-	const { worktreePath, fixFiles, testCommand } = evidence;
+	if (problem) return refused(problem);
+	const { worktreePath, baseRef, fixFiles, testCommand } = evidence;
 
-	const before = await io.git.run(worktreePath, ["status", "--porcelain"]);
-	if (before.exitCode !== 0) return { confirmed: false, reason: "could not read the worktree status" };
-	if (before.stdout.trim() !== "") return { confirmed: false, reason: "the worktree has uncommitted changes" };
+	let before: { exitCode: number; stdout: string };
+	try {
+		before = await io.git.run(worktreePath, ["status", "--porcelain"]);
+	} catch (error) {
+		return refused(`could not read the worktree status: ${failure(error)}`);
+	}
+	if (before.exitCode !== 0) return refused("could not read the worktree status");
+	if (before.stdout.trim() !== "") return refused("the worktree has uncommitted changes");
 
-	const green = await io.tests.run(worktreePath, testCommand);
-	if (green.exitCode !== 0) return { confirmed: false, reason: "the tests fail with the fix in place" };
+	const green = await runTests(io.tests, worktreePath, testCommand);
+	if (!("exitCode" in green)) return refused(`the tests could not run with the fix in place: ${green.error}`);
+	if (green.exitCode !== 0) return refused("the tests fail with the fix in place");
 
-	const reverted = await io.git.run(worktreePath, ["checkout", evidence.baseRef, "--", ...fixFiles]);
-	let redExit: number | undefined;
-	if (reverted.exitCode === 0) redExit = (await io.tests.run(worktreePath, testCommand)).exitCode;
-
-	const restored = await restoreFix(io.git, worktreePath, fixFiles);
-	if (!restored) return { confirmed: false, reason: "could not restore the fix in the worktree; its state is unknown" };
-	if (reverted.exitCode !== 0) return { confirmed: false, reason: "could not revert the fix to the base; the fix file may be missing there" };
-	if (redExit === 0) return { confirmed: false, reason: "the tests pass without the fix, so they do not catch it" };
+	const revertProblem = await revertFix(io.git, baseRef, worktreePath, fixFiles);
+	const red = revertProblem === undefined ? await runTests(io.tests, worktreePath, testCommand) : undefined;
+	const restoreProblem = await restoreFix(io.git, worktreePath, fixFiles);
+	if (restoreProblem !== undefined) return refused(`could not restore the fix in the worktree, so its state is unknown (${restoreProblem})`);
+	if (revertProblem !== undefined) return refused(`could not revert the fix to the base; ${revertProblem}`);
+	if (red === undefined) return refused("the tests could not run without the fix");
+	if (!("exitCode" in red)) return refused(`the tests could not run without the fix: ${red.error}`);
+	if (red.exitCode === 0) return refused("the tests pass without the fix, so they do not catch it");
 	return { confirmed: true };
 }

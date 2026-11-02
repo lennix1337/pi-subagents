@@ -129,6 +129,7 @@ test("published extension APIs use supported package entrypoints", async () => {
 		"./required-child-extensions": "./src/api/required-child-extensions.ts",
 		"./delegation": "./src/api/delegation.ts",
 		"./preflight": "./src/api/preflight.ts",
+		"./acting-ahead": "./src/api/acting-ahead.ts",
 		"./control-channel": "./src/api/control-channel.ts",
 		"./intercom-bridge": "./src/api/intercom-bridge.ts",
 		"./child-tool-plan": "./src/api/child-tool-plan.ts",
