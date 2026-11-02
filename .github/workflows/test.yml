@@ -354,10 +354,15 @@ jobs:
     needs: [changes, focused, test, calendar-timezones, worktree-cleanup-recovery, schedule-claim-contention, native-nested-wait, native-mcp-readiness, bun-workflow-script, runner-loader-capability, clean-install, official-standalone]
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    permissions:
+      actions: read
+      contents: read
     steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+      # A job that ran and failed blocks; one no hosted runner picked up is only a warning.
       - name: Every needed job passed
         env:
-          RESULTS: ${{ toJSON(needs.*.result) }}
-        run: |
-          echo "$RESULTS"
-          node -e 'const bad = JSON.parse(process.env.RESULTS).filter((r) => r !== "success" && r !== "skipped"); if (bad.length) { console.error(`failed or cancelled: ${bad.join(", ")}`); process.exit(1); }'
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/scripts/ci-ok.mjs
