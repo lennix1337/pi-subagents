@@ -52,6 +52,7 @@ import { registerSlashCommands } from "../slash/slash-commands.ts";
 import { ADMIN_MESSAGE_TYPE } from "../slash/admin-message-type.ts";
 import { registerPromptTemplateDelegationBridge } from "../slash/prompt-template-bridge.ts";
 import { registerMainWatchdog } from "../watchdog/register-main.ts";
+import { registerProgressWatchdog } from "../watchdog/progress/progress-register.ts";
 import { registerSlashSubagentBridge } from "../slash/slash-bridge.ts";
 import { createNativeSupervisorChannel, topLevelSupervisorTool } from "../intercom/native-supervisor-channel.ts";
 import { renderSubagentEntry, renderSubagentMessage, SUBAGENT_ENTRY_TYPES, SUBAGENT_MESSAGE_TYPES } from "../tui/subagent-messages.ts";
@@ -368,6 +369,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	});
 	const waitSubscriptionManager = createWaitSubscriptionManager(wakingPi, state);
 	const mainWatchdog = registerMainWatchdog(pi, { slashCommand: slashCommandsEnabled });
+	registerProgressWatchdog(pi, { getAsyncDirRoot: () => DIRS.async });
 	const resultDeliveryOwnership = createResultDeliveryOwnership(state);
 	const completionNotifier = registerSubagentNotify(wakingPi, state, { batchConfig: config.completionBatch, ownership: resultDeliveryOwnership });
 	// Ended async runs whose result has not reached the notifier yet.

@@ -3163,7 +3163,7 @@ export async function runSubagent(
 			const endedTool = removeActiveToolCall(flatIndex, event);
 			if (endedTool) {
 				step.recentTools ??= [];
-				step.recentTools.push({ tool: endedTool.tool, args: endedTool.args, endMs: now });
+				step.recentTools.push({ tool: endedTool.tool, args: endedTool.args, endMs: now, ...(event.isError ? { failed: true } : {}) });
 			}
 			refreshStepCurrentTool(flatIndex);
 			const supervisorPreviousActivity = supervisorAttentionSteps.get(flatIndex);

@@ -58,7 +58,7 @@ interface AsyncRunStepSummary {
 	currentToolArgs?: string;
 	currentToolStartedAt?: number;
 	currentPath?: string;
-	recentTools?: Array<{ tool: string; args: string; endMs: number }>;
+	recentTools?: Array<{ tool: string; args: string; endMs: number; failed?: boolean }>;
 	recentOutput?: string[];
 	turnCount?: number;
 	toolCount?: number;

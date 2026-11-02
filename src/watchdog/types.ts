@@ -111,6 +111,20 @@ export interface WatchdogLspConfig {
 	maxDiagnostics: number;
 }
 
+export const WATCHDOG_PROGRESS_ACTION_MODES = ["report", "nudge", "stop"] as const;
+export type WatchdogProgressActionMode = typeof WATCHDOG_PROGRESS_ACTION_MODES[number];
+
+/** Scheduled deterministic sweep over running async children. Off by default; `dead` runs are never acted on. */
+export interface WatchdogProgressConfig {
+	enabled: boolean;
+	intervalMs: number;
+	stallAfterMs: number;
+	actions: { stalled: WatchdogProgressActionMode; looping: WatchdogProgressActionMode };
+	maxNudges: number;
+	nudgeCooldownMs: number;
+	renotifyAfterMs: number;
+}
+
 export interface WatchdogLspDiagnostic {
 	path: string;
 	line: number;
@@ -163,6 +177,7 @@ export interface ResolvedWatchdogConfig {
 	main: WatchdogEndpointConfig;
 	children: WatchdogChildrenConfig;
 	lsp: WatchdogLspConfig;
+	progress: WatchdogProgressConfig;
 	rules?: WatchdogRulesConfig;
 }
 

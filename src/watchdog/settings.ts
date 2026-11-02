@@ -19,6 +19,8 @@ import {
 	type WatchdogSettingsResult,
 	type WatchdogSettingsSource,
 	type WatchdogSeverity,
+	WATCHDOG_PROGRESS_ACTION_MODES,
+	type WatchdogProgressConfig,
 } from "./types.ts";
 
 type WatchdogGuidancePatch = Partial<WatchdogGuidanceConfig>;
@@ -45,7 +47,9 @@ export interface WatchdogModelSettingsWrite {
 	thinking?: ThinkingLevel | false | null;
 }
 
-type WatchdogConfigPatch = Partial<Omit<ResolvedWatchdogConfig, "guidance" | "scope" | "cadence" | "main" | "children" | "lsp" | "rules">> & {
+type WatchdogProgressPatch = Partial<Omit<WatchdogProgressConfig, "actions">> & { actions?: Partial<WatchdogProgressConfig["actions"]> };
+
+type WatchdogConfigPatch = Partial<Omit<ResolvedWatchdogConfig, "guidance" | "scope" | "cadence" | "main" | "children" | "lsp" | "progress" | "rules">> & {
 	rules?: WatchdogRulesConfig;
 	guidance?: WatchdogGuidancePatch;
 	scope?: WatchdogScopePatch;
@@ -53,6 +57,7 @@ type WatchdogConfigPatch = Partial<Omit<ResolvedWatchdogConfig, "guidance" | "sc
 	main?: WatchdogEndpointPatch;
 	children?: WatchdogChildrenPatch;
 	lsp?: WatchdogLspPatch;
+	progress?: WatchdogProgressPatch;
 };
 
 interface ParseMeta {
@@ -90,6 +95,15 @@ export const DEFAULT_WATCHDOG_CONFIG: ResolvedWatchdogConfig = {
 		maxFiles: 20,
 		maxDiagnostics: 50,
 	},
+	progress: {
+		enabled: false,
+		intervalMs: 60_000,
+		stallAfterMs: 10 * 60_000,
+		actions: { stalled: "report", looping: "report" },
+		maxNudges: 2,
+		nudgeCooldownMs: 10 * 60_000,
+		renotifyAfterMs: 30 * 60_000,
+	},
 };
 
 const WATCHDOG_FIELDS = new Set([
@@ -105,8 +119,11 @@ const WATCHDOG_FIELDS = new Set([
 	"main",
 	"children",
 	"lsp",
+	"progress",
 	"rules",
 ]);
+const PROGRESS_FIELDS = new Set(["enabled", "intervalMs", "stallAfterMs", "actions", "maxNudges", "nudgeCooldownMs", "renotifyAfterMs"]);
+const PROGRESS_ACTION_FIELDS = new Set(["stalled", "looping"]);
 const RULES_FIELDS = new Set(["action", "roleModels"]);
 const ROLE_MODEL_RULE_FIELDS = new Set(["allow", "deny", "note"]);
 const GUIDANCE_FIELDS = new Set(["watchdogMd"]);
@@ -129,6 +146,7 @@ function cloneDefaultConfig(): ResolvedWatchdogConfig {
 			overrides: {},
 		},
 		lsp: { ...DEFAULT_WATCHDOG_CONFIG.lsp },
+		progress: { ...DEFAULT_WATCHDOG_CONFIG.progress, actions: { ...DEFAULT_WATCHDOG_CONFIG.progress.actions } },
 	};
 }
 
@@ -272,6 +290,27 @@ function parseLspPatch(value: unknown, field: string, meta: ParseMeta): Watchdog
 	return patch;
 }
 
+function parseProgressPatch(value: unknown, field: string, meta: ParseMeta): WatchdogProgressPatch {
+	const input = parseObject(value, field, meta);
+	assertKnownFields(input, PROGRESS_FIELDS, field, meta);
+	const patch: WatchdogProgressPatch = {};
+	if ("enabled" in input) patch.enabled = parseBoolean(input.enabled, `${field}.enabled`, meta);
+	if ("intervalMs" in input) patch.intervalMs = parseInteger(input.intervalMs, `${field}.intervalMs`, meta, "a positive integer", (candidate) => candidate >= 1000);
+	if ("stallAfterMs" in input) patch.stallAfterMs = parseInteger(input.stallAfterMs, `${field}.stallAfterMs`, meta, "a positive integer", (candidate) => candidate >= 1000);
+	if ("maxNudges" in input) patch.maxNudges = parseInteger(input.maxNudges, `${field}.maxNudges`, meta, "a non-negative integer", (candidate) => candidate >= 0);
+	if ("nudgeCooldownMs" in input) patch.nudgeCooldownMs = parseInteger(input.nudgeCooldownMs, `${field}.nudgeCooldownMs`, meta, "a positive integer", (candidate) => candidate >= 1000);
+	if ("renotifyAfterMs" in input) patch.renotifyAfterMs = parseInteger(input.renotifyAfterMs, `${field}.renotifyAfterMs`, meta, "a positive integer", (candidate) => candidate >= 1000);
+	if ("actions" in input) {
+		const actions = parseObject(input.actions, `${field}.actions`, meta);
+		assertKnownFields(actions, PROGRESS_ACTION_FIELDS, `${field}.actions`, meta);
+		patch.actions = {};
+		for (const key of ["stalled", "looping"] as const) {
+			if (key in actions) patch.actions[key] = parseEnum(actions[key], `${field}.actions.${key}`, meta, WATCHDOG_PROGRESS_ACTION_MODES);
+		}
+	}
+	return patch;
+}
+
 function parseStringList(value: unknown, field: string, meta: ParseMeta): string[] {
 	if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string" || !entry.trim())) throw invalid(meta, field, "an array of non-empty strings");
 	return value.map((entry: string) => entry.trim());
@@ -325,6 +364,7 @@ function parseWatchdogPatch(value: unknown, field: string, meta: ParseMeta): Wat
 	if ("main" in input) patch.main = parseEndpointPatch(input.main, `${field}.main`, meta);
 	if ("children" in input) patch.children = parseChildrenPatch(input.children, `${field}.children`, meta);
 	if ("lsp" in input) patch.lsp = parseLspPatch(input.lsp, `${field}.lsp`, meta);
+	if ("progress" in input) patch.progress = parseProgressPatch(input.progress, `${field}.progress`, meta);
 	if ("rules" in input) patch.rules = parseRules(input.rules, `${field}.rules`, meta);
 	return patch;
 }

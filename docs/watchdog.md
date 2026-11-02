@@ -146,6 +146,30 @@ When the session declined Pi project trust, the watchdog ignores everything the 
 
 Opt in under `subagents.watchdog.children`. `model` and `thinking` set the default child watchdog; `overrides.<agent>` can set `model`, `thinking`, `enabled`, or `cadence` per role.
 
+## Progress sweep (deterministic)
+
+Separate from the reviewer above, an opt-in sweep looks at running async children on a schedule and judges progress from facts the runner already records. It makes no model call and never relaunches work.
+
+```json
+{ "subagents": { "watchdog": { "progress": {
+  "enabled": true,
+  "intervalMs": 60000,
+  "stallAfterMs": 600000,
+  "actions": { "stalled": "report", "looping": "nudge" },
+  "maxNudges": 2,
+  "nudgeCooldownMs": 600000,
+  "renotifyAfterMs": 1800000
+} } } }
+```
+
+Verdicts per child: `healthy`, `stalled`, `looping`, `dead`.
+
+- **looping**: the same tool call with the same arguments six times in a row; four failed tool calls in a row; the same CI run re-run three times (`gh run rerun <id>`).
+- **stalled**: no runner activity and no new commit in the worktree for `stallAfterMs`. A tool call inside a 30-minute grace window keeps a child healthy; a call beyond it is a stalled overrun.
+- **dead**: the runner process is gone. The stale-run reconciler repairs it; the sweep only reports.
+
+Actions per problem verdict: `report` (default) shows one line in the transcript; `nudge` sends a steer message, at most `maxNudges` times with `nudgeCooldownMs` between them; `stop` stops that child once. The sweep never retries or relaunches, and it is scoped to the current session's runs.
+
 ## Launch rules
 
 `subagents.watchdog.rules` pins which models each role may run on. It runs before a child starts, needs no model call, and applies even when model review is off.
