@@ -1,0 +1,5 @@
+export { startActingAhead, defaultSpeculativeGit, defaultSpeculativeTests, type ActingAheadService, type ActingAheadServiceInput } from "../speculative/acting-ahead-service.ts";
+export { ActingAhead, buildSpeculativePrompt, type ActingAheadDeps, type SpeculativeDiscard, type SpeculativeOutcome, type SpeculativeRun, type SpeculativeTask } from "../speculative/acting-ahead.ts";
+export { DEFAULT_ACTING_AHEAD_CONFIG, admitSpeculation, parseActingAheadConfig, speculationKey, type ActingAheadConfig, type ActingAheadDecision, type ActingAheadState } from "../speculative/acting-ahead-policy.ts";
+export { confirmRedGreen, evidenceProblem, type SpeculativeEvidence, type SpeculativeGit, type SpeculativeTests, type SpeculativeVerdict } from "../speculative/acting-ahead-verify.ts";
+export { PR_WATCH_EVENT_CHANNEL, PrThreadRegistry, bindPrWatchEvents, formatPrWatchEvent, parsePrWatchEvent, steerChildWithPrEvent, type PrThreadDispatch, type PrThreadSubscription, type PrWatchEvent, type PrWatchEventKind } from "../integrations/pr-thread-subscriptions.ts";
