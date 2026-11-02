@@ -96,7 +96,7 @@ export const DEFAULT_WATCHDOG_CONFIG: ResolvedWatchdogConfig = {
 		maxDiagnostics: 50,
 	},
 	progress: {
-		enabled: false,
+		enabled: true,
 		intervalMs: 60_000,
 		stallAfterMs: 10 * 60_000,
 		actions: { stalled: "report", looping: "report" },
