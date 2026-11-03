@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { DEFAULT_PROGRESS_POLICY, classifyProgress, type ProgressObservation, type ProgressToolCall } from "../../src/watchdog/progress/progress-signals.ts";
+import { extractToolArgsPreview, toolArgsKey } from "../../src/shared/utils.ts";
 
 const MINUTE = 60_000;
 const NOW = 1_000_000_000;
@@ -43,6 +44,22 @@ describe("progress signals", () => {
 		assert.equal(verdict.verdict, "looping");
 		assert.equal(verdict.signal, "identical-calls");
 		assert.match(verdict.reason, /bash.*6 times in a row/);
+	});
+
+	it("does not flag calls that share a display preview but differ in full arguments", () => {
+		// GX18 #830: six genexus_lifecycle validate calls on different targets all preview as "action=validate".
+		const calls = Array.from({ length: 6 }, (_, index) => {
+			const args = { action: "validate", target: `Obj${index}` };
+			return { tool: "genexus_lifecycle", args: extractToolArgsPreview(args), argsKey: toolArgsKey(args) };
+		});
+		assert.equal(new Set(calls.map((entry) => entry.args)).size, 1, "the preview alone cannot tell them apart");
+		assert.equal(classifyProgress(observe({ recentTools: calls }), DEFAULT_PROGRESS_POLICY).verdict, "healthy");
+		const same = Array.from({ length: 6 }, () => {
+			const args = { target: "Obj1", action: "validate" };
+			return { tool: "genexus_lifecycle", args: extractToolArgsPreview(args), argsKey: toolArgsKey(args) };
+		});
+		assert.equal(classifyProgress(observe({ recentTools: same }), DEFAULT_PROGRESS_POLICY).signal, "identical-calls");
+		assert.equal(toolArgsKey({ a: 1, b: [2, { c: 3 }] }), toolArgsKey({ b: [2, { c: 3 }], a: 1 }), "key order is ignored");
 	});
 
 	it("does not flag identical calls below the repeat threshold or broken by a different call", () => {

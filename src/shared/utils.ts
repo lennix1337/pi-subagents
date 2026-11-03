@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -542,6 +543,25 @@ export function detectSubagentError(messages: Message[]): ErrorInfo {
 	}
 
 	return { hasError: false };
+}
+
+function canonicalJson(value: unknown): string {
+	if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+	if (value && typeof value === "object") {
+		const entries = Object.entries(value as Record<string, unknown>)
+			.filter(([, entry]) => entry !== undefined)
+			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+		return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`).join(",")}}`;
+	}
+	return JSON.stringify(value) ?? "null";
+}
+
+/**
+ * Digest of the full tool arguments (key order ignored). Two calls are the same
+ * call only when this matches: the display preview drops most arguments.
+ */
+export function toolArgsKey(args: Record<string, unknown>): string {
+	return createHash("sha256").update(canonicalJson(args)).digest("hex").slice(0, 16);
 }
 
 /**

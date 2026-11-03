@@ -12,7 +12,7 @@ describe("progress runtime snapshots", () => {
 	it("snapshots only running steps and keeps the flat step index that control requests target", () => {
 		const run = runWith([
 			{ index: 0, agent: "scout", status: "complete", recentTools: [{ tool: "read", args: "a", endMs: 2_000 }] },
-			{ index: 1, agent: "worker", status: "running", worktreePath: "C:/wt/worker", lastActivityAt: 8_000, recentTools: [{ tool: "bash", args: "npm test", endMs: 8_500, failed: true }] },
+			{ index: 1, agent: "worker", status: "running", worktreePath: "C:/wt/worker", lastActivityAt: 8_000, recentTools: [{ tool: "bash", args: "npm test", argsKey: "k1", endMs: 8_500, failed: true }] },
 		]);
 		const snapshots = snapshotsFromRuns([run], () => true);
 		assert.equal(snapshots.length, 1);
@@ -24,7 +24,7 @@ describe("progress runtime snapshots", () => {
 			worktreePath: "C:/wt/worker",
 			startedAtMs: 1_000,
 			lastActivityAtMs: 8_000,
-			recentTools: [{ tool: "bash", args: "npm test", failed: true }],
+			recentTools: [{ tool: "bash", args: "npm test", argsKey: "k1", failed: true }],
 			runnerAlive: true,
 		});
 	});

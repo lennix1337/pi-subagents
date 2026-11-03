@@ -24,7 +24,10 @@ export type ProgressSignal = typeof PROGRESS_SIGNALS[number];
 
 export interface ProgressToolCall {
 	tool: string;
+	/** Display preview; it can be the same for calls whose full arguments differ. */
 	args: string;
+	/** Digest of the full arguments; when present it decides whether two calls are identical. */
+	argsKey?: string;
 	failed?: boolean;
 }
 
@@ -78,7 +81,7 @@ function identicalTailLength(calls: readonly ProgressToolCall[]): number {
 	let count = 0;
 	for (let index = calls.length - 1; index >= 0; index--) {
 		const call = calls[index]!;
-		if (call.tool !== last.tool || call.args !== last.args) break;
+		if (call.tool !== last.tool || (call.argsKey ?? call.args) !== (last.argsKey ?? last.args)) break;
 		count++;
 	}
 	return count;

@@ -103,7 +103,7 @@ import { persistRunnerStartupFailure } from "./runner-startup-failure.ts";
 import { currentRecordedPid } from "./boot-id.ts";
 import type { RecordedPid } from "./stale-run-reconciler.ts";
 import { createSteeringStatus, recordSteeringRequest, steeringStatus, terminalSteeringNoticeState, unconsumedSteerReason, updateSteeringTarget } from "./steering.ts";
-import { PROMPT_REDACTED, SUBAGENT_STOPPED_MESSAGE, SUBAGENT_TIMED_OUT_MESSAGE, detectSubagentError, extractTextFromContent, extractToolArgsPreview, formatEmptyTerminalAssistantResponseError, getAgentDir, getFinalOutput, hasEmptyTerminalAssistantResponse, readStatus } from "../../shared/utils.ts";
+import { PROMPT_REDACTED, SUBAGENT_STOPPED_MESSAGE, SUBAGENT_TIMED_OUT_MESSAGE, detectSubagentError, extractTextFromContent, extractToolArgsPreview, formatEmptyTerminalAssistantResponseError, getAgentDir, getFinalOutput, hasEmptyTerminalAssistantResponse, readStatus, toolArgsKey } from "../../shared/utils.ts";
 import { planAbortRecovery } from "../shared/abort-recovery.ts";
 import {
 	createMutatingFailureState,
@@ -2687,7 +2687,7 @@ export async function runSubagent(
 	// Pi's parallel tool execution emits every tool_execution_start before the first result message, so each
 	// step matches results to calls by toolCallId; pendingToolResults keeps the last-started call for events without one.
 	const pendingToolResultsByCallId = initialStatusSteps.map(() => new Map<string, PendingToolResult>());
-	type ActiveToolCall = { attentionEmitted?: boolean; key: string; tool: string; args: string; startedAt: number; path?: string; blocksSupervisor: boolean };
+	type ActiveToolCall = { attentionEmitted?: boolean; key: string; tool: string; args: string; argsKey: string; startedAt: number; path?: string; blocksSupervisor: boolean };
 	const activeToolCalls = initialStatusSteps.map(() => new Map<string, ActiveToolCall>());
 	const activeToolKeysByName = initialStatusSteps.map(() => new Map<string, string[]>());
 	const activeToolSequences = initialStatusSteps.map(() => 0);
@@ -2708,7 +2708,7 @@ export async function runSubagent(
 		step.currentToolStartedAt = active.startedAt;
 		setOptionalProperty(step, "currentPath", active.path);
 	};
-	const recordActiveToolCall = (flatIndex: number, event: { toolCallId?: unknown; toolName: string }, input: { argsPreview: string; currentPath?: string; blocksSupervisor: boolean; now: number }): ActiveToolCall => {
+	const recordActiveToolCall = (flatIndex: number, event: { toolCallId?: unknown; toolName: string }, input: { argsPreview: string; argsKey: string; currentPath?: string; blocksSupervisor: boolean; now: number }): ActiveToolCall => {
 		const sequence = (activeToolSequences[flatIndex] ?? 0) + 1;
 		activeToolSequences[flatIndex] = sequence;
 		const key = toolTimeoutCallKey(event, sequence);
@@ -2716,6 +2716,7 @@ export async function runSubagent(
 			key,
 			tool: event.toolName,
 			args: input.argsPreview,
+			argsKey: input.argsKey,
 			startedAt: input.now,
 			blocksSupervisor: input.blocksSupervisor,
 			...(input.currentPath !== undefined ? { path: input.currentPath } : {}),
@@ -3127,7 +3128,7 @@ export async function runSubagent(
 				step.toolBudget = toolBudgetState(configuredToolBudget, step.toolCount, step.toolBudget?.blockedTool);
 				statusPayload.toolBudget = step.toolBudget;
 			}
-			recordActiveToolCall(flatIndex, { toolCallId: (event as { toolCallId?: unknown }).toolCallId, toolName: event.toolName }, { argsPreview, currentPath, blocksSupervisor, now });
+			recordActiveToolCall(flatIndex, { toolCallId: (event as { toolCallId?: unknown }).toolCallId, toolName: event.toolName }, { argsPreview, argsKey: toolArgsKey(event.args ?? {}), currentPath, blocksSupervisor, now });
 			const pending: PendingToolResult = omitUndefinedProperties({ tool: event.toolName, path: currentPath, mutates, startedAt: now });
 			pendingToolResults[flatIndex] = pending;
 			const startedCallId = (event as { toolCallId?: unknown }).toolCallId;
@@ -3163,7 +3164,7 @@ export async function runSubagent(
 			const endedTool = removeActiveToolCall(flatIndex, event);
 			if (endedTool) {
 				step.recentTools ??= [];
-				step.recentTools.push({ tool: endedTool.tool, args: endedTool.args, endMs: now, ...(event.isError ? { failed: true } : {}) });
+				step.recentTools.push({ tool: endedTool.tool, args: endedTool.args, argsKey: endedTool.argsKey, endMs: now, ...(event.isError ? { failed: true } : {}) });
 			}
 			refreshStepCurrentTool(flatIndex);
 			const supervisorPreviousActivity = supervisorAttentionSteps.get(flatIndex);
