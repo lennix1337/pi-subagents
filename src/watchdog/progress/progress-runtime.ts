@@ -28,7 +28,7 @@ export interface ProgressRunLike {
 		status: string;
 		worktreePath?: string;
 		lastActivityAt?: number;
-		recentTools?: ReadonlyArray<{ tool: string; args: string; endMs?: number; failed?: boolean }>;
+		recentTools?: ReadonlyArray<{ tool: string; args: string; argsKey?: string; endMs?: number; failed?: boolean }>;
 		currentTool?: string;
 		currentToolStartedAt?: number;
 	}>;
@@ -42,7 +42,12 @@ export function snapshotsFromRuns(runs: readonly ProgressRunLike[], runnerAlive:
 		for (const step of run.steps) {
 			if (step.status !== "running") continue;
 			const lastActivityAt = step.lastActivityAt ?? run.lastActivityAt ?? run.lastUpdate;
-			const recentTools: ProgressToolCall[] = (step.recentTools ?? []).map((tool) => (tool.failed ? { tool: tool.tool, args: tool.args, failed: true } : { tool: tool.tool, args: tool.args }));
+			const recentTools: ProgressToolCall[] = (step.recentTools ?? []).map((tool) => ({
+				tool: tool.tool,
+				args: tool.args,
+				...(tool.argsKey ? { argsKey: tool.argsKey } : {}),
+				...(tool.failed ? { failed: true } : {}),
+			}));
 			snapshots.push({
 				runId: run.id,
 				agent: step.agent,
