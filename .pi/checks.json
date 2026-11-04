@@ -1,6 +1,11 @@
 {
   "version": 1,
   "checks": {
+    "standalone-retention": {
+      "description": "Mock-Pi standalone native child preserves committed and dirty work and resumes from retained cwd; no provider calls",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "--test-name-pattern", "retains a standalone async native child worktree for resume", "test/integration/async-execution.part-4.test.ts"],
+      "timeoutMs": 120000
+    },
     "ci-verdict": {
       "description": "CI verdict fails closed when a required job cannot acquire a hosted runner",
       "argv": ["node", "--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", "test/unit/ci-ok.test.ts"],
