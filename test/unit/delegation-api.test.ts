@@ -93,6 +93,7 @@ describe("public subagent delegation contract", () => {
 			[{ ...request, skill: Array.from({ length: 257 }, () => "x") }, /skill supports at most 256 entries/],
 			[{ ...request, skill: Array.from({ length: 256 }, () => "x".repeat(257)) }, /skill entries exceed 64 KiB in aggregate/],
 			[{ ...request, result: { kind: "structured", schema: { value: "x".repeat(65_536) } } }, /result.schema exceeds 64 KiB/],
+			[{ ...request, timeoutMs: 0 }, /timeoutMs must be an integer >= 1/],
 			[{ ...request, timeoutMs: 2_147_483_648 }, /timeoutMs must be <= 2147483647/],
 		] as const;
 		for (const [input, expected] of malformed) {
