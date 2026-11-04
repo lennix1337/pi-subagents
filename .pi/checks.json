@@ -1,6 +1,11 @@
 {
   "version": 1,
   "checks": {
+    "ci-verdict": {
+      "description": "CI verdict fails closed when a required job cannot acquire a hosted runner",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", "test/unit/ci-ok.test.ts"],
+      "timeoutMs": 30000
+    },
     "recovery-placement-unit": {
       "description": "Offline workflow resume claims, owner liveness and SSH placement admission; no Mac access or inference",
       "argv": ["node", "--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", "--test-concurrency=2", "test/unit/boot-id.test.ts", "test/unit/workflow-launch-record.test.ts", "test/unit/workflow-resume-claim.test.ts", "test/unit/workflow-resume.test.ts", "test/unit/workflow-reuse-chain.test.ts", "test/unit/rex-ssh-machine.test.ts", "test/unit/herdr-native-placement.test.ts", "test/unit/result-delivery-ownership.test.ts", "test/unit/terminal-run-index.test.ts"],

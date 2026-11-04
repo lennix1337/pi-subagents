@@ -1,8 +1,5 @@
 #!/usr/bin/env node
-// The single required check. A job blocks the merge when it ran and did not succeed. A job
-// that no hosted runner ever picked up (cancelled with no runner and no steps, as macOS arm64
-// capacity does) is reported as a warning instead: it tested nothing, so it proves nothing
-// either way. If the job list cannot be read, the check fails closed.
+// The required check fails closed: a needed job that never got a runner did not pass.
 import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -14,7 +11,7 @@ const neverAcquired = (job) => job.conclusion === "cancelled" && !job.runner_nam
 export function ciVerdict(jobs) {
 	const others = jobs.filter((job) => job.name !== SELF);
 	const unacquired = others.filter(neverAcquired).map((job) => job.name);
-	const failed = others.filter((job) => !PASSED.has(job.conclusion) && !neverAcquired(job)).map((job) => `${job.name}=${job.conclusion}`);
+	const failed = others.filter((job) => !PASSED.has(job.conclusion)).map((job) => `${job.name}=${job.conclusion}`);
 	const ranSomething = others.some((job) => job.conclusion === "success");
 	return { ok: failed.length === 0 && ranSomething, failed, unacquired };
 }
@@ -34,7 +31,7 @@ async function runJobs() {
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
 	const verdict = ciVerdict(await runJobs());
-	for (const name of verdict.unacquired) console.log(`::warning::${name}: no hosted runner picked it up; it did not run and does not block the merge`);
+	for (const name of verdict.unacquired) console.log(`::error::${name}: no hosted runner picked it up; validation is incomplete and blocks the merge`);
 	if (process.env.GITHUB_STEP_SUMMARY && verdict.unacquired.length) {
 		appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Not run (no runner): ${verdict.unacquired.join(", ")}\n`);
 	}

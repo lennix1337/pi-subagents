@@ -11,9 +11,9 @@ describe("ci-ok verdict", () => {
 		assert.deepEqual(verdict, { ok: true, failed: [], unacquired: [] });
 	});
 
-	it("does not block on a job that no hosted runner ever picked up, but names it", () => {
+	it("blocks when a needed job never acquired a hosted runner, even if other jobs passed", () => {
 		const verdict = ciVerdict([ran("test (ubuntu-latest, 1)", "success"), neverStarted("native-nested-wait (macos-latest)")]);
-		assert.deepEqual(verdict, { ok: true, failed: [], unacquired: ["native-nested-wait (macos-latest)"] });
+		assert.deepEqual(verdict, { ok: false, failed: ["native-nested-wait (macos-latest)=cancelled"], unacquired: ["native-nested-wait (macos-latest)"] });
 	});
 
 	it("still blocks on a job that ran and failed, was cancelled mid-run or timed out", () => {
@@ -24,7 +24,7 @@ describe("ci-ok verdict", () => {
 			neverStarted("native-nested-wait (macos-latest)"),
 		]);
 		assert.equal(verdict.ok, false);
-		assert.deepEqual(verdict.failed, ["test (windows-latest, 2)=failure", "native-nested-wait (windows-latest)=cancelled", "clean-install=timed_out"]);
+		assert.deepEqual(verdict.failed, ["test (windows-latest, 2)=failure", "native-nested-wait (windows-latest)=cancelled", "clean-install=timed_out", "native-nested-wait (macos-latest)=cancelled"]);
 	});
 
 	it("blocks when no job ran at all, so an all-unacquired run is never green", () => {
