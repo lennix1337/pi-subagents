@@ -2096,6 +2096,40 @@ runner.on("exit", (code, signal) => process.exit(signal ? 128 + require("node:os
 	};
 	const resume = (executor: ReturnType<typeof makeAsyncExecutor>, ctx: ReturnType<typeof forkCtx>, id: string) => executor.execute(`resume-${id}`, { action: "resume", id, message: "Continue", acceptance: false }, new AbortController().signal, undefined, ctx) as Promise<{ isError?: boolean; content: Array<{ text?: string }>; details: { asyncId?: string } }>;
 
+	it("retains a standalone async native child worktree for resume", { timeout: 60_000, skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async (t) => {
+		const repo = createRepo("pi-standalone-retention-");
+		const trees = createTempDir();
+		t.after(() => { removeTempDir(repo); removeTempDir(trees); });
+		const release = path.join(trees, "release");
+		const parentSessionFile = path.join(trees, "parent.jsonl");
+		const childSessionFile = path.join(trees, "child.jsonl");
+		const header = JSON.stringify({ type: "session", version: 1, id: "retention", cwd: repo });
+		fs.writeFileSync(parentSessionFile, `${header}\n`);
+		fs.writeFileSync(childSessionFile, `${header}\n`);
+		const ctx = { ...makeMinimalCtx(repo), sessionManager: { getSessionId: () => "retention-parent", getSessionFile: () => parentSessionFile, getLeafId: () => "leaf", openSession: () => ({ createBranchedSession: () => childSessionFile }) } };
+		const executor = makeAsyncExecutor([makeAgent("worker")], { worktreeProvider: "native", worktreeBaseDir: trees });
+		mockPi.onCall({ output: "done", waitForPath: release, writeFiles: [{ path: "dirty.txt", content: "uncommitted" }] });
+		const launch = await executor.execute("retention-launch", { agent: "worker", task: "Work", async: true, context: "fork", worktree: true, acceptance: false }, new AbortController().signal, undefined, ctx) as { isError?: boolean; content: Array<{ text?: string }>; details: { asyncId?: string } };
+		assert.equal(launch.isError, undefined, launch.content[0]?.text);
+		const id = launch.details.asyncId!;
+		await waitForMockPiCall(mockPi, 0);
+		const status = await waitForAsyncState(id, (s) => Boolean((s.steps?.[0] as { worktreePath?: string })?.worktreePath));
+		const cwd = (status.steps![0] as { worktreePath: string }).worktreePath;
+		fs.writeFileSync(path.join(cwd, "committed.txt"), "local commit");
+		execFileSync("git", ["add", "committed.txt"], { cwd });
+		execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "local"], { cwd });
+		const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
+		fs.writeFileSync(release, "go");
+		assert.equal((await readAsyncPayload(id)).success, true);
+		assert.equal(fs.existsSync(cwd), true, "resumable cwd must survive completion");
+		assert.equal(fs.readFileSync(path.join(cwd, "dirty.txt"), "utf8"), "uncommitted");
+		assert.equal(execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim(), commit);
+		mockPi.onCall({ output: "resumed" });
+		const resumed = await executor.execute("retention-resume", { action: "resume", id, message: "Continue", acceptance: false }, new AbortController().signal, undefined, ctx) as { isError?: boolean; content: Array<{ text?: string }>; details: { asyncId?: string } };
+		assert.equal(resumed.isError, undefined, resumed.content[0]?.text);
+		assert.equal((await readAsyncPayload(resumed.details.asyncId!)).success, true);
+	});
+
 	it("resumes a launcher run under its recorded launcher with the current argv, refusing while the name is undefined", { timeout: 30_000, skip: !isAsyncAvailable() || process.platform === "win32" ? "requires jiti and a POSIX wrapper" : undefined }, async () => {
 		const { argvLog, runnerLaunchers, executor } = launcherExecutor();
 		const ctx = forkCtx("launcher-resume");
