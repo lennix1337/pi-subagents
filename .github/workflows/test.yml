@@ -133,7 +133,7 @@ jobs:
   calendar-timezones:
     needs: changes
     if: needs.changes.outputs.calendar == 'true'
-    runs-on: macos-15-intel
+    runs-on: macos-26-intel
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
@@ -147,7 +147,7 @@ jobs:
   worktree-cleanup-recovery:
     needs: changes
     if: needs.changes.outputs.worktree == 'true'
-    runs-on: macos-15-intel
+    runs-on: macos-26-intel
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
@@ -161,7 +161,7 @@ jobs:
   schedule-claim-contention:
     needs: changes
     if: needs.changes.outputs.schedule == 'true'
-    runs-on: macos-15-intel
+    runs-on: macos-26-intel
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
@@ -177,7 +177,7 @@ jobs:
     if: needs.changes.outputs.runtime == 'true'
     strategy:
       matrix:
-        os: [macos-15-intel, windows-latest]
+        os: [macos-26-intel, windows-latest]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
