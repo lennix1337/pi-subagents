@@ -120,6 +120,9 @@ jobs:
           NODE_DISABLE_COMPILE_CACHE: '1'
           PI_SUBAGENTS_TERMINAL_EVIDENCE_DIR: ${{ runner.temp }}/1906-terminal-evidence
         run: node --experimental-strip-types --import ./test/support/register-loader.mjs --test ${{ matrix.testArgs }} test/integration/*.test.ts
+      - name: Guard mutations
+        if: matrix.typecheck
+        run: npm run mutations
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
