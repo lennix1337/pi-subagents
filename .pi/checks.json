@@ -1,6 +1,11 @@
 {
   "version": 1,
   "checks": {
+    "retained-cwd": {
+      "description": "Offline retained cwd: real Windows short-name aliases, nested paths and symlink escape refusal; disposable writes only",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", "test/unit/retained-cwd.test.ts", "test/unit/async-resume.test.ts"],
+      "timeoutMs": 60000
+    },
     "standalone-retention": {
       "description": "Mock-Pi standalone native child preserves committed and dirty work and resumes from retained cwd; no provider calls",
       "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "--test-name-pattern", "retains a standalone async native child worktree for resume", "test/integration/async-execution.part-4.test.ts"],

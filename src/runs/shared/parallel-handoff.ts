@@ -149,7 +149,8 @@ export function resolveParallelHandoffChild(input: {
 
 function resolveExistingPath(candidate: string): string {
 	try {
-		return fs.realpathSync(candidate);
+		// Unlike the JS resolver, native expands Windows 8.3 aliases before containment checks.
+		return fs.realpathSync.native(candidate);
 	} catch {
 		return path.resolve(candidate);
 	}
@@ -201,9 +202,9 @@ export function resolveRetainedWorktreeCwd(manifestPath: string, runId: string, 
 	try {
 		const rootStat = fs.lstatSync(cleanup.path);
 		if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) throw new Error("worktree root is not a directory");
-		worktreeRoot = fs.realpathSync(cleanup.path);
+		worktreeRoot = fs.realpathSync.native(cleanup.path);
 		if (!fs.statSync(requiredCwd).isDirectory()) throw new Error("path is not a directory");
-		resolvedRequiredCwd = fs.realpathSync(requiredCwd);
+		resolvedRequiredCwd = fs.realpathSync.native(requiredCwd);
 	} catch (error) {
 		throw new Error(`Async run '${runId}' required managed worktree cwd is missing: ${requiredCwd}`, { cause: error instanceof Error ? error : undefined });
 	}
