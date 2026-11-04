@@ -1,6 +1,21 @@
 {
   "version": 1,
   "checks": {
+    "nested-wait-fixture": {
+      "description": "Offline scripted native fixture resumes timed-out waits, consumes real references and refuses missing evidence; no inference",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", "test/unit/nested-wait-fixture.test.ts"],
+      "timeoutMs": 30000
+    },
+    "retained-cwd": {
+      "description": "Offline retained cwd: real Windows short-name aliases, nested paths and symlink escape refusal; disposable writes only",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", "test/unit/retained-cwd.test.ts", "test/unit/async-resume.test.ts"],
+      "timeoutMs": 60000
+    },
+    "standalone-retention": {
+      "description": "Mock-Pi standalone native child preserves committed and dirty work and resumes from retained cwd; no provider calls",
+      "argv": ["node", "--experimental-strip-types", "--import", "./test/support/register-loader.mjs", "--test", "--test-name-pattern", "retains a standalone async native child worktree for resume", "test/integration/async-execution.part-4.test.ts"],
+      "timeoutMs": 120000
+    },
     "ci-verdict": {
       "description": "CI verdict fails closed when a required job cannot acquire a hosted runner",
       "argv": ["node", "--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", "test/unit/ci-ok.test.ts"],

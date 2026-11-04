@@ -45,7 +45,7 @@ export default function (pi: ExtensionAPI) {
 						output.content = model.id === "reviewer"
 							? [{ type: "text" as const, text: '```js workflow\nreturn await runs.all([{key:"a",agent:"arm-a",task:"Review A"},{key:"b",agent:"arm-b",task:"Review B"}]);\n```' }, call("subagent", { workflow: true, async: true })]
 							: Array.from({ length: model.id === "arm-a" ? 2 : 1 }, (_, index) => call("subagent", { agent: "persona", task: `Inspect the assigned code for ${model.id}`, async: true }, index));
-					} else if (!waits.length || (model.id === "arm-b" && waits.length === 1)) {
+					} else if (!waits.length || (model.id === "arm-b" && waits.length === 1) || /^Wait window elapsed after /.test(textOf(waits[waits.length - 1]!))) {
 						const id = textOf(spawned[0]!).match(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/)?.[0];
 						if (!id) throw new Error("Launch result did not expose its run id");
 						output.content = [call("bg_wait", model.id === "arm-b" ? { id: waits.length ? id.slice(0, 8) : id, timeoutMs: 20000 } : { all: true, timeoutMs: 20000 })];

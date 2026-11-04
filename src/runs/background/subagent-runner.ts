@@ -4781,7 +4781,7 @@ export async function runSubagent(
 							kind: "preserve",
 							capturedDiffs: diffs,
 							handoffManifestPath: manifestPath,
-							...(config.parentWorkflowRunId && singleResult.sessionFile && fs.existsSync(singleResult.sessionFile) && !singleResult.stopped
+							...((config.parentWorkflowRunId || !seqStep.runner || seqStep.runner.type === "pi") && singleResult.sessionFile && fs.existsSync(singleResult.sessionFile) && !singleResult.stopped
 								? { cleanupBlocker: "retained child resume requires managed worktree cwd" }
 								: {}),
 						});
