@@ -218,6 +218,7 @@ interface SubagentSettings {
 	agentScanDirs?: string[];
 	agentExcludeDirs?: string[];
 	defaultModel?: string;
+	defaultModelByProvider?: Record<string, string>;
 	defaultProvider?: string;
 	defaultThinking?: string;
 	maxThinking?: ThinkingLevel;
@@ -1236,6 +1237,20 @@ function readSubagentSettings(filePath: string | null): SubagentSettings {
 			throw new Error(`Subagent settings in '${filePath}' have invalid 'defaultModel'; expected a non-empty string.`);
 		}
 	}
+	let defaultModelByProvider: Record<string, string> | undefined;
+	if ("defaultModelByProvider" in subagentsObject) {
+		const value = subagentsObject.defaultModelByProvider;
+		if (!value || typeof value !== "object" || Array.isArray(value)) {
+			throw new Error(`Subagent settings in '${filePath}' have invalid 'defaultModelByProvider'; expected an object keyed by provider.`);
+		}
+		defaultModelByProvider = {};
+		for (const [provider, model] of Object.entries(value)) {
+			if (typeof model !== "string" || !model.trim()) {
+				throw new Error(`Subagent settings in '${filePath}' have invalid 'defaultModelByProvider.${provider}'; expected a non-empty model string.`);
+			}
+			defaultModelByProvider[provider] = model.trim();
+		}
+	}
 	let defaultProvider: string | undefined;
 	if ("defaultProvider" in subagentsObject) {
 		if (typeof subagentsObject.defaultProvider === "string" && subagentsObject.defaultProvider.trim()) {
@@ -1302,6 +1317,7 @@ function readSubagentSettings(filePath: string | null): SubagentSettings {
 		overrides: parsed,
 		providerOverrides,
 		...(defaultModel !== undefined ? { defaultModel } : {}),
+		...(defaultModelByProvider !== undefined ? { defaultModelByProvider } : {}),
 		...(defaultProvider !== undefined ? { defaultProvider } : {}),
 		...(defaultThinking !== undefined ? { defaultThinking } : {}),
 		...(maxThinking !== undefined ? { maxThinking } : {}),
@@ -1338,15 +1354,33 @@ function readSubagentSettings(filePath: string | null): SubagentSettings {
 	return parsedSettings;
 }
 
+/**
+ * The default model for the parent's provider family: the key is the provider
+ * itself or its family prefix (`anthropic` matches `anthropic-account-2`).
+ * A bare model id runs on the parent's own provider, so a child stays on the
+ * session's account and class instead of a fixed account.
+ */
+function defaultModelForProvider(byProvider: Record<string, string> | undefined, provider: string): string | undefined {
+	if (!byProvider) return undefined;
+	const key = byProvider[provider] !== undefined
+		? provider
+		: Object.keys(byProvider).filter((candidate) => provider.startsWith(`${candidate}-`)).sort((a, b) => b.length - a.length)[0];
+	if (key === undefined) return undefined;
+	const model = byProvider[key]!;
+	return model.includes("/") ? model : `${provider}/${model}`;
+}
+
 function selectProviderOverrides(settings: SubagentSettings, provider: string | undefined): SubagentSettings {
 	if (!provider) return settings;
+	const providerDefault = defaultModelForProvider(settings.defaultModelByProvider, provider);
+	const withDefault = providerDefault === undefined ? settings : { ...settings, defaultModel: providerDefault };
 	const selected = settings.providerOverrides[provider];
-	if (!selected) return settings;
-	const overrides = { ...settings.overrides };
+	if (!selected) return withDefault;
+	const overrides = { ...withDefault.overrides };
 	for (const [name, override] of Object.entries(selected)) {
 		overrides[name] = { ...overrides[name], ...override };
 	}
-	return { ...settings, overrides };
+	return { ...withDefault, overrides };
 }
 
 function resolveSubagentDefaultProvider(
