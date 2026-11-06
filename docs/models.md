@@ -5,13 +5,14 @@ How subagents pick models, and how to change that.
 Builtin agents inherit your current Pi default model. This keeps new installs from depending on a provider you may not have configured. From there you can layer defaults and overrides:
 
 - `subagents.defaultModel` — a default for every subagent that does not set its own model.
+- `subagents.defaultModelByProvider.<provider>` — that default per parent provider family. The key matches the parent's provider or its prefix (`anthropic` matches `anthropic-account-2`); a bare model id runs on the parent's own provider, so children keep the session's account and class (`{"anthropic": "claude-sonnet-5-5:low", "openai-codex": "gpt-6.1-terra:low"}`). It replaces `defaultModel` for a matching parent and falls back to it otherwise.
 - `subagents.defaultProvider` — a provider preference for bare model ids, such as `llama-3`, when multiple providers expose the same id.
 - `subagents.agentOverrides.<name>.model` — pin one role.
 - `subagents.agentOverrides.<name>.defaultProvider` — choose or clear the provider preference for one role.
 - `subagents.agentOverridesByProvider.<provider>.<name>` — layer role fields for the active parent provider.
 - Per-run overrides — for one launch only.
 
-Precedence, strongest first: per-run override → provider-scoped role override → `agentOverrides.<name>.model` → agent frontmatter `model` → `subagents.defaultModel` → the parent session model. A provider preference does not replace this order; it only resolves bare model ids when the active registry has more than one match. Fully qualified `provider/model` strings still win exactly.
+Precedence, strongest first: per-run override → provider-scoped role override → `agentOverrides.<name>.model` → agent frontmatter `model` → `subagents.defaultModelByProvider` (matching parent) → `subagents.defaultModel` → the parent session model. A provider preference does not replace this order; it only resolves bare model ids when the active registry has more than one match. Fully qualified `provider/model` strings still win exactly.
 
 Children have no account failover of their own, so a configured or inherited model follows the parent's: before a launch or resume, the child's model is offered on `pi:model-route:request:v1`, and an account manager such as `pi-multi-account` may answer with the same quality tier on a ready account when the configured account is spent (`openai-codex-account-2/gpt-6.1-terra:low` → `anthropic/claude-sonnet-5-5:low`). The thinking suffix is kept, the replacement must be in this session's registry and inside every enforced `modelScope`, and a run on a configured model keeps the original as `requestedModel`. A per-run model you pass explicitly is never moved; without an answering manager nothing changes.
 

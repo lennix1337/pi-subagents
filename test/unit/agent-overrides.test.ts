@@ -593,6 +593,38 @@ describe("builtin agent overrides", () => {
 		assert.equal(reviewer.override?.path, path.join(tempProject, ".pi", "settings.json"));
 	});
 
+	it("picks the default model of the parent session's provider family, on the parent's own account", () => {
+		writeJson(path.join(tempHome, ".pi", "agent", "settings.json"), {
+			subagents: {
+				defaultModel: "openai-codex-account-2/gpt-6.1-terra:low",
+				defaultModelByProvider: {
+					anthropic: "claude-sonnet-5-5:low",
+					"openai-codex": "gpt-6.1-terra:low",
+					openrouter: "openrouter/openai/gpt-5-mini",
+				},
+				agentOverrides: { reviewer: { model: "openai/gpt-5.4" } },
+			},
+		});
+		const worker = (provider?: string) => discoverAgents(tempProject, "both", provider).agents.find((agent) => agent.name === "worker");
+
+		assert.equal(worker("anthropic-account-2")?.model, "anthropic-account-2/claude-sonnet-5-5:low");
+		assert.equal(worker("anthropic")?.model, "anthropic/claude-sonnet-5-5:low");
+		assert.equal(worker("openai-codex")?.model, "openai-codex/gpt-6.1-terra:low");
+		assert.equal(worker("openrouter")?.model, "openrouter/openai/gpt-5-mini");
+		assert.equal(worker("anthropicx")?.model, "openai-codex-account-2/gpt-6.1-terra:low");
+		assert.equal(worker(undefined)?.model, "openai-codex-account-2/gpt-6.1-terra:low");
+		assert.equal(worker("anthropic-account-2")?.modelSource?.type, "subagents.defaultModel");
+		assert.equal(discoverAgents(tempProject, "both", "anthropic-account-2").agents.find((agent) => agent.name === "reviewer")?.model, "openai/gpt-5.4");
+	});
+
+	it("rejects an invalid defaultModelByProvider", () => {
+		const userSettings = path.join(tempHome, ".pi", "agent", "settings.json");
+		writeJson(userSettings, { subagents: { defaultModelByProvider: ["anthropic"] } });
+		assert.throws(() => discoverAgentsAll(tempProject), /invalid 'defaultModelByProvider'; expected an object keyed by provider/u);
+		writeJson(userSettings, { subagents: { defaultModelByProvider: { anthropic: " " } } });
+		assert.throws(() => discoverAgentsAll(tempProject), /invalid 'defaultModelByProvider\.anthropic'; expected a non-empty model string/u);
+	});
+
 	it("layers active-provider overrides over default agentOverrides", () => {
 		writeJson(path.join(tempHome, ".pi", "agent", "settings.json"), {
 			subagents: {

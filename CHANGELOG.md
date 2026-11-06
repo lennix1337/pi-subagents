@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `subagents.defaultModelByProvider` picks the subagent default by the parent's provider family (`anthropic` matches `anthropic-account-2`). A bare model id runs on the parent's own provider, so children keep the session's account and model class instead of one fixed account. See [models](docs/models.md).
+
 ### Fork integration
 
 - Add operator-approved remote Mac/Rex placement over SSH and automatic workflow recovery on session reopen. Preserve ownership, project trust, once-only claims and current admission checks. Native Windows placement remains unsupported; use a POSIX coordinator such as WSL. No live Mac or provider validation is implied.
