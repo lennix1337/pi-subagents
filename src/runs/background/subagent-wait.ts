@@ -366,6 +366,9 @@ function completionUsage(completions: WaitCompletion[] | undefined): Usage | und
 	return projected ? usage : undefined;
 }
 
+const UUID_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SHELL_ID_HINT = " If this id came from shell_start, it is a background shell, not a subagent run: its end arrives as a [shell ID] message; read more output with shell_status.";
+
 function result(text: string, isError = false, completions?: WaitCompletion[]): AgentToolResult<Details> {
 	const usage = completionUsage(completions);
 	for (const completion of completions ?? []) {
@@ -760,7 +763,7 @@ export async function waitForSubagents(
 			return waitForSessionDetachedForegroundRuns(foreground, signal, deps, startedAt, now, pollIntervalMs, timeoutMs, yieldWait);
 		}
 		return result(params.id
-			? `No active run matched "${params.id}". Nothing to wait for.`
+			? `No active run matched "${params.id}". Nothing to wait for.${UUID_ID.test(params.id) ? SHELL_ID_HINT : ""}`
 			: "No active async runs or registered provider work in this session. Nothing to wait for.");
 	}
 	const waitParams = params.id ? { ...params, id: active[0]!.id } : params;

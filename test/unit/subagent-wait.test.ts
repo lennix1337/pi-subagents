@@ -1589,6 +1589,21 @@ describe("bg_wait tool", () => {
 		}
 	});
 
+	it("points a UUID-shaped id with no matching run at shell_start shells", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-shell-id-"));
+		try {
+			const shellId = randomUUID();
+			const text = textOf(await waitForSubagents({ id: shellId }, undefined, baseDeps(root, makeState("sess-1"))));
+			assert.ok(text.includes(`No active run matched "${shellId}"`));
+			assert.match(text, /shell_start/);
+			assert.match(text, /shell_status/);
+			const plain = textOf(await waitForSubagents({ id: "run-alpha" }, undefined, baseDeps(root, makeState("sess-1"))));
+			assert.doesNotMatch(plain, /shell_start/, "non-UUID ids keep the plain message");
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("rejects dot-segment ids before probing outside the async root", async () => {
 		for (const id of [".", ".."]) {
 			const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-wait-dot-id-"));
