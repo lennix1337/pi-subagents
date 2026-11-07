@@ -12,7 +12,7 @@ import { PROPERTY_CASES, intBetween, pick, seededRandom, shuffled, type Rng } fr
 // the parent's own provider; an id with a `/` is used as written. The model below states that rule directly.
 
 const FALLBACK = "openai-codex-account-2/gpt-6.1-terra:low";
-const KEY_POOL = ["anthropic", "anthropic-account", "openai", "openai-codex", "open", "openrouter"];
+const KEY_POOL = ["anthropic", "anthropic-account", "openai", "openai-codex", "openai-codex-account", "open", "openrouter"];
 const VALUE_POOL = ["claude-sonnet-5-5:low", "gpt-6.1-terra:high", "vendor/model:low", "m-a"];
 const PARENT_POOL = [
 	"anthropic", "anthropic-account", "anthropic-account-2", "anthropic-2", "anthropicx",
@@ -33,13 +33,29 @@ function writeJson(filePath: string, value: unknown): void {
 
 function randomByProvider(next: Rng): Record<string, string> {
 	const byProvider: Record<string, string> = {};
-	for (const key of shuffled(next, KEY_POOL).slice(0, intBetween(next, 1, 4))) byProvider[key] = pick(next, VALUE_POOL);
+	for (const key of shuffled(next, KEY_POOL).slice(0, intBetween(next, 1, 5))) byProvider[key] = pick(next, VALUE_POOL);
 	return byProvider;
 }
 
+// Nested families (`openai`, `openai-codex`, `openai-codex-account`) are what the longest-prefix rule decides.
 function randomParent(next: Rng, byProvider: Record<string, string>): string {
-	if (next() < 0.25) return pick(next, Object.keys(byProvider));
+	const keys = Object.keys(byProvider);
+	const roll = next();
+	if (roll < 0.2) return pick(next, keys);
+	if (roll < 0.6) return `${pick(next, keys)}-${pick(next, ["codex", "account", "account-2", "x", "2"])}`;
 	return `${pick(next, PARENT_POOL)}${pick(next, ["", "", "-2", "x", "-account-3"])}`;
+}
+
+/** The worker's model for a parent provider. A throw on a legal provider name is reported as a failed property. */
+function workerModel(project: string, parent: string): string | undefined {
+	let worker: { model?: string } | undefined;
+	try {
+		worker = discoverAgents(project, "both", parent, { globalNpmRoot: null }).agents.find((agent) => agent.name === "worker");
+	} catch (error) {
+		assert.fail(`discovery threw for parent ${JSON.stringify(parent)}: ${error instanceof Error ? error.message : String(error)}`);
+	}
+	assert.ok(worker, `builtin worker agent not discovered for parent ${JSON.stringify(parent)}`);
+	return worker.model;
 }
 
 function expectedDefault(byProvider: Record<string, string>, parent: string): string {
@@ -85,10 +101,9 @@ describe("provider default model (property tests)", () => {
 			// A fresh project directory per case: discovery results are cached per directory and provider.
 			const project = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-project-"));
 			try {
-				const worker = discoverAgents(project, "both", parent, { globalNpmRoot: null }).agents.find((agent) => agent.name === "worker");
 				const expected = expectedDefault(byProvider, parent);
 				outcomes.add(expected);
-				assert.equal(worker?.model, expected, `seed ${seed}: parent ${JSON.stringify(parent)} with ${JSON.stringify(byProvider)}`);
+				assert.equal(workerModel(project, parent), expected, `seed ${seed}: parent ${JSON.stringify(parent)} with ${JSON.stringify(byProvider)}`);
 			} finally {
 				fs.rmSync(project, { recursive: true, force: true });
 			}
@@ -104,8 +119,7 @@ describe("provider default model (property tests)", () => {
 			const parent = `anthropic${pick(next, ["x", "2", "ai", "_1", "s"])}${next() < 0.5 ? "-account" : ""}`;
 			const project = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-project-"));
 			try {
-				const worker = discoverAgents(project, "both", parent, { globalNpmRoot: null }).agents.find((agent) => agent.name === "worker");
-				assert.equal(worker?.model, FALLBACK, `seed ${seed}: ${parent} matched the anthropic family`);
+				assert.equal(workerModel(project, parent), FALLBACK, `seed ${seed}: ${parent} matched the anthropic family`);
 			} finally {
 				fs.rmSync(project, { recursive: true, force: true });
 			}
@@ -118,8 +132,7 @@ describe("provider default model (property tests)", () => {
 		for (const parent of ["constructor", "toString", "hasOwnProperty", "__proto__"]) {
 			const project = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-project-"));
 			try {
-				const worker = discoverAgents(project, "both", parent, { globalNpmRoot: null }).agents.find((agent) => agent.name === "worker");
-				assert.equal(worker?.model, FALLBACK, `${parent} read an inherited property as its default model`);
+				assert.equal(workerModel(project, parent), FALLBACK, `${parent} read an inherited property as its default model`);
 			} finally {
 				fs.rmSync(project, { recursive: true, force: true });
 			}

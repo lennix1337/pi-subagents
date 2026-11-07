@@ -1362,7 +1362,8 @@ function readSubagentSettings(filePath: string | null): SubagentSettings {
  */
 function defaultModelForProvider(byProvider: Record<string, string> | undefined, provider: string): string | undefined {
 	if (!byProvider) return undefined;
-	const key = byProvider[provider] !== undefined
+	// Own keys only: a provider named like an Object.prototype member must not read an inherited value.
+	const key = Object.hasOwn(byProvider, provider)
 		? provider
 		: Object.keys(byProvider).filter((candidate) => provider.startsWith(`${candidate}-`)).sort((a, b) => b.length - a.length)[0];
 	if (key === undefined) return undefined;

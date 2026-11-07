@@ -17,7 +17,7 @@ const RERUN_PREVIEWS = ["a.ts", "gh run rerun 7", "gh run rerun 8"] as const;
 const RERUN = /\bgh\s+(?:run|workflow)\s+rerun\s+(\d+)/;
 
 type Mode = "keyed" | "legacy";
-type Expectation = { verdict: string; signal: string; reason?: string };
+type Expectation = { verdict: string; signal: string; reason?: string; count?: number };
 
 // A keyed history: every call has a digest and its preview is noise. A legacy history: no digest.
 function randomHistory(next: Rng, mode: Mode, withRerun: boolean): ProgressToolCall[] {
@@ -74,7 +74,8 @@ function model(calls: readonly ProgressToolCall[], alive: boolean | undefined, m
 	}
 	const failed = failedSuffix(calls);
 	if (failed >= POLICY.failedCallRepeats) return { verdict: "looping", signal: "failed-calls", reason: `${failed} failed tool calls in a row` };
-	if (mostRerunCount(calls) >= POLICY.rerunRepeats) return { verdict: "looping", signal: "rerun-loop" };
+	const rerun = mostRerunCount(calls);
+	if (rerun >= POLICY.rerunRepeats) return { verdict: "looping", signal: "rerun-loop", count: rerun };
 	return { verdict: "healthy", signal: "active", reason: "recent activity" };
 }
 
@@ -93,7 +94,10 @@ function assertMatchesModel(actual: { verdict: string; signal: string; reason: s
 	assert.equal(actual.signal, expected.signal, `${label}: signal`);
 	assert.equal(actual.verdict, expected.verdict, `${label}: verdict`);
 	if (expected.reason !== undefined) assert.equal(actual.reason, expected.reason, `${label}: reason`);
-	if (expected.signal === "rerun-loop") assert.match(actual.reason, /re-ran CI run \d+ \d+ times/, `${label}: reason`);
+	if (expected.count !== undefined) {
+		assert.match(actual.reason, /^re-ran CI run \d+ \d+ times$/, `${label}: reason`);
+		assert.equal(Number(/ (\d+) times$/.exec(actual.reason)?.[1]), expected.count, `${label}: re-run count`);
+	}
 }
 
 describe("progress loop rules (property tests)", () => {

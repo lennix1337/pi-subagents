@@ -19,18 +19,43 @@ const cases = [
 	["loop-threshold", "src/watchdog/progress/progress-signals.ts", "if (identical >= policy.identicalCallRepeats) {", "if (identical > policy.identicalCallRepeats) {", "property:", "property-progress-signals"],
 	["loop-failed-run", "src/watchdog/progress/progress-signals.ts", "calls[index]!.failed === true", "calls[index]!.failed !== true", "property:", "property-progress-signals"],
 	["loop-runner-gone", "src/watchdog/progress/progress-signals.ts", "if (observation.runnerAlive === false) {", "if (false) {", "property:", "property-progress-signals"],
+	["provider-family-boundary", "src/agents/agents.ts", "provider.startsWith(`${candidate}-`)", "provider.startsWith(candidate)", "property:", "property-provider-default-model"],
+	["provider-family-longest", "src/agents/agents.ts", ".sort((a, b) => b.length - a.length)[0];", ".sort((a, b) => a.length - b.length)[0];", "property:", "property-provider-default-model"],
+	["provider-default-qualify", "src/agents/agents.ts", "return model.includes(\"/\") ? model : `${provider}/${model}`;", "return model;", "property:", "property-provider-default-model"],
+	["provider-exact-match", "src/agents/agents.ts", "Object.hasOwn(byProvider, provider)", "false", "property:", "property-provider-default-model"],
+	["provider-inherited-key", "src/agents/agents.ts", "Object.hasOwn(byProvider, provider)", "byProvider[provider] !== undefined", "property:", "property-provider-default-model"],
 ];
 
-for (const [name, file, before, after, pattern, test] of cases) {
+// The copy holds what the tests load: builtin agent definitions are read from the package's agents/ directory.
+function disposableCopy() {
 	const dir = mkdtempSync(join(tmpdir(), "pi-subagents-mutant-"));
+	for (const entry of ["src", "test", "package.json", "agents"]) cpSync(join(root, entry), join(dir, entry), { recursive: true });
+	symlinkSync(resolve(root, "node_modules"), join(dir, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+	return dir;
+}
+
+function runTest(dir, test, pattern) {
+	return spawnSync(process.execPath, ["--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", `--test-name-pattern=${pattern}`, `test/unit/${test}.test.ts`], { cwd: dir, encoding: "utf8", timeout: 30000 });
+}
+
+for (const [name, file, before, after, pattern, test] of cases) {
+	// Control: the unmutated copy must pass first, so a kill below comes from the mutant and not from the setup.
+	const control = disposableCopy();
 	try {
-		for (const entry of ["src", "test", "package.json"]) cpSync(join(root, entry), join(dir, entry), { recursive: true });
-		symlinkSync(resolve(root, "node_modules"), join(dir, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+		const baseline = runTest(control, test, pattern);
+		assert.equal(baseline.error, undefined, `${name}: baseline process must run without timing out`);
+		assert.equal(baseline.status, 0, `${name}: baseline must pass before the mutation\n${baseline.stdout}${baseline.stderr}`.slice(0, 2000));
+	} finally {
+		rmSync(control, { recursive: true, force: true });
+	}
+
+	const dir = disposableCopy();
+	try {
 		const path = join(dir, file);
 		const source = readFileSync(path, "utf8");
 		assert.equal(source.split(before).length, 2, `${name}: mutation must be unique`);
 		writeFileSync(path, source.replace(before, after));
-		const result = spawnSync(process.execPath, ["--experimental-strip-types", "--import", "./test/support/isolated-temp-root.mjs", "--test", `--test-name-pattern=${pattern}`, `test/unit/${test}.test.ts`], { cwd: dir, encoding: "utf8", timeout: 30000 });
+		const result = runTest(dir, test, pattern);
 		assert.equal(result.error, undefined, `${name}: process must run without timing out`);
 		assert.notEqual(result.status, 0, `${name}: survived`);
 		assert.match(result.stdout + result.stderr, /AssertionError/, `${name}: must fail an assertion, not crash`);

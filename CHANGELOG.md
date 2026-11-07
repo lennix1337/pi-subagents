@@ -15,6 +15,7 @@
 
 ### Fixed
 
+- `subagents.defaultModelByProvider` no longer breaks agent discovery when the parent's provider is named like an `Object.prototype` member (`constructor`, `toString`): only the provider's own keys select a family default.
 - When the session declined project trust, `subagent` `list`, `get`, `models`, `doctor` and the other agent-management actions no longer read project agents from `.pi/agents`.
 - `guide` with an unknown topic or section now returns a tool error that lists the valid choices, instead of a success result.
 - `children.list` states that it scans only the latest 100 finished runs of the session, including when it finds none, and reports `Showing N of M` when it caps the roster at 10.
