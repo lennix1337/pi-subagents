@@ -11,6 +11,14 @@ const cases = [
 	["timeout-maximum", "src/slash/delegation-request.ts", "timeoutMs > 2_147_483_647", "timeoutMs > 2_147_483_648", "strictly parses the structured owned-leaf request", "delegation-api"],
 	["model-deny", "src/watchdog/rules.ts", "if (denied !== undefined)", "if (false)", "applies deny before allow", "watchdog-rules"],
 	["model-allow", "src/watchdog/rules.ts", "modelMatches(roleRule.allow, model) !== undefined", "true", "applies deny before allow", "watchdog-rules"],
+	["args-digest-key-order", "src/shared/utils.ts", ".sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));", ";", "property:", "property-tool-args-key"],
+	["args-digest-undefined", "src/shared/utils.ts", ".filter(([, entry]) => entry !== undefined)", ".filter(() => true)", "property:", "property-tool-args-key"],
+	["args-digest-preview", "src/shared/utils.ts", "update(canonicalJson(args))", "update(extractToolArgsPreview(args))", "property:", "property-tool-args-key"],
+	["loop-identity-preview", "src/watchdog/progress/progress-signals.ts", "(call.argsKey ?? call.args) !== (last.argsKey ?? last.args)", "call.args !== last.args", "property:", "property-progress-signals"],
+	["loop-identity-digest-only", "src/watchdog/progress/progress-signals.ts", "(call.argsKey ?? call.args) !== (last.argsKey ?? last.args)", "call.argsKey !== last.argsKey", "property:", "property-progress-signals"],
+	["loop-threshold", "src/watchdog/progress/progress-signals.ts", "if (identical >= policy.identicalCallRepeats) {", "if (identical > policy.identicalCallRepeats) {", "property:", "property-progress-signals"],
+	["loop-failed-run", "src/watchdog/progress/progress-signals.ts", "calls[index]!.failed === true", "calls[index]!.failed !== true", "property:", "property-progress-signals"],
+	["loop-runner-gone", "src/watchdog/progress/progress-signals.ts", "if (observation.runnerAlive === false) {", "if (false) {", "property:", "property-progress-signals"],
 ];
 
 for (const [name, file, before, after, pattern, test] of cases) {
