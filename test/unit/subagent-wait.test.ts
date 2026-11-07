@@ -1599,6 +1599,8 @@ describe("bg_wait tool", () => {
 			assert.match(text, /shell_status/);
 			const plain = textOf(await waitForSubagents({ id: "run-alpha" }, undefined, baseDeps(root, makeState("sess-1"))));
 			assert.doesNotMatch(plain, /shell_start/, "non-UUID ids keep the plain message");
+			const short = textOf(await waitForSubagents({ id: shellId.slice(0, 8) }, undefined, baseDeps(root, makeState("sess-1"))));
+			assert.match(short, /shell_start/, "the 8-char id shown in shell notices gets the hint too");
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}

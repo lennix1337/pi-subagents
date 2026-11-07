@@ -366,7 +366,8 @@ function completionUsage(completions: WaitCompletion[] | undefined): Usage | und
 	return projected ? usage : undefined;
 }
 
-const UUID_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// A full UUID or its leading groups, down to the 8-char form shell notices show.
+const UUID_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){0,3}(?:-[0-9a-f]{12})?$/i;
 const SHELL_ID_HINT = " If this id came from shell_start, it is a background shell, not a subagent run: its end arrives as a [shell ID] message; read more output with shell_status.";
 
 function result(text: string, isError = false, completions?: WaitCompletion[]): AgentToolResult<Details> {
