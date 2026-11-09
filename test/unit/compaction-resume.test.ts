@@ -106,6 +106,45 @@ describe("async compaction resume", () => {
 		runScript(script);
 	});
 
+	it("does not resume after a housekeeping compaction but still resumes after other manual ones", () => {
+		const script = String.raw`
+			import os from "node:os";
+			import path from "node:path";
+			import registerSubagentExtension from "./index.ts";
+			const handlers = new Map();
+			const events = { listeners: new Map(), on(name, handler) { this.listeners.set(name, handler); return () => this.listeners.delete(name); }, emit(name, payload) { this.listeners.get(name)?.(payload); } };
+			const sent = [];
+			const pi = new Proxy({
+				events,
+				on(name, handler) { handlers.set(name, [...(handlers.get(name) ?? []), handler]); },
+				registerTool() {}, registerCommand() {}, registerShortcut() {}, registerMessageRenderer() {},
+				sendMessage(message, options) { sent.push({ message, options }); }, getSessionName() { return undefined; },
+			}, { get(target, prop) { return prop in target ? target[prop] : () => undefined; } });
+			const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+			const ctx = { cwd: process.cwd(), isIdle() { return true; }, hasUI: true, ui: { setWidget() {}, requestRender() {}, onTerminalInput() { return () => {}; }, getEditorText() { return ""; }, notify() {}, theme: { fg(_name, text) { return text; }, bg(_name, text) { return text; }, bold(text) { return text; } } }, sessionManager: { getSessionId() { return "housekeeping-session"; }, getSessionFile() { return null; }, getEntries() { return []; } }, modelRegistry: { getAvailable() { return []; } } };
+			registerSubagentExtension(pi);
+			for (const handler of handlers.get("session_start")) await handler({}, ctx);
+			sent.length = 0;
+			events.emit("subagent:async-started", { id: "running", pid: 1, sessionId: "housekeeping-session", mode: "single", agent: "worker", asyncDir: path.join(os.tmpdir(), "pi-housekeeping-test-running") });
+			const resumes = () => sent.filter((entry) => entry.message?.customType === "subagent-compaction-resume").length;
+
+			for (const handler of handlers.get("session_compact")) await handler({ reason: "manual", compactionEntry: { details: { housekeeping: true } } });
+			await sleep(150);
+			if (resumes() !== 0) throw new Error("resumed after housekeeping compaction: " + JSON.stringify(sent));
+
+			for (const handler of handlers.get("session_compact")) await handler({ reason: "manual", compactionEntry: { details: { housekeeping: false } } });
+			await sleep(150);
+			if (resumes() !== 1) throw new Error("expected one resume after non-housekeeping manual compaction: " + JSON.stringify(sent));
+
+			sent.length = 0;
+			for (const handler of handlers.get("session_compact")) await handler({ reason: "manual", compactionEntry: { details: undefined } });
+			await sleep(150);
+			if (resumes() !== 1) throw new Error("expected one resume after manual compaction without details: " + JSON.stringify(sent));
+			for (const handler of handlers.get("session_shutdown")) await handler();
+		`;
+		runScript(script);
+	});
+
 	it("restores widgets when the same run continues after automatic compaction", () => {
 		// Pi compacts between tool cycles of a running agent loop and emits no agent_start afterwards.
 		const script = String.raw`
