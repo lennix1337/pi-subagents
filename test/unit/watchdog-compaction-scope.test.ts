@@ -91,4 +91,32 @@ describe("watchdog compaction scope", () => {
 			runtime.dispose();
 		}
 	});
+
+	it("keeps transient activity across a housekeeping compaction but clears it for others", async () => {
+		const requests: Parameters<WatchdogReviewFunction>[0][] = [];
+		const { runtime, emit } = createHarness((request) => {
+			requests.push(request);
+			return { stopReason: "stop" };
+		});
+		try {
+			await emit("session_start", { reason: "startup" });
+			await emit("before_agent_start", { prompt: "Implement the authorized routing change." });
+			await emit("turn_end", activityTurn("Housekeeping-surviving activity"));
+			await emit("session_compact", { reason: "manual", compactionEntry: { details: { housekeeping: true } } });
+			await emit("turn_end", { type: "turn_end", message: { role: "assistant", content: [{ type: "text", text: "Updated code." }] }, toolResults: [] });
+			await emit("agent_end");
+			assert.equal(requests.length, 1);
+			assert.match(requests[0]!.delta, /Housekeeping-surviving activity/);
+
+			await emit("before_agent_start", { prompt: "Next task." });
+			await emit("turn_end", activityTurn("Cleared activity"));
+			await emit("session_compact", { reason: "manual", compactionEntry: { details: { housekeeping: false } } });
+			await emit("turn_end", { type: "turn_end", message: { role: "assistant", content: [{ type: "text", text: "More code." }] }, toolResults: [] });
+			await emit("agent_end");
+			assert.equal(requests.length, 2);
+			assert.doesNotMatch(requests[1]!.delta, /Cleared activity/);
+		} finally {
+			runtime.dispose();
+		}
+	});
 });

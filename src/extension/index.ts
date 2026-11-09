@@ -20,6 +20,7 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Box, Container, Spacer, Text, type Component } from "@earendil-works/pi-tui";
 import { clearAgentDiscoveryCache, discoverAgentSnapshot, discoverAgents, discoverAgentsAll, type AgentConfig, type AgentScope } from "../agents/agents.ts";
+import { isHousekeepingCompaction } from "../shared/housekeeping-compaction.ts";
 import { resolveGlobalNpmRoot } from "../agents/global-npm-root.ts";
 import { buildAdvertisedAgentCatalog, buildAdvertisedAgentPrompt } from "../agents/advertised-agent-prompt.ts";
 import { clearRuntimeAgentsForPi, listRuntimeAgentConfigs, mergeRuntimeAgents } from "../agents/runtime-agent-registry.ts";
@@ -1198,7 +1199,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	// compaction guard (only prompt() refuses), so wait for the parent to go idle before the resume notice
 	// starts a run. A run that starts first cancels the pending resume.
 	pi.on("session_compact", (event) => {
-		if (event.reason !== "manual") return;
+		if (event.reason !== "manual" || isHousekeepingCompaction(event)) return;
 		if (activeAsyncJobCount() === 0 || !withLastUiContext(() => true)) return;
 		cancelCompactionResume();
 		const sessionId = state.currentSessionId;
