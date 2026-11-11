@@ -11,10 +11,10 @@
 ## Install
 
 ```bash
-pi install npm:pi-subagents
+pi install C:/projetos/pi-subagents   # this fork, from its checkout
 ```
 
-That is the only required step. pi-subagents needs Pi 1.2.0 or newer. Background children use the host's SDK: npm Pi keeps its detached Node runner; the official Pi 1.2.0 Linux x64 standalone release loads the same runner through Pi's embedded SDK, without a separate SDK install. See [Standalone background execution](docs/standalone-background.md) for the supported boundary and validation gate.
+The operator's Pi loads the fork this way (a local path in `settings.json`); `pi install npm:pi-subagents` installs upstream instead. That is the only required step. pi-subagents needs Pi 1.2.0 or newer. Background children use the host's SDK: npm Pi keeps its detached Node runner; the official Pi 1.2.0 Linux x64 standalone release loads the same runner through Pi's embedded SDK, without a separate SDK install. See [Standalone background execution](docs/standalone-background.md) for the supported boundary and validation gate.
 
 ## Safe self reload with OptChat
 
@@ -94,7 +94,7 @@ The package includes `/council` and `council-mode`, plus documented model-based
 | See running work | "Show active async runs." or "Show the subagent fleet." |
 | Check setup | "Check whether subagents are configured correctly." |
 
-For implementation work, the recommended loop is `clarify → scout → worker → fresh reviewers → worker`. Packaged prompt shortcuts like `/parallel-review` and `/review-loop` make these patterns repeatable — see [Workflows](https://github.com/nicobailon/pi-subagents/blob/main/docs/workflows.md).
+For implementation work, the recommended loop is `clarify → scout → worker → fresh reviewers → worker`. Packaged prompt shortcuts like `/parallel-review` and `/review-loop` make these patterns repeatable — see [Workflows](docs/workflows.md).
 
 ## Where running work shows up
 
@@ -102,9 +102,9 @@ Foreground runs stream progress in the conversation. Background runs keep workin
 
 In the TUI, a persistent FleetView below the editor keeps active work visible. `/subagents-fleet` opens a live inspector where you can browse children, read transcripts, steer a running child, or stop a run. You can also just ask: "Show me the current async runs."
 
-Details, keybindings, and the machine-readable run artifacts are in [Observability](https://github.com/nicobailon/pi-subagents/blob/main/docs/observability.md).
+Details, keybindings, and the machine-readable run artifacts are in [Observability](docs/observability.md).
 
-For bounded orchestration, `maxSubagentSpawnsPerRun` limits cumulative logical children in one run tree. It defaults to 64 and stays separate from active concurrency and the session-wide cumulative spawn budget. See [Configuration](https://github.com/nicobailon/pi-subagents/blob/main/docs/configuration.md#maxsubagentspawnsperrun).
+For bounded orchestration, `maxSubagentSpawnsPerRun` limits cumulative logical children in one run tree. It defaults to 64 and stays separate from active concurrency and the session-wide cumulative spawn budget. See [Configuration](docs/configuration.md#maxsubagentspawnsperrun).
 
 ## If something feels off
 
@@ -138,14 +138,31 @@ The full reference lives in `docs/`:
 
 | Doc | What's in it |
 |-----|--------------|
-| [Agents](https://github.com/nicobailon/pi-subagents/blob/main/docs/agents.md) | Custom agents, frontmatter reference, overriding builtins, tools, extensions, skills, per-agent memory. |
-| [Delegation](https://github.com/nicobailon/pi-subagents/blob/main/docs/delegation.md) | Fresh vs fork context, cold-start briefs, agent/model/thinking routing, and handoff edge cases. |
-| [Models](https://github.com/nicobailon/pi-subagents/blob/main/docs/models.md) | Single-model selection and launch, defaults, per-role overrides, recommended tiering, thinking levels, model scope enforcement, profiles. |
-| [Workflows](https://github.com/nicobailon/pi-subagents/blob/main/docs/workflows.md) | Orchestration patterns, prompt shortcuts, scripted workflows, worktree isolation, child-to-parent coordination, the recursion guard. |
-| [Watchdog](https://github.com/nicobailon/pi-subagents/blob/main/docs/watchdog.md) | The opt-in adversarial change reviewer, scope monitoring, LSP checks, and child tool permissions. |
-| [Tool reference](https://github.com/nicobailon/pi-subagents/blob/main/docs/tool-reference.md) | Every `subagent` parameter, management actions, status/control actions, acceptance gates, external CLI runners. |
-| [Observability](https://github.com/nicobailon/pi-subagents/blob/main/docs/observability.md) | FleetView, the fleet inspector, lifecycle artifacts, events, logs, session sharing. |
-| [Missions and schedules](https://github.com/nicobailon/pi-subagents/blob/main/docs/missions.md) | Durable mission records, delivery receipts, timed and recurring runs. |
-| [Configuration](https://github.com/nicobailon/pi-subagents/blob/main/docs/configuration.md) | Every `config.json` key and environment variable. |
-| [Extension API](https://github.com/nicobailon/pi-subagents/blob/main/docs/extension-api.md) | The RPC, delegation API, preflight, capability ceilings, [trusted workflow resources](docs/extension-api.md#trusted-workflow-resources), background-work providers, Herdr integration. |
-| [OptChat integration](https://github.com/nicobailon/pi-subagents/blob/main/docs/optchat.md) | How OptChat's Agents panel reads these runs, the control path it uses, and what stays out of scope. |
+| [Agents](docs/agents.md) | Custom agents, frontmatter reference, overriding builtins, tools, extensions, skills, per-agent memory. |
+| [Delegation](docs/delegation.md) | Fresh vs fork context, cold-start briefs, agent/model/thinking routing, and handoff edge cases. |
+| [Models](docs/models.md) | Single-model selection and launch, defaults, per-role overrides, recommended tiering, thinking levels, model scope enforcement, profiles. |
+| [Workflows](docs/workflows.md) | Orchestration patterns, prompt shortcuts, scripted workflows, worktree isolation, child-to-parent coordination, the recursion guard. |
+| [Watchdog](docs/watchdog.md) | The opt-in adversarial change reviewer, scope monitoring, LSP checks, child tool permissions, and the progress sweep (on by default, report-only) that flags stalled or looping background children. |
+| [Tool reference](docs/tool-reference.md) | Every `subagent` parameter, management actions, status/control actions, acceptance gates, external CLI runners. |
+| [Observability](docs/observability.md) | FleetView, the fleet inspector, lifecycle artifacts, events, logs, session sharing. |
+| [Missions and schedules](docs/missions.md) | Durable mission records, delivery receipts, timed and recurring runs. |
+| [Configuration](docs/configuration.md) | Every `config.json` key and environment variable. |
+| [Extension API](docs/extension-api.md) | The RPC, delegation API, preflight, capability ceilings, [trusted workflow resources](docs/extension-api.md#trusted-workflow-resources), background-work providers, Herdr integration. |
+| [OptChat integration](docs/optchat.md) | How OptChat's Agents panel reads these runs, the control path it uses, and what stays out of scope. |
+| [Standalone background execution](docs/standalone-background.md) | Background children on npm Pi and on the Pi standalone release. |
+| [Acting ahead](docs/acting-ahead.md) | Speculative CI fixes in a background worktree (API only, off by default). |
+| [State machines](docs/state-machines/) | The lifecycle states of runs and of the core, with the transitions the tests pin. |
+| [Upstream selection](docs/upstream-selection.md) | What this fork took from upstream, what it left out and the fork invariants. |
+
+## What this fork adds
+
+This is the operator's fork of [nicobailon/pi-subagents](https://github.com/nicobailon/pi-subagents); [VISION.md](VISION.md) is its acceptance policy. Beyond upstream it carries:
+
+- **Model routing by family.** A child without an explicit model gets the default of the parent's provider family (Sonnet on a Claude account, the Codex default on Codex), and a configured child model follows a spent account to a ready one of the same tier through the account-failover bus ([models](docs/models.md)).
+- **Recovery.** Persisted launches resume once after the owning session exits, reusing finished children and re-attaching running ones; operator-stopped work and launches with host commands are never resumed (`autoResume: false` turns it off).
+- **Remote Mac children** in Rex panes over SSH/Tailscale, from a POSIX coordinator ([agents](docs/agents.md#running-a-pi-child-in-a-rex-pane-on-another-mac)).
+- **Progress sweep.** A deterministic watchdog over running background children: no model calls, reports stalls, nudges loops at most twice; identical calls count as a loop only when their full arguments match.
+- **`bg_wait` hints** when the id belongs to a `shell_start` shell, and OptChat's `optchat:reload-check` readiness signal.
+- **Explicit state machines** for runs and core, property tests, and mutation tests on the guards; CI fails when a test did not run.
+
+Package version stays `0.81.0`; nothing is published to npm from this fork. `npm:pi-subagents` is upstream (0.88.0 on 11/11), without the changes above.
