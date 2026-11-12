@@ -203,6 +203,10 @@ export function runExternalCli(input: {
 		let preflight: ExternalCliPreflightResult | undefined;
 		let launch: ExternalCliSpawn;
 		try {
+			const commandName = path.win32.basename(input.command).toLowerCase();
+			if ((commandName === "agy" || commandName === "agy.exe") && input.args?.[0] === "acp") {
+				throw new Error("Antigravity ACP is not supported by external-cli: it needs a bidirectional ACP client. Do not launch agy acp as a one-shot CLI; use an ACP integration once available.");
+			}
 			for (const directory of input.temporaryDirectories ?? []) {
 				fs.mkdirSync(directory, { mode: 0o700 });
 				createdDirectories.push(directory);
