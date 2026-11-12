@@ -22,6 +22,15 @@ afterEach(() => {
 });
 
 describe("external CLI runner", () => {
+	it("refuses the unsupported Antigravity ACP stdio protocol before launch", async () => {
+		const dir = tempDir();
+		for (const command of [path.join(dir, "agy"), path.join(dir, "AGY.EXE")]) {
+			const result = await runExternalCli({ command, args: ["acp", "--stdio"], cwd: dir, prompt: "secret task", asyncDir: dir, stepIndex: 0 });
+			assert.equal(result.exitCode, 1);
+			assert.match(result.error ?? "", /ACP.*not supported.*external-cli/i);
+			assert.equal(result.externalProcess.pid, undefined);
+		}
+	});
 	it("clears ambient extension bindings from the external process", async () => {
 		const dir = tempDir();
 		const previous = process.env[PI_SUBAGENT_EXTENSION_BINDINGS_ENV];
