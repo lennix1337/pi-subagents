@@ -46,10 +46,12 @@ function tempDir(): string {
 	return dir;
 }
 
+// Ready means written, not just created: every file awaited here gets its whole content in one
+// write after it is created, so a file that exists but is still empty is not ready to read.
 async function waitForFile(file: string, timeoutMs = 5_000): Promise<void> {
 	const deadline = Date.now() + timeoutMs;
-	while (!fs.existsSync(file)) {
-		if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${file}`);
+	while (!fs.statSync(file, { throwIfNoEntry: false })?.size) {
+		if (Date.now() >= deadline) throw new Error(`Timed out waiting for content in ${file}`);
 		await new Promise((resolve) => setTimeout(resolve, 20));
 	}
 }
@@ -72,8 +74,19 @@ function captureCommand(command: string, cwd: string): Promise<string> {
 	});
 }
 
+// A writer creates its file before it writes it, so a reader can find the file empty in between.
+// The fake holds that state for five waitForFile polls: a test that reads the capture as soon as
+// it exists then fails on every run, not once in a while.
+const CAPTURE_WRITE_DELAY_MS = 100;
+
 function writeCaptureOrca(dir: string): string {
-	return writeNodeCommand(dir, "orca", "require('fs').writeFileSync(process.env.ORCA_TEST_CAPTURE, JSON.stringify(process.argv.slice(2)))");
+	return writeNodeCommand(dir, "orca", [
+		"const fs=require('fs');",
+		"const fd=fs.openSync(process.env.ORCA_TEST_CAPTURE,'w');",
+		`const until=Date.now()+${CAPTURE_WRITE_DELAY_MS};while(Date.now()<until){};`,
+		"fs.writeSync(fd,JSON.stringify(process.argv.slice(2)));",
+		"fs.closeSync(fd);",
+	].join(""));
 }
 
 function shellQuote(value: string): string {
