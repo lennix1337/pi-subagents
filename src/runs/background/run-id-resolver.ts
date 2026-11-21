@@ -152,7 +152,6 @@ export function resolveSubagentRunId(id: string, deps: ResolveSubagentRunIdDeps 
 	if (hasExactForegroundId(deps.state, id)) return { kind: "foreground", id };
 	const exactAsync = exactAsyncLocation(id, asyncDirRoot, resultsDir);
 	if (exactAsync) return { kind: "async", id, location: exactAsync };
-	// A live run and a delivered run can share one alias; count both before deciding it is unique.
 	const toolCallMatches = new Map(indexedToolCallIdAsyncLocations(id, asyncDirRoot, resultsDir).map((match) => [match.id, match]));
 	const exactLiveToolCallMatch = exactLiveAsyncToolCallMatch(deps.state, id, asyncDirRoot, resultsDir);
 	if (exactLiveToolCallMatch) toolCallMatches.set(exactLiveToolCallMatch.id, exactLiveToolCallMatch);

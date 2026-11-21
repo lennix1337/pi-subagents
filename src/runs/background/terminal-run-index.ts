@@ -11,7 +11,6 @@ export const TERMINAL_RUN_INDEX_DIR = ".terminal-runs";
 
 const TERMINAL_RUN_INDEX_VERSION = 1;
 const TIMESTAMP_WIDTH = 16;
-// Literal @ cannot occur in an encoded session key.
 const TOOL_CALL_INDEX_DIR = "@tool-calls";
 
 interface TerminalRunIndexEntry {
@@ -27,8 +26,6 @@ function isCorruptStatusError(error: unknown, statusPath: string): boolean {
 		|| message.startsWith(`Failed to validate async status file '${statusPath}'`);
 }
 
-// A corrupt indexed status is retried on every read. Emit a warning only when
-// its observed file identity or parse outcome changes, like active-run diagnostics.
 const reportedCorruptTerminalStatus = new Map<string, string>();
 
 function warnCorruptTerminalStatus(runId: string, statusPath: string, error: unknown, onCorruptStatus?: (warning: string) => void): void {
@@ -97,7 +94,6 @@ export function updateTerminalRunIndex(asyncDir: string, status: AsyncStatus): v
 		try {
 			writeAtomicJson(path.join(toolCallIndexDir(path.dirname(asyncDir), status.toolCallId), toolCallMarkerName(entry.runId)), entry);
 		} catch (error) {
-			// Optional aliases must not block authoritative terminal indexing or capacity release.
 			console.error(`Failed to write async terminal-run tool-call index for '${asyncDir}':`, error);
 		}
 	}
@@ -107,7 +103,6 @@ function removeInvalidMarker(marker: string): void {
 	try {
 		fs.rmSync(marker, { force: true });
 	} catch {
-		// An advisory marker can remain for a later read when cleanup is contended.
 	}
 }
 
@@ -143,7 +138,6 @@ function sessionDirs(asyncDirRoot: string, sessionId: string | undefined): strin
 
 function recentMarkerFiles(dirs: string[], limit: number, endedAfter?: number): string[] {
 	return dirs.flatMap(markerFiles)
-		// The name starts with the run's end time, so an old run is skipped without reading its marker.
 		.filter((marker) => endedAfter === undefined || !(Number(marker.name.slice(0, TIMESTAMP_WIDTH)) < endedAfter))
 		.sort((left, right) => right.name.localeCompare(left.name))
 		.slice(0, limit)

@@ -141,7 +141,6 @@ export function consumeChainAppendRequests(asyncDir: string): ChainAppendRequest
 		try {
 			fs.unlinkSync(filePath);
 		} catch {
-			// The runner should not execute a consumed request twice.
 		}
 		if (request) requests.push(request);
 	}

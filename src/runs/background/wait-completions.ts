@@ -58,7 +58,6 @@ function waitResultPayloadCandidate(resultsDir: string, run: AsyncRunSummary): s
 }
 
 function readWaitResultPayload(candidatePath: string, run: AsyncRunSummary): Record<string, unknown> | undefined {
-	// A terminal run without session ownership cannot safely claim a payload.
 	if (!run.sessionId) return undefined;
 	const payload: unknown = JSON.parse(fs.readFileSync(candidatePath, "utf-8"));
 	if (!resultPayloadMatchesSessionRun(payload, run.sessionId, run.id)) return undefined;
@@ -189,8 +188,6 @@ export function collectWaitCompletions(terminal: AsyncRunSummary[], state: Subag
 	const completions: WaitCompletion[] = [];
 	const add = (completion: WaitCompletion, resultPath?: string): void => {
 		completions.push(completion);
-		// Tool details are not model context. Publish the evidence address in content
-		// without copying potentially unbounded reviewer output into every wait.
 		const reference = completion.archivePath ?? resultPath;
 		if (reference) onReference?.(`Result [${completion.runId}]: ${reference}`);
 	};
@@ -240,9 +237,6 @@ export function collectWaitCompletions(terminal: AsyncRunSummary[], state: Subag
 					cause: error instanceof Error ? error : undefined,
 				});
 			}
-			// The watcher may have consumed the file between the store check and the
-			// read. Prefer its in-memory record, then the durable replay written before
-			// result cleanup so watcher reloads do not lose completion details.
 			const late = state.completedResults?.get(run.id);
 			if (late && late.sessionId === run.sessionId) {
 				add(late.completion);

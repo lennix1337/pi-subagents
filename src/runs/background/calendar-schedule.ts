@@ -44,7 +44,6 @@ function occurrence(rule: CalendarRule, date: Temporal.PlainDate): CalendarOccur
 	if (rule.every === "week" && !rule.on!.includes(CALENDAR_WEEKDAYS[date.dayOfWeek - 1]!)) return undefined;
 	const requested = date.toPlainDateTime(rule.at);
 	const zoned = requested.toZonedDateTime(rule.timezone, { disambiguation: "earlier" });
-	// Skip nonexistent times/dates. A repeated time uses its first instant only.
 	if (!zoned.toPlainDateTime().equals(requested)) return undefined;
 	return { nextLocalDate: date.toString(), nextRunAt: new Date(zoned.epochMilliseconds).toISOString() };
 }

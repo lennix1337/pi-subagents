@@ -159,7 +159,7 @@ function runIdFromReplayFile(file: string): string | undefined {
 function removeBestEffort(filePath: string): void {
 	try {
 		fs.rmSync(filePath, { force: true });
-	} catch { /* cleanup only */ }
+	} catch {  }
 }
 
 function parseArchive(value: unknown): CompletionArchive | undefined {
@@ -272,16 +272,16 @@ export function cleanupCompletionReplay(resultsDir: string, now: number, maxAgeM
 				} else if (!record && now - fs.statSync(filePath).mtimeMs > maxAgeMs) {
 					fs.rmSync(filePath, { force: true });
 				}
-			} catch { /* one bad entry must not block cleanup */ }
+			} catch {  }
 		}
-	} catch { /* replay directory may not exist yet */ }
+	} catch {  }
 	const archiveDir = path.join(resultsDir, ARCHIVE_DIR_NAME);
 	try {
 		for (const file of fs.readdirSync(archiveDir)) {
 			const filePath = path.join(archiveDir, file);
 			try {
 				if (now - fs.statSync(filePath).mtimeMs > maxAgeMs) fs.rmSync(filePath, { force: true });
-			} catch { /* one bad entry must not block cleanup */ }
+			} catch {  }
 		}
-	} catch { /* archive directory may not exist yet */ }
+	} catch {  }
 }

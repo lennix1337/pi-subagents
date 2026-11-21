@@ -17,7 +17,6 @@ export interface ResultDeliveryOwnership {
 	claimedSessionIds(): readonly string[];
 }
 
-// A dead process cannot come back, so only that verdict is kept.
 const deadCompletionOwnerIds = new Set<string>();
 
 export function createResultDeliveryOwnership(state: ResultDeliveryState): ResultDeliveryOwnership {
@@ -33,7 +32,6 @@ export function createResultDeliveryOwnership(state: ResultDeliveryState): Resul
 		},
 		deliveryOwnerId(sessionId, completionOwnerId, ownerProcess, parentWorkflowRunId) {
 			const owner = currentOwner();
-			// A workflow child is reported by its workflow, which has its own owner-exited notice.
 			if (!owner || typeof completionOwnerId !== "string" || completionOwnerId === owner
 				|| completionOwnerId === OWNING_SESSION_COMPLETION_OWNER || parentWorkflowRunId
 				|| !ownsRun(state.currentSessionId, sessionId)) return completionOwnerId;

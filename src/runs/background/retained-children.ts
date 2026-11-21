@@ -111,7 +111,6 @@ export function listRetainedChildren(asyncDirRoot: string, sessionId: string): R
 
 export function formatRetainedChildren(children: RetainedChild[]): string {
 	const noKnownEligibleTargetGuidance = 'children.list is workflow-only and is not an exhaustive list of direct native children. If the exact run id of the intended child is known, inspect it with subagent({ action: "status", id: "..." }); if status identifies the candidate, attempt subagent({ action: "resume", id: "...", message: "..." }), which authoritatively checks eligibility and may reject it. Launch a same-role fallback challenge, labeled as fallback, only when there is no known candidate or resume rejects eligibility.';
-	// The roster is built from a bounded scan, so it never claims to be the session's whole history.
 	const scanScope = `the latest ${MAX_RETAINED_CHILD_CANDIDATES} finished runs of the active parent session (older runs are not scanned)`;
 	if (children.length === 0) return `No retained workflow children in ${scanScope}. ${noKnownEligibleTargetGuidance}`;
 	const retained = children.slice(0, MAX_RETAINED_CHILDREN);

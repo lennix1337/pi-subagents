@@ -168,9 +168,6 @@ import {
 
 const INTERCOM_DETACH_RECEIPT = "Detached for intercom coordination before task completion.";
 
-// This process hosts child sessions. An ambient copy of pi-subagents loaded
-// into one of them must register nothing; the variable marks the process as a
-// child host.
 process.env[SUBAGENT_CHILD_ENV] = "1";
 process.env[SUBAGENT_RUNNER_PID_ENV] = String(process.pid);
 
@@ -353,7 +350,6 @@ function eventLogState(filePath: string): AsyncEventLogState {
 		bytes = fs.statSync(filePath).size;
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-			// Diagnostic event accounting is best-effort; writes below are also safe.
 		}
 	}
 	state = { bytes, diagnosticsTruncated: false };
@@ -367,7 +363,6 @@ function appendJsonl(filePath: string, line: string): void {
 		const state = asyncEventLogStates.get(filePath);
 		if (state) state.bytes += Buffer.byteLength(`${line}\n`, "utf-8");
 	} catch {
-		// Async event logging is diagnostic and must not fail the run.
 	}
 }
 
@@ -414,7 +409,6 @@ function findLatestSessionFile(sessionDir: string): string | null {
 		files.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
 		return files[0] ?? null;
 	} catch {
-		// Session lookup is optional metadata.
 		return null;
 	}
 }
@@ -657,15 +651,12 @@ function gitFingerprintRead(cwd: string, signal: AbortSignal): GitFingerprintRea
 
 export async function readGitFingerprint(cwd: string, signal: AbortSignal, onError: (error: unknown) => void, runGit: GitFingerprintRead = gitFingerprintRead(cwd, signal)): Promise<string | undefined> {
 	try {
-		// HEAD and status are independent reads: running them together overlaps two git spawns instead of back to back.
 		const [headRead, statusRead] = await Promise.allSettled([
 			runGit(["rev-parse", "--verify", "HEAD"]),
 			runGit(["status", "--porcelain=v1", "-z", "--untracked-files=normal"]),
 		]);
-		// A process-tree failure from either read must surface: its git child may still be running.
 		for (const read of [headRead, statusRead]) {
 			if (read.status !== "rejected") continue;
-			// SAFETY: a rejected read is the Error that runGit threw; only its string `code` is compared.
 			if ((read.reason as NodeJS.ErrnoException)?.code === "PROCESS_TREE_UNVERIFIED") throw read.reason;
 		}
 		if (headRead.status === "rejected") throw headRead.reason;
@@ -680,7 +671,6 @@ export async function readGitFingerprint(cwd: string, signal: AbortSignal, onErr
 	}
 }
 
-/** Context for running a single step */
 interface SingleStepContext {
 	previousOutput: string;
 	outputs?: ChainOutputMap;
@@ -735,13 +725,12 @@ interface SingleStepContext {
 	orcaProgressTab?: OrcaProgressTab;
 }
 
-/** Machine runs: a one-line hint for predictable remote failures, and a note that writer changes live on the machine. */
 function decorateHerdrMachineResult<T extends { output: string; exitCode: number | null; error?: string; externalProcess: { stderrPath: string } }>(result: T, machine: HerdrMachineReference, adapter: string | undefined): T {
 	let stderrTail = "";
 	try {
 		const stderr = fs.readFileSync(result.externalProcess.stderrPath, "utf-8");
 		stderrTail = stderr.slice(-4096);
-	} catch { /* stderr log is best-effort evidence. */ }
+	} catch {  }
 	const hint = result.exitCode === 0 ? undefined : formatHerdrMachineHint(machine, `${result.error ?? ""}\n${stderrTail}\nexit code ${result.exitCode}`);
 	const error = hint ? `${result.error ?? `Remote command exited with code ${result.exitCode}.`}\n${hint}` : result.error;
 	const note = result.exitCode === 0 && adapter?.endsWith("-writer") ? `Changes made by this run live on ${machine.label ?? machine.id} at ${machine.cwd}; the local checkout is unchanged.` : undefined;
@@ -773,7 +762,6 @@ export async function runSingleStepInner(
 			try {
 				deliverTimeoutRequest(omitUndefinedProperties({ asyncDir: step.importAsyncRoot!.asyncDir, pid, source: "ancestor-timeout" }));
 			} catch {
-				// The parent runner's own timeout result is authoritative for the attached step.
 			}
 		});
 		ctx.registerStop?.(() => {
@@ -787,7 +775,6 @@ export async function runSingleStepInner(
 			try {
 				deliverStopRequest(omitUndefinedProperties({ asyncDir: step.importAsyncRoot!.asyncDir, pid, source: "ancestor-stop" }));
 			} catch {
-				// The parent runner's own stopped result is authoritative for the attached step.
 			}
 		});
 		try {
@@ -798,7 +785,6 @@ export async function runSingleStepInner(
 			try {
 				fs.writeFileSync(ctx.outputFile, imported.output, "utf-8");
 			} catch {
-				// Output files are observability only for imported roots.
 			}
 			const stopped = importStopped || imported.stopped === true || ctx.stopSignal?.aborted === true;
 			const timedOut = !stopped && (importTimedOut || imported.timedOut === true || ctx.timeoutSignal?.aborted === true || ctx.skipAcceptance?.() === true);
@@ -858,8 +844,6 @@ export async function runSingleStepInner(
 			permissionRules: step.permissionRules,
 		}));
 	}
-	// Derive from the pre-acceptance task so internal acceptance/recovery
-	// instructions never leak into the display name.
 	const childSessionName = step.sessionName ?? deriveChildSessionName({ agent: step.agent, task, label: step.label });
 	if (step.effectiveAcceptance && (step.runner?.type === "external-cli" || step.runner?.type === "external-job")) {
 		const acceptancePrompt = formatAcceptancePrompt(step.effectiveAcceptance, { reportOptional: isAgentContract(step.agentContract), structuredOutput: Boolean(step.structuredOutput?.acceptanceReportPath) });
@@ -890,7 +874,6 @@ export async function runSingleStepInner(
 	}
 	transcriptWriter?.writeInitialUserMessage(`${PROMPT_REDACTED}; live Prompt Audit only.`);
 
-	// External CLI and external job runs settle their output the same way; only their runner metadata differs.
 	const settleExternalOutput = (
 		external: { output: string; exitCode: number | null; error?: string },
 		outputSnapshot: SingleOutputSnapshot | undefined,
@@ -900,7 +883,7 @@ export async function runSingleStepInner(
 			externalJob?: ExternalJobStatus;
 		},
 	) => {
-		try { fs.writeFileSync(ctx.outputFile, external.output, "utf-8"); } catch { /* Observability output is best-effort. */ }
+		try { fs.writeFileSync(ctx.outputFile, external.output, "utf-8"); } catch {  }
 		const resolvedOutput = step.outputPath && external.exitCode === 0
 			? resolveSingleOutput(step.outputPath, external.output, outputSnapshot, step.outputClaimPath)
 			: { fullOutput: external.output };
@@ -970,15 +953,13 @@ export async function runSingleStepInner(
 					settled = await settleHerdrExternalRunnerError(error, step.runner.adapter as HerdrExternalAdapterId, evidenceInput, () => session.retain());
 				}
 				const output = settled.output;
-				try { fs.writeFileSync(ctx.outputFile, output, "utf-8"); } catch { /* Observability output is best-effort. */ }
+				try { fs.writeFileSync(ctx.outputFile, output, "utf-8"); } catch {  }
 				const resolvedOutput = step.outputPath ? resolveSingleOutput(step.outputPath, output, outputSnapshot, step.outputClaimPath) : { fullOutput: output };
 				const outputReference = resolvedOutput.savedPath ? formatSavedOutputReference(resolvedOutput.savedPath, resolvedOutput.fullOutput) : undefined;
 				const finalizedOutput = finalizeSingleOutput(omitUndefinedProperties({ fullOutput: resolvedOutput.fullOutput, outputPath: step.outputPath, outputMode: step.outputMode, exitCode: 1, preserveSavedOutput: true, savedPath: resolvedOutput.savedPath, outputReference, saveError: resolvedOutput.saveError }));
 				const artifactErrors = artifactPaths && ctx.artifactConfig?.enabled !== false ? persistStepArtifacts({ artifactPaths, artifactConfig: ctx.artifactConfig, output: formatOutputArtifactContent(omitUndefinedProperties({ output: resolvedOutput.fullOutput, metadataPath: ctx.artifactConfig?.includeMetadata === false ? undefined : artifactPaths.metadataPath })), metadata: { runId: ctx.id, parentSessionId: step.parentSessionId, agent: step.agent, task: PROMPT_REDACTED, runner, placement: session.owner.identity, settlement: settled.settlement, outcome: settled.outcome, timestamp: Date.now() } }) : {};
 				return omitUndefinedProperties({ agent: step.agent, ...(childSessionName ? { sessionName: childSessionName } : {}), context: step.context, output: finalizedOutput.displayOutput, outputState: output.trim() ? "present" : "absent", exitCode: 1, error: isSettlementFatalOutputError(resolvedOutput, step.outputMode) ? resolvedOutput.saveError : undefined, timedOut, stopped, artifactPaths, outputSaveError: [resolvedOutput.saveError, artifactErrors.outputSaveError].filter(Boolean).join("\n") || undefined, metadataSaveError: artifactErrors.metadataSaveError, runner, execution: { status: "partial", success: false, exitCode: 1 } });
 			} catch (error) {
-				// Any post-allocation uncertainty retains the pane; only explicit stop
-				// and successful exact settlement are destructive.
 				retain = true;
 				throw error;
 			} finally {
@@ -1109,7 +1090,6 @@ export async function runSingleStepInner(
 	let toolBudget = step.toolBudget ? initialToolBudgetState(step.toolBudget) : undefined;
 	let toolBudgetBlocked = false;
 	let actualLaunchContractDigest = step.launchContractDigest;
-	// A machine 'local' child edits this disk, so its local Git evidence is authoritative, as for an unplaced run.
 	const mutationSnapshot = step.machine && !isRexLocalMachine(step.machine) ? { source: "tracked-files" as const, trackedOnly: true as const, cwd: step.cwd ?? ctx.cwd, dirtyFiles: [], fingerprints: {}, unavailable: "Local Git evidence is not authoritative for a pane-native remote run." } : snapshotTrackedMutations(step.cwd ?? ctx.cwd);
 	let finalMutationEvidence = collectTrackedMutationEvidence(mutationSnapshot, step.cwd ?? ctx.cwd);
 
@@ -1164,7 +1144,6 @@ export async function runSingleStepInner(
 			});
 		} catch (error) { throw error; }
 		if (effectiveStructuredOutput && launch.config.structuredOutput) {
-			// The runner reads the value back from the runtime's files after the run.
 			launch.config.structuredOutput.capture = createStructuredOutputFileCapture(effectiveStructuredOutput);
 		}
 		const { warnings, capabilityAudit: attemptCapabilityAudit } = launch;
@@ -1212,8 +1191,6 @@ export async function runSingleStepInner(
 			}).launchContractDigest;
 		}
 		capabilityAudit = attemptCapabilityAudit;
-		// Each attempt rewrites the step output log; synchronous appends keep a
-		// retried attempt from interleaving with the previous attempt's flush.
 		fs.writeFileSync(ctx.outputFile, "", "utf-8");
 		if (step.effectiveAcceptance?.preserveStagedIndex && stagedIndexBaseline === undefined) {
 			try {
@@ -1234,7 +1211,6 @@ export async function runSingleStepInner(
 				try {
 					fs.appendFileSync(ctx.outputFile, `${line}\n`, "utf-8");
 				} catch {
-					// The output log is observability only.
 				}
 				ctx.orcaProgressTab?.append(`${line}\n`);
 			},
@@ -1263,8 +1239,6 @@ export async function runSingleStepInner(
 		aggregateUsage.cacheWrite += run.usage.cacheWrite;
 		aggregateUsage.cost += run.usage.cost;
 		aggregateUsage.turns += run.usage.turns;
-		// A parked run still owes output diagnostics when it actually finishes.
-		// Stopped/timedOut runs already have terminal failures, so terminal output diagnostics are deferred.
 		const terminalDiagnosticsEligible = !run.interrupted && !run.stopped && !run.timedOut;
 		const toolDiagnostic = run.exitCode === 0 && !run.error ? launch.capture.toolDiagnostic() : undefined;
 		const toolAvailabilityError = toolDiagnostic ? formatChildToolDiagnostic(toolDiagnostic) : undefined;
@@ -1329,9 +1303,6 @@ export async function runSingleStepInner(
 		const mutationEvidence = run.nativeMachine && !isRexLocalMachine(step.machine) ? { source: "tracked-files" as const, trackedOnly: true as const, changedFiles: [], attemptedMutation: remoteGitChanged === true, ...(remoteGitChanged === undefined ? { unavailable: "Remote Git before/after evidence was incomplete." } : {}) } : collectTrackedMutationEvidence(mutationSnapshot, step.cwd ?? ctx.cwd);
 		finalMutationEvidence = mutationEvidence;
 		const mutationAttemptObserved = run.observedMutationAttempt === true || mutationEvidence.attemptedMutation === true;
-		// Validated structured output is persistable file content even when the final text is only
-		// an acceptance-report fence; otherwise the required-output precheck forces exitCode 1 before
-		// resolveSingleOutput can publish the canonical JSON into the bound file-only path.
 		const finalOutputHasPersistableFileContent = run.exitCode === 0 && !run.error && !emptyOutputError
 			&& (Boolean(stripAcceptanceReport(run.finalOutput).trim()) || validatedStructuredOutput);
 		const requiredOutput = step.outputMode === "file-only" && step.outputPath
@@ -1412,7 +1383,6 @@ export async function runSingleStepInner(
 	const structuredText = finalResult?.structuredOutput === undefined ? undefined : JSON.stringify(finalResult.structuredOutput, null, 2);
 	let replyOutput = stripAcceptanceReport(rawOutput);
 	if (!replyOutput.trim() && structuredText !== undefined) replyOutput = structuredText;
-	// The schema is the caller's contract: a bound output file holds the structured result, not closing prose.
 	const resolvedOutput = step.outputPath && finalResult?.exitCode === 0
 		? resolveSingleOutput(step.outputPath, structuredText ?? replyOutput, finalOutputSnapshot, step.outputClaimPath)
 		: { fullOutput: replyOutput };
@@ -1428,7 +1398,6 @@ export async function runSingleStepInner(
 	if (finalResult?.stopped && !outputForSummary.trim()) {
 		outputForSummary = ctx.stopMessage ?? SUBAGENT_STOPPED_MESSAGE;
 	}
-	// Unfinished streamed text never stands in for the child's completed reply.
 	const outputForAcceptance = finalResult?.outputPartial ? "" : rawOutput;
 	const childWrittenOutput = step.outputPath
 		? extractChildWrittenOutput(finalResult?.messages, step.outputPath, step.cwd ?? ctx.cwd)
@@ -1497,8 +1466,6 @@ export async function runSingleStepInner(
 	const acceptanceFailure = effectiveAcceptance ? acceptanceFailureMessage(effectiveAcceptance) : undefined;
 	const acceptanceCanFailRun = acceptanceFailure && effectiveAcceptance?.explicit && (finalResult?.exitCode ?? 1) === 0 && !finalResult?.interrupted && !timedOutAfterAcceptance && !stoppedAfterAcceptance && !isAgentContract(step.agentContract);
 	const effectiveFinalExitCode = timedOutAfterAcceptance || stoppedAfterAcceptance ? 1 : acceptanceCanFailRun ? 1 : finalResult?.exitCode ?? 1;
-	// A passing typed gate supplies the structured output for runs that have no
-	// outputSchema of their own; preflight rejects the combination.
 	const typedGate = typedVerifyOutput(effectiveAcceptance);
 	if (typedGate && finalResult && finalResult.structuredOutput === undefined && effectiveFinalExitCode === 0) {
 		finalResult = { ...finalResult, structuredOutput: typedGate.value };
@@ -1692,9 +1659,6 @@ function markParallelGroupSetupFailure(input: {
 		const paused = !stopped && input.statusPayload.state === "paused";
 		const timedOut = !stopped && !paused && input.statusPayload.timedOut === true;
 		statusStep.status = stopped ? "stopped" : paused ? "paused" : "failed";
-		// Mirror the run-level timeout onto the step so status readers see
-		// timed_out rather than a bare failure — the
-		// StepResult below already carries it, the status step must too.
 		if (timedOut) statusStep.timedOut = true;
 		statusStep.startedAt = input.failedAt;
 		statusStep.endedAt = input.failedAt;
@@ -1826,8 +1790,6 @@ function missingRequiredOutputAfterUsefulMutation(result: SingleStepResult): boo
 
 function partialExecutionWithUsefulMutation(result: SingleStepResult): boolean {
 	if (result.execution?.status !== "partial") return false;
-	// Pane-native external results are deliberately partial from bounded terminal
-	// evidence alone; Pi mutation-based partials retain their existing behavior.
 	if (result.runner?.type === "external-cli" && result.runner.machine) return true;
 	const fileMutation = result.effects?.fileMutation;
 	return fileMutation?.attempted === true || Boolean(fileMutation?.evidence?.changedFiles.length);
@@ -1925,7 +1887,6 @@ export async function runSubagent(
 	const activeChildTimeouts = new Map<number, () => void>();
 	const activeChildStops = new Map<number, () => void>();
 	const activeChildSteers = new Map<number, StepSteerHandler>();
-	/** Steers routed to a running step before its session was created. */
 	const queuedStepSteers = new Map<number, SteerRequest[]>();
 	const childStopRequests = new Map<number, { childId: string; requestedAt: number }>();
 	const pendingStepSteers: SteerRequest[] = [];
@@ -2124,8 +2085,6 @@ export async function runSubagent(
 	};
 	let finalResultCommitted = false;
 	let finalResultPublication: { resolve(): void; reject(error: unknown): void } | undefined;
-	// The paused and final results replace each other under one run id; the lease keeps a consumer
-	// of the older one from retiring the newer one. A lease timeout fails the publication.
 	const publishRunResult = (filePath: string, write: () => void): void => withResultRunLease(path.dirname(filePath), id, write);
 	const runPersistence = createCapacityResilientJsonWriter({
 		keepAlive: true,
@@ -2166,8 +2125,6 @@ export async function runSubagent(
 		setOptionalProperty(statusPayload, "usageBudget", usageBudgetState(config.usageBudget, currentUsageTotals()));
 		return statusPayload.usageBudget;
 	};
-	// Continuation admission only: the existing ledger has no in-flight cost or
-	// external/import usage coverage. Never change ordinary budget enforcement.
 	let continuationUsageUncertain = config.steps.some(isDynamicRunnerGroup) || flatSteps.some((step) => Boolean(step.runner || step.importAsyncRoot));
 	const continuationUsageBudgetExhausted = (): boolean | undefined => {
 		const exhausted = refreshUsageBudget()?.exhausted === true;
@@ -2684,8 +2641,7 @@ export async function runSubagent(
 	const mutatingFailureStates = initialStatusSteps.map(() => createMutatingFailureState());
 	type PendingToolResult = { tool: string; path?: string; mutates: boolean; startedAt?: number };
 	const pendingToolResults: Array<PendingToolResult | undefined> = initialStatusSteps.map(() => undefined);
-	// Pi's parallel tool execution emits every tool_execution_start before the first result message, so each
-	// step matches results to calls by toolCallId; pendingToolResults keeps the last-started call for events without one.
+	// external: Pi emits all parallel tool_execution_start events before the first result.
 	const pendingToolResultsByCallId = initialStatusSteps.map(() => new Map<string, PendingToolResult>());
 	type ActiveToolCall = { attentionEmitted?: boolean; key: string; tool: string; args: string; argsKey: string; startedAt: number; path?: string; blocksSupervisor: boolean };
 	const activeToolCalls = initialStatusSteps.map(() => new Map<string, ActiveToolCall>());
@@ -2808,7 +2764,6 @@ export async function runSubagent(
 		const target = openToolAttentionTarget(flatIndex, now);
 		if (!target) return false;
 		target.attentionEmitted = true;
-		// Keep this attention when a concurrent supervisor request ends and restores its saved state.
 		if (supervisorAttentionSteps.has(flatIndex)) supervisorAttentionSteps.set(flatIndex, "needs_attention");
 		const previous = step.activityState;
 		step.activityState = "needs_attention";
@@ -2967,7 +2922,6 @@ export async function runSubagent(
 		statusPayload.lastUpdate = now;
 		writeStatusPayload();
 	};
-	/** Record the outcome of handing a routed steer to the live child session. */
 	const applySteerDelivery = (requestId: string, index: number, delivery: { state: "delivered" | "queued" | "failed"; message: string }): void => {
 		const lifecycle = steeringStatus(statusPayload);
 		const request = lifecycle.recent.find((candidate) => candidate.id === requestId);
@@ -2992,7 +2946,6 @@ export async function runSubagent(
 		statusPayload.lastUpdate = now;
 		writeStatusPayload();
 	};
-	/** Hand a routed steer to the step's live session, or hold it until the session exists. */
 	const steerLiveChild = (index: number, request: SteerRequest): void => {
 		const steer = activeChildSteers.get(index);
 		if (!steer) {
@@ -3025,7 +2978,6 @@ export async function runSubagent(
 		statusPayload.lastUpdate = now;
 		writeStatusPayload();
 	};
-	// Records a finished child's result on its status step; the sequential and both parallel paths share it.
 	const recordStepResult = (fi: number, singleResult: StepResult, startedAt: number, endedAt: number, recordLaunchContractDigest = false): void => {
 		const step = requiredStatusStep(statusPayload, fi);
 		const childStopped = singleResult.stopped === true;
@@ -3041,8 +2993,6 @@ export async function runSubagent(
 		if (singleResult.toolBudget) statusPayload.toolBudget = singleResult.toolBudget;
 		if (singleResult.toolBudgetBlocked) statusPayload.toolBudgetBlocked = true;
 		setOptionalProperty(step, "sessionName", singleResult.sessionName);
-		// Keep the model the child was observed running on; a host extension can switch it
-		// after launch, and singleResult.model only names the launch candidate.
 		setOptionalProperty(step, "model", step.model ?? singleResult.model);
 		setOptionalProperty(step, "thinking", resolveEffectiveThinking(singleResult.model, step.thinking));
 		setOptionalProperty(step, "requestedModel", singleResult.requestedModel);
@@ -3069,7 +3019,6 @@ export async function runSubagent(
 		if (singleResult.capabilityCeiling) statusPayload.capabilityCeiling = singleResult.capabilityCeiling;
 		if (singleResult.capabilityAudit) statusPayload.capabilityAudit = singleResult.capabilityAudit;
 	};
-	// Adds a parallel child's cost to the in-flight usage ledger.
 	const addParallelUsageCost = (totalCost: StepResult["totalCost"]): void => {
 		if (!totalCost) return;
 		pendingParallelUsageCost = {
@@ -3176,7 +3125,7 @@ export async function runSubagent(
 			}
 			syncTopLevelCurrentTool();
 		} else if (event.type === "message_end" && event.message?.role === "toolResult") {
-			// Pi delivers every tool result, including a blocked call, as a toolResult message after tool_execution_end.
+			// external: Pi delivers tool results as toolResult messages after tool_execution_end, including blocked calls.
 			const resultCallId = (event.message as { toolCallId?: unknown }).toolCallId;
 			const byCallId = pendingToolResultsByCallId[flatIndex]!;
 			const keyedSnapshot = typeof resultCallId === "string" ? byCallId.get(resultCallId) : undefined;
@@ -3195,7 +3144,6 @@ export async function runSubagent(
 				statusPayload.toolBudgetBlocked = true;
 			}
 			appendRecentStepOutput(step, resultText.split("\n").slice(-10));
-			// A budget block has its own signal; it is not a failing mutation.
 			if (toolSnapshot?.mutates && !budgetBlocked && didMutatingToolFail(event.message)) {
 				const state = mutatingFailureStates[flatIndex]!;
 				recordMutatingFailure(state, omitUndefinedProperties({
@@ -3233,10 +3181,6 @@ export async function runSubagent(
 		} else if (event.type === "message_end" && event.message?.role === "assistant") {
 			appendRecentStepOutput(step, stripAcceptanceReport(extractTextFromContent(event.message.content)).split("\n").slice(-10));
 			step.turnCount = (step.turnCount ?? 0) + 1;
-			// The launch model is only a candidate: a host extension (e.g. a model
-			// router) can switch the child's model on its first input, so report the
-			// model each assistant message actually ran on. Mirrors the foreground
-			// path's `progress.model = observedModel`.
 			if (event.message.model) {
 				const observedModel = qualifyModelWithProvider(event.message.model, event.message.provider, flatSteps[flatIndex]?.modelVerificationRegistry) ?? event.message.model;
 				if (observedModel !== step.model) {
@@ -3270,7 +3214,6 @@ export async function runSubagent(
 		statusPayload.lastActivityAt = now;
 		statusPayload.lastUpdate = now;
 		maybeEmitActiveLongRunning(flatIndex, now);
-		// A sibling may keep aggregate attention unchanged; publish this step's transition.
 		writeStatusPayload(step.activityState !== previousActivityState);
 	};
 	const updateRunnerActivityState = (now: number, skipExternalProbeIndex?: number): boolean => {
@@ -3375,7 +3318,6 @@ export async function runSubagent(
 			diagnostic: `Worktree setup settlement unknown: ${progress.unknown}; manual reconciliation required; ${parallelHandoffPath(asyncDir)}`,
 		};
 		statusPayload.processTerminal = proof;
-		// Publish the sticky proof independently of in-process child writer counts.
 		writeAtomicJson(processTerminalPath(asyncDir), proof);
 	};
 	const finalizeWorktree = async (setup: WorktreeSetup, stepIndex: number, flatStartIndex: number, action: () => void, deadlineAt?: number): Promise<void> => {
@@ -3511,9 +3453,6 @@ export async function runSubagent(
 		timeoutActiveChildren();
 	};
 	process.on(ASYNC_INTERRUPT_SIGNAL, interruptRunner);
-	// Portable control inbox: the parent drops control request files here when
-	// it cannot deliver OS signals (e.g. ENOSYS on Windows) or when steering a
-	// live child. Interrupts still route into the same graceful interruptRunner().
 	const disposeControlInbox = watchAsyncControlInbox(asyncDir, {
 		onInterrupt: interruptRunner,
 		onTimeout: timeoutRunner,
@@ -3535,7 +3474,6 @@ export async function runSubagent(
 		const remainingMs = Math.max(0, config.deadlineAt - Date.now());
 		timeoutTimer = setTimeout(timeoutRunner, remainingMs);
 		timeoutTimer.unref?.();
-		// Route the pre-deadline checkpoint like any external steer so its lifecycle records the receipt.
 		const checkpointBeforeDeadlineMs = config.checkpointBeforeDeadlineMs;
 		const checkpointDelayMs = checkpointBeforeDeadlineMs === undefined || !Number.isInteger(checkpointBeforeDeadlineMs) || checkpointBeforeDeadlineMs <= 0
 			? undefined
@@ -4910,7 +4848,6 @@ export async function runSubagent(
 	try {
 		closeStopInbox(asyncDir);
 	} catch (error) {
-		// Result publication must not depend on the marker; without it a late stop is accepted as before.
 		appendJsonl(eventsPath, JSON.stringify({ type: "subagent.run.stop_inbox_close_failed", ts: Date.now(), runId: id, message: error instanceof Error ? error.message : String(error) }));
 	}
 	for (const request of consumeStopRequestPayloads(asyncDir)) stopChildStep(request);
@@ -4921,7 +4858,6 @@ export async function runSubagent(
 		stopped: result.stopped,
 	})));
 	const partialWithEvidence = !stopped && !signalTerminated && !timedOut && !usageBudgetExceeded && !interrupted && results.some(partialEvidenceResult) && !results.some(concreteFailureResult);
-	// Flush while still nonterminal; deferred status retries retain that state snapshot.
 	statusWriteCoalescer.flush(statusPath);
 	const publication = new Promise<void>((resolve, reject) => {
 		finalResultPublication = { resolve, reject };
@@ -5085,7 +5021,6 @@ export async function runSubagent(
 			...(taskIndex !== undefined && { taskIndex }),
 			...(totalTasks !== undefined && { totalTasks }),
 		}, (filePath, payload) => publishRunResult(filePath, () => { writeAsyncResultFile(filePath, payload as Record<string, unknown>); }));
-		// Only capacity deferral releases settled sessions before terminal publication.
 		if (!finalResultCommitted) await Promise.all([publication, disposeChildSessions()]);
 	} catch (err) {
 		const message = `Failed to write result file ${resultPath}: ${err instanceof Error ? err.message : String(err)}`;
@@ -5132,7 +5067,6 @@ export async function runSubagent(
 	}), (filePath, content) => runPersistence.write(filePath, { content }, (_path, payload) => {
 		fs.writeFileSync(_path, (payload as { content: string }).content, "utf-8");
 	}));
-	// Preserve normal-success disposal ordering, then drain remaining persistence retries.
 	await disposeChildSessions();
 	while (runPersistence.pendingCount() + indexPersistence.pendingCount() > 0) {
 		await new Promise((resolve) => setTimeout(resolve, 200));
@@ -5140,7 +5074,6 @@ export async function runSubagent(
 	runPersistence.dispose();
 	indexPersistence.dispose();
 	if (config.runnerProcessInstanceId) {
-		// Children run inside this process, so no step has writer processes to prove terminal.
 		const writers: Record<string, PiWriterProcessInstanceExit[]> = {};
 		const expectedWriters: Record<string, number> = {};
 		for (const index of results.keys()) {
@@ -5168,8 +5101,6 @@ export async function runSubagent(
 export async function runConfiguredSubagentExecution(config: SubagentRunConfig, options?: DefaultChildSessionFactoryOptions): Promise<void> {
 	let childSessions: ChildSessionFactory;
 	try {
-		// Detached Node runners do not receive Pi's CLI dispatcher setup. Binary
-		// hosts install the same dispatcher before entering the shared bootstrap.
 		if (!options?.loadPiCodingAgent) installRunnerHttpDispatcher({ agentDir: getAgentDir(), cwd: process.cwd() });
 		childSessions = await loadRunnerChildSessionFactory(config, options);
 	} catch (error) {

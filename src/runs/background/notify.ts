@@ -1,10 +1,3 @@
-/**
- * Completion notification delivery.
- *
- * Async result files call this notifier directly and are deleted only after
- * `sendMessage()` accepts the notification. The event bus remains an
- * observation channel, not a delivery acknowledgement.
- */
 
 import { statSync } from "node:fs";
 import { debuglog } from "node:util";
@@ -352,7 +345,6 @@ function formatCorrelationLines(details: SubagentNotifyDetails): string[] {
 	].filter((line): line is string => line !== undefined);
 }
 
-// The forms of describeWorkflowResume, so a re-render keeps the line out of the result preview.
 const RESUME_NOTICE_PREFIXES = ["Auto-resumed as ", "Resumed as ", "Relaunched as ", "Not auto-resumed: ", "Resume by hand: ", "Relaunch it by hand with "];
 const WATCHDOG_BLOCKERS_HEADING = "Watchdog blockers:";
 
@@ -361,7 +353,6 @@ function formatWatchdogBlockerLines(details: SubagentNotifyDetails): string[] {
 	return [WATCHDOG_BLOCKERS_HEADING, ...details.watchdogBlockers.map((blocker) => `- ${blocker.agent}: ${blocker.summary} (${blocker.stalemate ? "stalemate" : blocker.addressed ? "addressed" : "unaddressed"})`)];
 }
 
-// A stalemate blocker parses back as unaddressed; acceptance treats both as unresolved.
 function parseWatchdogBlockerLines(lines: string[]): SubagentNotifyWatchdogBlocker[] {
 	const blockers: SubagentNotifyWatchdogBlocker[] = [];
 	for (const line of lines) {
@@ -437,13 +428,9 @@ export function parseSubagentNotifyContent(content: string): SubagentNotifyDetai
 	const lines = content.split("\n");
 	const match = (lines[0] ?? "").match(/^(Background task|Detached foreground task) (completed|failed|paused|stopped): \*\*(.+?)\*\*(?:\s+(\([^)]*\)))?$/);
 	if (!match) return undefined;
-	// Only the header slot before the blank separator can carry a receipt.
-	// Identical lines anywhere in model output remain preview text.
 	const receiptHeader = lines[1]?.startsWith("Workflow receipt: ") && lines[2] === "";
 	const workflowReceiptPath = receiptHeader ? lines[1]!.slice("Workflow receipt: ".length) : undefined;
 	let body = lines.slice(receiptHeader ? 3 : 2);
-	// Restore the schedule origin so a re-rendered notice keeps its attribution and
-	// does not fold the line into the result preview.
 	const scheduleMatch = (body[0] ?? "").match(/^Scheduled run from \*\*(.+?)\*\* \(schedule (.+?)\)\.$/);
 	let parsedScheduleOrigin: ScheduleOrigin | undefined;
 	if (scheduleMatch) {
@@ -464,7 +451,6 @@ export function parseSubagentNotifyContent(content: string): SubagentNotifyDetai
 	const workflowRunIndex = body.findIndex((line) => line.startsWith("Workflow run: "));
 	const childRunsIndex = body.findIndex((line) => line.startsWith("Child runs: "));
 	const reconciledIndex = body.findIndex((line) => line.startsWith("Reconciled detached child: "));
-	// Only the slot right after `Workflow run:` carries the resume line; the same text elsewhere is output.
 	const resumeNoticeLine = workflowRunIndex >= 0 ? body[workflowRunIndex + 1] : undefined;
 	const resumeNotice = resumeNoticeLine && RESUME_NOTICE_PREFIXES.some((prefix) => resumeNoticeLine.startsWith(prefix)) ? resumeNoticeLine : undefined;
 	const watchdogIndex = body.findIndex((line) => line === WATCHDOG_BLOCKERS_HEADING);
@@ -538,8 +524,6 @@ type NotificationReason = "disposed" | "missing_session" | "foreground_session_m
 	| "emit_foreground_session_mismatch" | "emit_not_owned" | "send_joined" | "send_accepted" | "send_failed" | "dispose_pending"
 	| "shutdown_persisted" | "shutdown_persist_failed" | "replayed";
 
-// Slice before sanitizing: diagnostic work and each identity are bounded even for
-// malformed result metadata. Never include task/output, paths, or error bodies.
 function traceIdentity(result: TraceIdentity): TraceIdentity {
 	const identity = (value: unknown) => typeof value === "string"
 		? value.slice(0, 128).replace(/[^a-zA-Z0-9_.:-]/g, "_") : undefined;
@@ -551,7 +535,6 @@ function traceNotification(reason: NotificationReason, result?: TraceIdentity): 
 	try {
 		notificationDebug("%s", JSON.stringify({ reason, ...(result ? traceIdentity(result) : {}) }));
 	} catch {
-		// Diagnostics must never change delivery acknowledgement.
 	}
 }
 
@@ -631,8 +614,6 @@ const processGlobal = globalThis as typeof globalThis & { [completionSendRegistr
 const processCompletionSendRegistry = processGlobal[completionSendRegistrySymbol]
 	?? (processGlobal[completionSendRegistrySymbol] = createCompletionSendRegistry());
 
-// Reload replaces extension instances, not Pi's session manager or queued wakes.
-// A manager can change sessions; retain wakes only while its UUID is unchanged.
 type QueuedWakes = { sessionId: string; wakes: string[]; unansweredCompletions: Map<string, { reminded: boolean }>; notices?: Map<string, SubagentNotifyMessage> };
 type SubagentNotifyMessage = { customType: "subagent-notify"; content: string; display: boolean; details: { runs: NotifyRunDetails[] } };
 const queuedWakesSymbol = Symbol.for("pi-subagents.queued-completion-wakes.v2");
@@ -678,17 +659,15 @@ function sendCompletion(pi: Pick<ParentWake, "sendMessage" | "isHeld">, items: P
 	const held = pi.isHeld();
 	const content = triggerTurn ? `${formatted}\n\nParent action: ${held ? HELD_COMPLETION_ACTION : COMPLETION_ACTION}` : formatted;
 	const display = details.some((detail) => detail.source === "foreground" || detail.status !== "completed" || detail.scheduleOrigin !== undefined);
-	// A held notice starts no wake, so the silent-wake reminder must not later tell the model to resume the stopped task.
 	const tracked = triggerTurn && !held;
 	const message: SubagentNotifyMessage = {
 		customType: "subagent-notify",
 		content,
 		display,
-		// Pi does not send details to the model. Hosts match runs by id; the text previews stay in content only.
+		// external: Pi does not send tool result details to the model.
 		details: { runs: details.map(notifyRunDetails) },
 	};
-	// Pi can queue an accepted wake behind the current turn or past agent_settled.
-	// Recorded before sending in case Pi starts the message synchronously.
+	// external: Pi may queue an accepted wake behind the current turn or past agent_settled.
 	if (tracked) {
 		unstartedWakes.push(content);
 		queuedNotices.set(content, message);
@@ -697,7 +676,6 @@ function sendCompletion(pi: Pick<ParentWake, "sendMessage" | "isHeld">, items: P
 	}
 	try {
 		const appended = pi.sendMessage(message, { triggerTurn });
-		// A notice only appended (held, or joining another extension's starting wake) gets no message_start.
 		if (appended && tracked) unstartedWakes.splice(unstartedWakes.lastIndexOf(content), 1);
 		if (tracked && !unstartedWakes.includes(content)) queuedNotices.delete(content);
 		return true;
@@ -772,7 +750,6 @@ export function buildCompletionDetails(result: CompletionNotification): Subagent
 	const outputPreview = directStructuredPreview && (directNoOutputSummary || directDegenerateSummary)
 		? `Structured output:\n${directStructuredPreview}`
 		: capSummaryOutputs(summary, result.results);
-	// A failed child that produced output reports that output as its summary, so its error needs its own line.
 	const errorSources = status === "completed" ? [] : [
 		{ agent: undefined, error: result.error },
 		...(workflowRunId ? [] : result.results ?? []).filter((child) => child.success !== true).map((child) => ({ agent: child.agent, error: child.error })),
@@ -825,7 +802,6 @@ export function buildCompletionDetails(result: CompletionNotification): Subagent
 		: undefined;
 	const reconciledFromDetachedChild = typeof result.reconciledFromDetachedChild === "string" ? result.reconciledFromDetachedChild : undefined;
 	const asyncDir = nonemptyPath(result.asyncDir);
-	// Read here, once per delivery; a re-render parses the line back instead of reading the run again.
 	const stopCause = (result.workflow as { stopCause?: unknown } | null | undefined)?.stopCause;
 	const resumeNotice = workflowRunId && asyncDir && isReusableWorkflowStopCause(stopCause) ? describeWorkflowResume(asyncDir, workflowRunId) : undefined;
 	const watchdogBlockers: SubagentNotifyWatchdogBlocker[] = [];
@@ -886,7 +862,6 @@ export default function registerSubagentNotify(
 	const batchConfig = resolveCompletionBatchConfig(options.batchConfig);
 	const batchers = new Map<string, CompletionBatcher<PendingCompletion>>();
 	let unstartedWakes: string[] = [];
-	// The notice behind each unstarted wake, so shutdown can still put it in the session.
 	let queuedNotices = new Map<string, SubagentNotifyMessage>();
 	let unansweredCompletions = new Map<string, { reminded: boolean }>();
 	let bound = false;
@@ -1005,7 +980,6 @@ export default function registerSubagentNotify(
 		return completion;
 	};
 
-	// Resend notices a previous process recorded at shutdown; the wake is tracked like any other.
 	const replayNotices = (sessionId: string, messages: SubagentNotifyMessage[]) => {
 		if (disposed || boundSessionId !== sessionId) return;
 		for (const message of messages) {
@@ -1043,7 +1017,6 @@ export default function registerSubagentNotify(
 			const index = messages.findLastIndex(message => message.role === "custom"
 				&& message.customType === "subagent-notify" && message.content === content);
 			if (index === -1) {
-				// Removed by compaction or branch switch; never revive a stale notice.
 				unansweredCompletions.delete(content);
 				continue;
 			}
@@ -1109,7 +1082,7 @@ export default function registerSubagentNotify(
 		},
 		bindSession(sessionManager) {
 			if (disposed) return;
-			const sessionId = sessionManager.getSessionId(); // UUID, not state.currentSessionId's possible file path.
+			const sessionId = sessionManager.getSessionId();
 			const retained = queuedWakes.get(sessionManager);
 			const wakes = retained?.sessionId === sessionId ? retained.wakes : [];
 			const unanswered = retained?.sessionId === sessionId && retained.unansweredCompletions instanceof Map
@@ -1118,7 +1091,6 @@ export default function registerSubagentNotify(
 			const notices = retained?.sessionId === sessionId && retained.notices instanceof Map
 				? retained.notices
 				: new Map<string, SubagentNotifyMessage>();
-			// Before the first bind, local wakes belong to this session; after it, to the previous one.
 			if (!bound) {
 				wakes.push(...unstartedWakes);
 				for (const [content, notice] of unansweredCompletions) unanswered.set(content, notice);
@@ -1132,9 +1104,6 @@ export default function registerSubagentNotify(
 			const firstBind = retained?.sessionId !== sessionId;
 			queuedWakes.set(sessionManager, { sessionId, wakes, unansweredCompletions, notices });
 			updateSettleSubscription();
-			// A new process on this session: resend notices the previous one recorded at shutdown.
-			// Deferred past session_start so the resend starts its run after Pi has finished binding the session.
-			// Only the active branch: a resend recorded on an abandoned branch never reached this one.
 			if (firstBind && typeof sessionManager.getBranch === "function") {
 				const pendingNotices = unreplayedPendingNotices(sessionManager.getBranch() as NotifyEntry[]);
 				if (pendingNotices.length) (options.timers?.setTimeout ?? setTimeout)(() => replayNotices(sessionId, pendingNotices), 0);
@@ -1142,8 +1111,6 @@ export default function registerSubagentNotify(
 		},
 		sessionShutdown(reason) {
 			if (reason !== "reload") {
-				// The result file is already gone and Pi drops its queued steers with the session, so a wake
-				// that never started would lose its notice. Record it in the session; the next start resends it.
 				for (const content of new Set(unstartedWakes)) {
 					const message = queuedNotices.get(content) ?? { customType: "subagent-notify", content, display: true, details: { runs: [] } };
 					try {
@@ -1170,13 +1137,11 @@ export default function registerSubagentNotify(
 			updateSettleSubscription();
 			for (const batcher of batchers.values()) settle(batcher.dispose(), false, "dispose_pending");
 			batchers.clear();
-			// Retained state belongs to the session manager; disposal must not erase it on reload.
 			unansweredCompletions = new Map();
 			for (const unsubscribe of [unsubscribeAsync, unsubscribeForeground]) {
 				try {
 					unsubscribe?.();
 				} catch {
-					// The runtime is already shutting down; pending records stay on disk.
 				}
 			}
 		},

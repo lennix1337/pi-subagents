@@ -114,7 +114,6 @@ async function waitForStartupControl(controlPath: string, token: string, action:
 export async function runConfiguredSubagent(rawConfig: unknown, options: RunnerBootstrapOptions = {}): Promise<void> {
 	validateSubagentRunConfig(rawConfig);
 	const config = rawConfig;
-	// The runner never reads the boot id from the OS (sysctl on macOS); Pi passes it to direct runners only.
 	primeBootId(typeof config.bootId === "string" && config.bootId ? config.bootId : undefined);
 	let lease: ReturnType<typeof acquireSessionLease> | undefined;
 	let startupCommitted = config.revivalLease === undefined && config.launchBarrierToken === undefined;
@@ -127,20 +126,17 @@ export async function runConfiguredSubagent(rawConfig: unknown, options: RunnerB
 		try {
 			lease?.release();
 		} catch {
-			// Dead-owner leases are reclaimed on the next revival.
 		}
 	};
 	process.once("exit", releaseOnExit);
 	try {
 		if (config.launchBarrierToken) {
-			// Behind a launcher the parent only knows the wrapper's pid; report this runner's own identity first.
 			if (config.launcher) writeAtomicJson(startupPath, { state: "identified", token: config.launchBarrierToken, pid: process.pid, pidNamespaceScope: currentPidNamespaceScope() });
 			await waitForStartupControl(startupProceedPath, config.launchBarrierToken, "proceed");
 			startupCommitted = true;
 			try {
 				fs.rmSync(startupProceedPath, { force: true });
 			} catch {
-				// Best effort after commit.
 			}
 		} else if (config.revivalLease) {
 			lease = acquireSessionLease(config.revivalLease);
@@ -156,13 +152,10 @@ export async function runConfiguredSubagent(rawConfig: unknown, options: RunnerB
 				try {
 					fs.rmSync(controlPath, { force: true });
 				} catch {
-					// Best effort after commit.
 				}
 			}
 		}
 		if (lease) {
-			// Persist token identity before the heavy import so an import rejection
-			// still leaves the parent enough evidence to prove lease release.
 			const candidate = readProcessTerminalCandidate(config.asyncDir);
 			if (candidate) {
 				writeProcessTerminalCandidate(config.asyncDir, {
@@ -182,7 +175,6 @@ export async function runConfiguredSubagent(rawConfig: unknown, options: RunnerB
 			try {
 				writeAtomicJson(startupPath, { state: "error", pid: process.pid, error: error instanceof Error ? error.message : String(error) });
 			} catch {
-				// The parent will time out and terminate if startup evidence cannot be written.
 			}
 		} else if (!executionLoaded) {
 			try {
@@ -257,7 +249,6 @@ if (isRunnerEntrypoint) {
 			try {
 				fs.unlinkSync(configArg);
 			} catch {
-				// Temp-config cleanup is best effort.
 			}
 			startConfiguredSubagent(config);
 		} catch (error) {

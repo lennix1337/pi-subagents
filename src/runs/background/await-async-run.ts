@@ -13,11 +13,9 @@ function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-/** Read-only probe: the runner is gone while status still says it is active and no result was published. */
 function runnerExitedWithoutResult(asyncDir: string, runId: string, resultPath: string): boolean {
 	const status = readStatus(asyncDir);
 	if (!status || (status.state !== "running" && status.state !== "queued") || typeof status.pid !== "number") return false;
-	// A pid from another namespace never reads as dead here, so the runner is not presumed gone.
 	if (checkRecordedPidLiveness({ pid: status.pid, pidNamespaceScope: status.pidNamespaceScope, bootId: status.bootId }) !== "dead") return false;
 	return !fs.existsSync(resultPath) && !(status.sessionId && resultPayloadPathForSessionRun(asyncDir, status.sessionId, runId));
 }
@@ -39,8 +37,6 @@ export async function awaitExistingAsyncRun(asyncDir: string, runId: string, sig
 	}
 	if (!status) return { status: "unavailable", reason: `No async status exists for run '${runId}' at ${asyncDir}.` };
 	if (status.runId !== runId) return { status: "unavailable", reason: `Async status at ${asyncDir} belongs to run '${status.runId}', not '${runId}'.` };
-	// The launcher's initial status has no workflow identity until the runner starts, so only the
-	// mode is checked here; a run that does not publish to the workflow result path stays unavailable.
 	if (status.mode !== "single") return { status: "unavailable", reason: `Async run '${runId}' is not a single-agent run.` };
 	const resultPath = workflowAwaitedAsyncResultPath(asyncDir);
 	let runnerExited = false;
@@ -55,7 +51,6 @@ export async function awaitExistingAsyncRun(asyncDir: string, runId: string, sig
 	}
 	signal.throwIfAborted();
 	if (runnerExited) return { status: "unavailable", reason: `Async runner for run '${runId}' exited without publishing a result.` };
-	// Only a parsed result file carries importedPublication; status-derived fallbacks do not.
 	if (!completed.importedPublication) return { status: "unavailable", reason: `Async run '${runId}' ended without a result file at ${resultPath}.` };
 	return { status: "settled", result: { ...completed, importedPublication: completed.importedPublication } };
 }

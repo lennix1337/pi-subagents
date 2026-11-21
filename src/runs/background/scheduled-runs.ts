@@ -228,9 +228,7 @@ function resolveSharedGitConfigRoot(projectCwd: string): string | undefined {
 	} catch {
 		return undefined;
 	}
-	// Git may report a separate-git-dir primary checkout as its common git
-	// directory, not as the checkout root. Without a registered checkout root,
-	// do not infer a shared config path from that unprovable layout.
+	// external: Git may report a separate-git-dir primary checkout as its common git directory.
 	for (const checkoutRoot of new Set(registeredGitWorktreeRoots(projectCwd))) {
 		const resolved = resolveTrustedGitConfigRoot(checkoutRoot, repository.commonDir);
 		if (resolved && samePath(resolved, projectConfigRoot)) return resolved;
@@ -238,8 +236,6 @@ function resolveSharedGitConfigRoot(projectCwd: string): string | undefined {
 	return undefined;
 }
 
-// In the home directory the project config dir is the user's own Pi config dir,
-// which may be a symlink to another disk.
 function resolveHomeConfigRoot(projectPath: string): string | undefined {
 	const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
 	try {
@@ -342,7 +338,7 @@ function parseSchedule(value: unknown, file: string): ScheduleRecord {
 	} else if (record.trigger.kind === "interval") {
 		if (typeof record.trigger.every !== "string" || typeof record.trigger.everyMs !== "number" || typeof record.trigger.anchorAt !== "string" || typeof record.trigger.nextRunAt !== "string") throw new Error(`Schedule record '${file}' has an invalid interval trigger.`);
 	} else if (record.trigger.kind === "calendar") {
-		restoreCalendarTrigger(record.trigger); // Validate without rewriting during read-only list/show.
+		restoreCalendarTrigger(record.trigger);
 	} else throw new Error(`Schedule record '${file}' has an unsupported trigger.`);
 	if (record.sessionOnly !== undefined && typeof record.sessionOnly !== "boolean") throw new Error(`Schedule record '${file}' has invalid sessionOnly.`);
 	if (record.quiet !== undefined && typeof record.quiet !== "boolean") throw new Error(`Schedule record '${file}' has invalid quiet.`);
@@ -383,7 +379,6 @@ class ScheduleStore {
 		return record;
 	}
 
-	/** Like {@link get}, but returns undefined when the schedule no longer exists. */
 	find(id: string): ScheduleRecord | undefined {
 		const file = path.join(scheduleDir(this.root, id, false, this.projectCwd), "schedule.json");
 		if (!fs.existsSync(file)) return undefined;
@@ -406,7 +401,6 @@ class ScheduleStore {
 		return value.runs as ScheduleRunRecord[];
 	}
 
-	/** The run's own receipt; it is written before history.json and is never trimmed. */
 	getRun(id: string, runId: string): ScheduleRunRecord | undefined {
 		if (!SCHEDULE_ID.test(runId)) throw new Error(`Invalid schedule run id '${runId}'.`);
 		const file = path.join(scheduleDir(this.root, id, false, this.projectCwd), "runs", `${runId}.json`);
@@ -419,9 +413,7 @@ class ScheduleStore {
 	writeRun(schedule: ScheduleRecord, run: ScheduleRunRecord, event: string): void {
 		const dir = scheduleDir(this.root, schedule.id, true, this.projectCwd);
 		writePrivateAtomicJson(path.join(dir, "runs", `${run.id}.json`), run);
-		// Sessions sharing this project update history.json from their own snapshots.
 		withFileLease(path.join(dir, "history.json"), () => {
-			// An earlier update may have timed out; a run's own receipt is newer than a "running" entry.
 			const earlier = this.history(schedule.id).filter((item) => item.id !== run.id)
 				.map((item) => item.state === "running" ? this.getRun(schedule.id, item.id) ?? item : item);
 			const runs = [run, ...earlier].slice(0, MAX_HISTORY);
@@ -524,7 +516,6 @@ function executionParams(schedule: ScheduleRecord, quiet = false): SubagentParam
 		context: "fresh",
 		cwd: schedule.cwd,
 		...(schedule.target.missionId === undefined ? { mission: false as const } : {}),
-		// Scheduled fires have no operator watching, so completions must name the origin.
 		scheduleOrigin: { id: schedule.id, ...(schedule.name ? { name: schedule.name } : {}), ...(quiet ? { quiet: true } : {}) },
 		...(schedule.timeoutMs === undefined ? {} : { timeoutMs: schedule.timeoutMs }),
 	};
@@ -545,25 +536,12 @@ function snapshotContext(ctx: ExtensionContext, cwd: string): ExtensionContext {
 	return { ...ctx, cwd, sessionManager };
 }
 
-/**
- * 规范化会话文件路径, 兼容 Windows 路径大小写差异.
- *
- * @param value 会话文件路径
- * @returns 规范化后的路径, 空值时返回 undefined
- */
 function normalizedSessionFile(value: string | undefined): string | undefined {
 	if (!value || !value.trim()) return undefined;
 	const normalized = path.normalize(path.resolve(value));
 	return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
-/**
- * 判断 Schedule 是否属于当前 Pi 会话.
- *
- * @param schedule Schedule 记录
- * @param ctx 当前 Pi 会话上下文
- * @returns 是否允许当前会话执行该 Schedule
- */
 function scheduleBelongsToSession(schedule: ScheduleRecord, ctx: ExtensionContext): boolean {
 	if (schedule.sessionOnly !== true) return true;
 	const ownerSessionFile = normalizedSessionFile(schedule.ownerSessionFile);
@@ -660,7 +638,6 @@ export class ScheduledRunManager {
 				try {
 					const schedule = store.get(id);
 					const listed: ScheduleRunRecord | undefined = store.history(id).find((item) => item.asyncId === asyncId) ?? this.activeRun(store, schedule);
-					// history.json can lag the run's receipt when its update timed out.
 					const run: ScheduleRunRecord | undefined = listed && (store.getRun(id, listed.id) ?? listed);
 					if (run?.asyncId !== asyncId || run.state !== "running") continue;
 					this.finishRun(store, schedule, run, data.success === true, typeof data.summary === "string" ? data.summary : undefined);
@@ -713,7 +690,6 @@ export class ScheduledRunManager {
 			trigger = { kind: "interval", every: every!, everyMs, anchorAt: timestamp(now), nextRunAt: timestamp(now + everyMs) };
 		}
 		const schedule: ScheduleRecord = {
-			// Older readers ignore unknown target fields; they must reject mission-bound definitions.
 			schemaVersion: target.target!.missionId === undefined ? 1 : 2,
 			id,
 			name: params.name?.trim() || targetLabel(target.target!),
@@ -843,9 +819,6 @@ export class ScheduledRunManager {
 			const startedAt = run?.startedAt ? Date.parse(run.startedAt) : Number.NaN;
 			const outcome = this.terminalAsyncOutcome(run);
 			if (run && outcome) {
-				// Restore releases a dead or terminal claim at most once and never re-enters itself. On success it continues
-				// to the existing policy code below with the latest record. On failure it arms the schedule from disk, so the
-				// next fire retries the release, and the original error propagates unchanged.
 				let latest: ScheduleRecord | undefined;
 				try {
 					latest = this.finishRun(store, schedule, run, outcome.success, outcome.error, true) ?? store.find(schedule.id);
@@ -854,7 +827,7 @@ export class ScheduledRunManager {
 						try {
 							const current = store.find(schedule.id);
 							if (current) this.arm(current, store, notBefore);
-						} catch { /* Keep the release error. */ }
+						} catch {  }
 					}
 					throw error;
 				}
@@ -897,9 +870,6 @@ export class ScheduledRunManager {
 		const next = nextRunAt(schedule);
 		if (next === undefined) return;
 		const timer = this.timersApi.setTimeout(() => {
-			// A timer callback is outside every caller's try/catch, so an escaping
-			// rejection here reaches the process as an uncaught exception and exits
-			// Pi. Contain every failure to this one schedule.
 			void this.fire(store, schedule.id).catch((error) => {
 				console.warn(`[pi-subagents] Scheduled run '${schedule.id}' failed to fire: ${error instanceof Error ? error.message : String(error)}`);
 				this.restoreAfterFireError(store, schedule.id);
@@ -924,10 +894,6 @@ export class ScheduledRunManager {
 
 	private async fire(store: ScheduleStore, id: string): Promise<void> {
 		this.clearTimer(store, id);
-		// Schedules are project-scoped and shared, and `delete` only clears the
-		// timer inside the deleting process. Another session can therefore remove
-		// a schedule while this process still holds an armed timer for it; there
-		// is then nothing to run and nothing to re-arm.
 		const schedule = store.find(id);
 		if (!schedule) return;
 		if (!scheduleBelongsToSession(schedule, this.requireContext(store))) return;
@@ -951,10 +917,8 @@ export class ScheduledRunManager {
 			} catch (error) {
 				console.warn(`[pi-subagents] Could not reconcile active run '${schedule.activeRunId}' of schedule '${schedule.id}': ${error instanceof Error ? error.message : String(error)}`);
 			}
-			// A dead runner's completion never reaches this schedule, so its claim would skip every later fire.
 			if (active && outcome) {
 				const released = this.finishRun(store, schedule, active, outcome.success, outcome.error, true);
-				// Another session already released or re-claimed that run for this occurrence.
 				if (!released) return this.skipLostClaim(store, schedule.id, run, planned, now);
 				schedule = released;
 			}
@@ -980,15 +944,13 @@ export class ScheduledRunManager {
 			fs.closeSync(lock);
 		} catch (error) {
 			if (lock !== undefined) {
-				// An empty or partial claim would make every later launch skip. Keep the
-				// descriptor open until the inode check so a replacement owner's lock survives.
 				try {
-					// Bigint stats: Windows file ids exceed 2^53, so number inodes of nearby files can compare equal.
+					// external: Windows file IDs can exceed 2^53.
 					const owned = fs.fstatSync(lock, { bigint: true });
 					const current = fs.lstatSync(lockPath, { bigint: true });
 					if (owned.ino !== 0n && owned.dev === current.dev && owned.ino === current.ino) fs.rmSync(lockPath);
-				} catch { /* Preserve the original error. */ }
-				try { fs.closeSync(lock); } catch { /* Preserve the original error. */ }
+				} catch {  }
+				try { fs.closeSync(lock); } catch {  }
 				throw error;
 			}
 			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
@@ -1002,8 +964,6 @@ export class ScheduledRunManager {
 			store.write(schedule);
 			store.writeRun(schedule, run, "schedule.run.started");
 		} catch (error) {
-			// No child has launched: release this run's claim, then report the original error.
-			// Another session may already have recovered the claim and launched its own run.
 			try {
 				const latest = store.find(schedule.id);
 				if (latest?.activeRunId === run.id) {
@@ -1028,7 +988,6 @@ export class ScheduledRunManager {
 			this.arm(schedule, store);
 			return run;
 		} catch (error) {
-			// The child is running, so its claim stays until completion.
 			if (run.asyncId) throw new Error(`Scheduled run '${run.id}' attached to async run '${run.asyncId}', but recording it failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
 			run.state = "failed_launch";
 			run.completedAt = timestamp(this.now());
@@ -1037,8 +996,6 @@ export class ScheduledRunManager {
 			latest.activeRunId = undefined;
 			if (!advance && nextRunAtBeforeClaim) {
 				if (latest.trigger.kind === "calendar") {
-					// An overlapping timer may have advanced both cursor fields while
-					// this manual attachment was pending. Failure satisfies neither.
 					if (nextLocalDateBeforeClaim !== undefined) {
 						latest.trigger.nextLocalDate = nextLocalDateBeforeClaim;
 						latest.trigger.nextRunAt = nextRunAtBeforeClaim;
@@ -1092,11 +1049,9 @@ export class ScheduledRunManager {
 		schedule.updatedAt = timestamp(now);
 		store.write(schedule);
 		const lockPath = path.join(store.directory(schedule.id), "active.lock");
-		// A released dead run's lock may already belong to another session's newer claim.
 		let holder: string | undefined;
-		if (releaseOnly) try { holder = fs.readFileSync(lockPath, "utf-8"); } catch { /* No readable lock names this run. */ }
+		if (releaseOnly) try { holder = fs.readFileSync(lockPath, "utf-8"); } catch {  }
 		if (!releaseOnly || holder === run.id) fs.rmSync(lockPath, { force: true });
-		// The schedule is already released; a history.json timeout must not leave it unarmed.
 		try {
 			store.writeRun(schedule, run, success ? "schedule.run.completed" : "schedule.run.failed");
 			if (skipped) store.writeRun(schedule, skipped, "schedule.skipped_overlap");
@@ -1109,7 +1064,6 @@ export class ScheduledRunManager {
 	private skipLostClaim(store: ScheduleStore, scheduleId: string, run: ScheduleRunRecord, planned: number, now: number): ScheduleRunRecord {
 		run.state = "skipped";
 		run.completedAt = timestamp(now);
-		// Losing the claim gives this snapshot no authority to change the owner.
 		const latest = store.find(scheduleId);
 		if (!latest) {
 			this.clearTimer(store, scheduleId);
@@ -1119,8 +1073,6 @@ export class ScheduledRunManager {
 		if (latest.trigger.kind === "once") {
 			this.clearTimer(store, latest.id);
 		} else {
-			// The owner may hold the lock before persisting its cursor. Back off
-			// locally without consuming that pending occurrence on disk.
 			const next = nextRunAt(latest);
 			const notBefore = next !== undefined && next <= now
 				? Date.parse(nextAfter(latest.trigger, duePlannedAt(latest, now) ?? planned, now).nextRunAt!)
@@ -1195,7 +1147,6 @@ export class ScheduledRunManager {
 		if (run?.state !== "running" || !run.asyncDir) return undefined;
 		const status = reconcileAsyncRun(run.asyncDir, { now: this.now, kill: this.deps.kill }).status;
 		if (!status || !isFinalAsyncRunState(status.state)) return undefined;
-		// Stale-run repair records its reason on the failed steps, not the root status.
 		const error = [status.error, ...(status.steps ?? []).map((step) => step.error)].find((value): value is string => typeof value === "string");
 		return { success: status.state === "complete", error };
 	}

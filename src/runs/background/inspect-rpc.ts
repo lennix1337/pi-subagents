@@ -88,10 +88,6 @@ function publicText(value: unknown, maxLength: number): string | undefined {
 	return normalized ? truncateDisplayText(normalized, maxLength) : undefined;
 }
 
-/** Bound long-form content without flattening it: task/finalOutput/message text
- *  must keep newlines readable. Only the two unicode line separators are
- *  normalized, since JSON.stringify does not escape them and hosts split the
- *  widget payload on line boundaries. */
 function boundContent(value: string, maxLength: number): string {
 	const normalized = value.replace(/[\u2028\u2029]/g, "\n");
 	return truncateDisplayText(normalized, maxLength);
@@ -223,9 +219,6 @@ function readOutputArtifact(outputPath: string): { output?: string; errorText?: 
 
 function readSessionBackedOutput(sessionPath: string, trustedRoots: string[], trustedSessionFileRoot?: string): { output?: string } {
 	if (trustedRoots.length === 0 && !trustedSessionFileRoot) return {};
-	// The archive retains the child's session file as its output record. The
-	// final answer is the terminal assistant message's text — all text parts
-	// of that one session record, not just the last part.
 	const tail = readSessionMessagesTail(sessionPath, MAX_MESSAGE_LINES, trustedRoots, [sessionPath], trustedSessionFileRoot);
 	const last = tail.messages.findLast((message) => message.role === "assistant" && message.kind === "text");
 	if (!last) return {};
@@ -236,9 +229,6 @@ function readSessionBackedOutput(sessionPath: string, trustedRoots: string[], tr
 function readResultOutput(resultsDir: string, sessionId: string, runId: string, stepIndex: number | undefined, trustedRoots: string[], stepAgent: string | undefined, now: () => number, trustedSessionFileRoot?: string): { output?: string; errorText?: string } {
 	const resultPath = resultPayloadPathForSessionRun(resultsDir, sessionId, runId);
 	if (resultPath) return resultOutput(JSON.parse(fs.readFileSync(resultPath, "utf-8")) as unknown, stepIndex);
-	// Read the raw record first: readCompletionReplay best-effort deletes
-	// invalid or expired records, so reading after it cannot distinguish
-	// "never existed" from "failed validation".
 	const replayPath = completionReplayPath(resultsDir, runId);
 	let rawReplay: unknown;
 	try {
@@ -249,11 +239,6 @@ function readResultOutput(resultsDir: string, sessionId: string, runId: string, 
 	const nowMs = now();
 	const replay = readCompletionReplay(resultsDir, runId, { sessionId, now: nowMs });
 	if (!replay) {
-		// readCompletionReplay also returns undefined for absent, expired, foreign,
-		// and unknown-version records. A current-version, unexpired record for this
-		// run and session that still failed validation is an inspection failure,
-		// not a child without output — surface it instead of replying success with
-		// no finalOutput.
 		if (isRecord(rawReplay) && rawReplay.version === 1 && rawReplay.runId === runId
 			&& rawReplay.sessionId === sessionId
 			&& typeof rawReplay.expiresAt === "number" && rawReplay.expiresAt > nowMs) {
@@ -262,13 +247,6 @@ function readResultOutput(resultsDir: string, sessionId: string, runId: string, 
 		return {};
 	}
 	const archive = readCompletionArchive(replay.archivePath);
-	// Run-level inspection must not attribute a child's output to the run in a
-	// multi-child archive. Current child entries carry resultIndex and agent;
-	// run-level entries carry neither. Legacy archives (written before
-	// resultIndex existed) have child entries with agent but no resultIndex,
-	// so child reads fall back to a unique agent name. Duplicate legacy agent
-	// names fail closed. A single-child archive is the one exception: the run's
-	// output IS that child's output, including a legacy agent-tagged entry.
 	const childEntries = archive?.entries.filter((entry) => entry.resultIndex !== undefined || entry.agent !== undefined) ?? [];
 	const singleChild = childEntries.length === 1;
 	const uniqueLegacyAgent = (agent: string | undefined): boolean =>
@@ -310,8 +288,6 @@ function toReplyMessage(message: SessionTranscriptMessage): InspectReplyMessage 
 	};
 }
 
-/** Fit the reply under MAX_SERIALIZED_BYTES: drop oldest messages first, then
- *  shrink finalOutput, then task. The envelope always survives. */
 function enforceByteBudget(reply: InspectReply): InspectReply {
 	const truncated = reply.truncated ?? { task: false, messages: 0, finalOutput: false };
 	const sized = (): number => Buffer.byteLength(JSON.stringify(reply), "utf-8");
@@ -392,11 +368,6 @@ export function buildInspectReply(request: InspectRequest, deps: InspectDeps = {
 			const tail = readSessionMessagesTail(sessionFile, lineLimit, trustedRoots, [sessionFile], deps.state?.trustedSessionFileRoot);
 			if (tail.messages.length > 0) {
 				messages = tail.messages.map(toReplyMessage);
-				// The delegated task is the child session's first user message, but
-				// only when it is genuinely attributable: fresh-context children
-				// (forked sessions begin with inherited parent history) whose
-				// session file is fully inside the read window (a truncated tail
-				// means the first visible user message may be a steering message).
 				if (!tail.truncated && node.status.context !== "fork" && step?.context !== "fork") {
 					const firstUser = tail.messages.find((message) => message.role === "user" && message.kind === "text");
 					if (firstUser) task = firstUser.text;
@@ -417,8 +388,6 @@ export function buildInspectReply(request: InspectRequest, deps: InspectDeps = {
 		const boundedFinal = finalOutputRaw !== undefined ? boundContent(finalOutputRaw, MAX_FINAL_OUTPUT_LENGTH) : undefined;
 		if (finalOutputRaw !== undefined && boundedFinal !== finalOutputRaw) truncated.finalOutput = true;
 		const label = publicText(node.label ?? step?.label ?? step?.agent ?? node.status.runId, MAX_LABEL_LENGTH);
-		// Only the inspected child's own record: a multi-step run-level node has no single child.
-		// A background workflow child records its model in its own run's status, linked back by parentWorkflowRunId.
 		const recordedModel = (step ?? (node.status.mode === "single" ? node.status.steps?.[0] : undefined))?.resolvedModel
 			?? (step?.runId ? workflowChildRunModel(step.runId, node.status.runId, currentSessionId, asyncDirRoot, resultsDir, deps.state) : undefined);
 		const resolvedProvider = publicText(recordedModel?.provider, 64);
@@ -452,7 +421,6 @@ export function encodeInspectReply(reply: InspectReply): string[] {
 export function handleInspectRpcArgs(args: string, deps: InspectDeps = {}): InspectReply {
 	const parsed = parseInspectRequest(args);
 	if (parsed.error || !parsed.request) {
-		// Echo a well-formed requestId so the host can correlate the failure.
 		const firstToken = args.trim().split(/\s+/)[0];
 		const echo = firstToken !== undefined && REQUEST_ID_PATTERN.test(firstToken) ? { requestId: firstToken } : {};
 		return errorReply(echo, "invalid_request", parsed.error ?? "Invalid inspect request.");
