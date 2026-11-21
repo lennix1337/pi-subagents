@@ -70,7 +70,7 @@ interface SupervisorReply {
 	requestId: string;
 	createdAt: number;
 	message: string;
-	/** Transport failure, never a supervisor decision or approval. */
+
 	error?: string;
 }
 
@@ -90,9 +90,9 @@ interface IntercomParams {
 type SupervisorWatch = (filename: fs.PathLike, listener: fs.WatchListener<string>) => fs.FSWatcher;
 
 interface NativeSupervisorChannelDeps {
-	/** Owned live/final-drain mailboxes. Only a completed poll retires the snapshot, never a demand probe. */
+
 	getChannelDirs?: () => { dirs: string[]; retire?: () => void };
-	/** Retained scheduled states for the current runtime owner, never foreign owners. */
+
 	getCurrentOwnerStates?: () => Iterable<SubagentState>;
 	parentWake?: Pick<ParentWake, "sendMessage">;
 	platform?: NodeJS.Platform;
@@ -178,7 +178,7 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
 	});
 }
 
-/** The owning parent moves `expiresAt` forward while Pi still holds the request's notice back from its model. */
+
 function extendedDeadline(requestFile: string, deadline: number): number {
 	try {
 		const expiresAt = (JSON.parse(fs.readFileSync(requestFile, "utf-8")) as { expiresAt?: unknown }).expiresAt;
@@ -430,7 +430,7 @@ function cleanupStaleEmptySupervisorChannels(nowMs = Date.now(), platform: NodeJ
 		try {
 			if (removeStaleEmptySupervisorChannel(path.join(SUPERVISOR_CHANNEL_ROOT, entry.name), nowMs, platform)) removed++;
 		} catch {
-			// Cleanup is opportunistic; active writers can race with us and will be picked up by a later pass.
+
 		}
 	}
 	return removed;
@@ -439,9 +439,9 @@ function cleanupStaleEmptySupervisorChannels(nowMs = Date.now(), platform: NodeJ
 function requestMatchesOwner(request: SupervisorRequest, state: Pick<SubagentState, "supervisorOwnerSessionId" | "currentSessionId">): boolean {
 	const currentSessionId = state.supervisorOwnerSessionId;
 	if (currentSessionId && request.orchestratorSessionId === currentSessionId) return true;
-	// orchestratorSessionId is Pi's runtime session id, while inherited sessions are known by session file,
-	// so an inherited run's ask is matched through the run's recorded owner. This runs inside the poll's
-	// timers and watchers, where a throw exits Pi, so an unreadable status counts as not owned.
+
+
+	// external: an exception in a timer or watcher can terminate Pi.
 	if (!state.currentSessionId || inheritedSessionIds(state.currentSessionId).length === 0) return false;
 	if (!request.runId || request.runId.startsWith(".") || path.basename(request.runId) !== request.runId) return false;
 	try {
@@ -492,7 +492,7 @@ function removeRequestFile(file: string): void {
 	try {
 		fs.rmSync(file, { force: true });
 	} catch {
-		// Request cleanup is best-effort; reply files and timeout errors remain authoritative.
+
 	}
 }
 
@@ -548,7 +548,7 @@ function pendingHeader(request: PendingSupervisorRequest): string {
 function formatPendingLine(request: PendingSupervisorRequest): string {
 	const replyHint = request.expectsReply ? ` Reply: ${supervisorReplyHint(request.id)}` : "";
 	const header = `${pendingHeader(request)}${replyHint}`;
-	// The request notice can be missed; pending is the parent's only way to read the question again.
+
 	return request.message ? `${header}\n  ${request.message.replace(/\n/g, "\n  ")}` : header;
 }
 
@@ -603,7 +603,7 @@ function appendSupervisorReplyEntry(pi: ExtensionAPI, request: PendingSupervisor
 			createdAt: reply.createdAt,
 		});
 	} catch (error) {
-		// The reply file is authoritative; a UI journal failure must not undo a delivered reply.
+
 		console.error("Failed to journal native supervisor reply:", error);
 	}
 }
@@ -613,8 +613,8 @@ function resolvePendingRequest(pending: Map<string, PendingSupervisorRequest>, p
 	if (params.replyTo) {
 		const request = pending.get(params.replyTo);
 		if (!request) {
-			// A child stops waiting after its ask timeout and may ask again under a new id. Its first
-			// notice can reach a busy parent after that, so name what can still be answered.
+
+
 			const current = requests.length ? `Pending now:\n${requests.map(pendingHeader).join("\n")}` : "No pending supervisor requests.";
 			throw new Error(`No pending supervisor request found for replyTo '${params.replyTo}'. It was answered, expired or withdrawn. ${current}`);
 		}
@@ -655,7 +655,7 @@ function buildParentSupervisorTool(pi: ExtensionAPI, pending: Map<string, Pendin
 		description: "Native pi-subagents supervisor channel. Use reply/pending/status to answer child subagent requests without overriding pi-intercom.",
 		parameters: IntercomParamsSchema,
 		async execute(_id, params) {
-			// Discover new request files even when demand-gated polling is idle.
+
 			discover();
 			refreshPendingRequests(pending, state, onLifecycle, runState);
 			const input = params as IntercomParams;
@@ -699,11 +699,11 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 		return state;
 	};
 	const pending = new Map<string, PendingSupervisorRequest>();
-	// One continuation and one warning per request; never auto-answer or loop.
+
 	const settleNotices = new Map<string, "reminded" | "warned" | "handled">();
 	let unsubscribeSettle: (() => void) | undefined;
-	// Asks whose notice Pi queued behind a busy parent run. The child's wait counts from its request,
-	// so until the parent's model can see one, its expiresAt keeps moving forward.
+
+
 	const queuedNotices = new Set<string>();
 	let unsubscribeDelivery: Array<(() => void) | undefined> | undefined;
 	const requestCorrelations = new Map<string, SupervisorRequestCorrelation>();
@@ -785,8 +785,8 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 	const registerParentTools = (): void => {
 		if (!hasTool(pi, NATIVE_SUPERVISOR_TOOL_NAME)) pi.registerTool(buildParentSupervisorTool(pi, pending, state, observeRequestLifecycle, () => poll(), runState));
 	};
-	// A session that never delegated through `subagent` does not declare the reply tool (scheduled runs, runs
-	// adopted after a resume), so declare it before the model is asked to use it.
+
+
 	const declareParentTool = (): void => {
 		if (typeof pi.getActiveTools !== "function" || typeof pi.setActiveTools !== "function") return;
 		const active = pi.getActiveTools();
@@ -795,20 +795,20 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 	};
 
 	const cleanupStaleChannelsIfDue = (): void => {
-		if (deps.getChannelDirs) return; // The root owns global retention cleanup.
+		if (deps.getChannelDirs) return;
 		const nowMs = Date.now();
 		if (nowMs - lastStaleCleanupAt < STALE_EMPTY_CHANNEL_CLEANUP_INTERVAL_MS) return;
 		lastStaleCleanupAt = nowMs;
 		try {
 			cleanupStaleEmptySupervisorChannels(nowMs, platform);
 		} catch {
-			// Supervisor delivery must not fail because best-effort temp cleanup failed.
+
 		}
 	};
 
 	const poll = (): void => {
 		cleanupStaleChannelsIfDue();
-		// Only display notifications require a live UI context, not request registration.
+
 		refreshPendingRequests(pending, state, observeRequestLifecycle, runState);
 		if (queuedNotices.size) extendQueuedNotices();
 		const now = Date.now();
@@ -825,8 +825,8 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 				continue;
 			}
 			if (request.expectsReply && runState(request).blockingWorkflowChildren?.has(request.runId)) {
-				// Pi cannot deliver an ask behind the workflow tool call that awaits this child.
-				// Return a tool error instead of renewing an unreachable ask until the run deadline.
+				// external: Pi cannot deliver an ask behind the workflow call awaiting its child.
+
 				try {
 					writePrivateAtomicJson(replyPath(channelDir, request.id), {
 						type: "subagent.supervisor.reply", requestId: request.id, createdAt: now, message: "",
@@ -843,8 +843,8 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 			}
 			seenFiles.add(file);
 			if (!request.expectsReply) {
-				// Progress is already visible through child activity; do not inject a
-				// parent message or trigger a parent model turn.
+
+
 				removeRequestFile(request.requestFile);
 				continue;
 			}
@@ -853,8 +853,8 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 			declareParentTool();
 			updateSettleSubscription();
 			markForegroundSupervisorAttention(request, state);
-			// The ask is already queued above. A sendMessage failure (no UI, stale context) must not
-			// lose it, and must not abort the loop before the remaining asks register.
+
+
 			try {
 				const appended = (deps.parentWake ?? pi).sendMessage({
 					customType: SUPERVISOR_REQUEST_MESSAGE_TYPE,
@@ -874,7 +874,7 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 						replyHint: supervisorReplyHint(request.id),
 					},
 				}, { triggerTurn: true });
-				// false: Pi emits message_start for the notice (steered into a busy run, or starting an idle one); track it until then.
+				// external: Pi emits message_start when the queued notice is delivered.
 				if (appended === false && started && pending.has(request.id)) {
 					queuedNotices.add(request.id);
 					updateDeliverySubscription();
@@ -964,7 +964,7 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 		if (typeof requestId === "string" && queuedNotices.delete(requestId)) updateDeliverySubscription();
 	};
 	const parentRunSettled = (): void => {
-		// Pi delivers steered messages before a run settles; one still queued was dropped, so stop extending it.
+		// external: Pi delivers steered messages before the run settles.
 		queuedNotices.clear();
 		updateDeliverySubscription();
 	};
@@ -983,7 +983,7 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 		const timeoutMs = askTimeoutMs();
 		for (const id of queuedNotices) {
 			const request = pending.get(id);
-			// Renew at half time only: the rewrite fires this channel's request watcher, which polls again.
+
 			if (!request || requestExpiresAt(request, now) - now > timeoutMs / 2 || !fs.existsSync(request.requestFile)) continue;
 			const { channelDir: _channelDir, requestFile, ...stored } = request;
 			try {
@@ -1063,7 +1063,7 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 			if (!useNativeWatcher() && hasTransportDemand()) startPolling();
 		},
 		findPendingAsks: (target) => {
-			// Receipt-only discovery: no registration, notification, cleanup or reply writes.
+
 			const channelDir = resolveSupervisorChannelDir(target.runId, target.agent, target.childIndex);
 			let files: string[];
 			try { files = fs.readdirSync(path.join(channelDir, REQUESTS_DIR)); }
@@ -1089,7 +1089,7 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 			started = true;
 			registerParentTools();
 			poll();
-			if (deps.getChannelDirs) return; // Child polling starts only after a descendant launch.
+			if (deps.getChannelDirs) return;
 			try {
 				fs.mkdirSync(SUPERVISOR_CHANNEL_ROOT, { recursive: true });
 				if (!useNativeWatcher()) {
@@ -1117,7 +1117,7 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 			try {
 				rootWatcher?.close();
 			} catch {
-				// Best effort during shutdown.
+
 			}
 			rootWatcher = undefined;
 			for (const watcher of requestWatchers.values()) {
