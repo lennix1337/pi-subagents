@@ -89,12 +89,6 @@ function readWorkflowChildJournal(runId: string, workflowAsyncDir: string): Work
 }
 const WORKFLOW_REUSE_CHAIN_MAX_LINKS = 16;
 
-/**
- * The head run's journal plus the journals of the runs it was relaunched from (`workflow.reusedFrom`).
- * A child's start record is written only once it gets a concurrency slot, so a key the head never
- * reached is still in an earlier run's journal. For each key the newest run that recorded it wins. A
- * status file is parsed, not validated, so a corrupt `reusedFrom` may be any JSON value.
- */
 function readWorkflowReuseChain(asyncDirRoot: string, headRunId: string, headStatus: AsyncStatus): WorkflowReuseSource {
 	const source = readWorkflowChildJournal(headRunId, path.join(asyncDirRoot, headRunId));
 	const visited = new Set([headRunId]);
@@ -170,7 +164,6 @@ export function findWorkflowReuseSource(asyncDirRoot: string, sessionId: string,
  * reconciled first, so a run whose Pi process died is marked `owner-exited` before it is read.
  */
 export function readNamedWorkflowReuseSource(asyncDirRoot: string, runId: string, scriptDigest: string, cwd: string, claimOwnerRunId?: string): WorkflowReuseSource {
-	// A user-supplied id: it must name one run directory, never a path.
 	const runName = isRunId(runId);
 	if (runName) reconcileAsyncRun(path.join(asyncDirRoot, runId));
 	const status = runName ? readStatus(path.join(asyncDirRoot, runId)) : null;

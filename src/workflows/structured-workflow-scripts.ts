@@ -11,16 +11,12 @@ const PLACEHOLDER_PATTERN = /\{(?:task|previous|outputs\.([A-Za-z_][A-Za-z0-9_]*
 
 interface TemplateScope {
 	path: string;
-	/** Whether the script declares `originalTask` for {task}. */
 	hasOriginalTask: boolean;
-	/** Script variable holding the previous step's output, or the reason {previous} is unavailable. */
 	previous: { variable: string } | { unavailable: string };
-	/** Script variables for outputs named by earlier sequential steps; undefined when named outputs are unavailable. */
 	outputs?: ReadonlyMap<string, string>;
 	outputsUnavailable?: string;
 }
 
-/** Optional per-child launch fields copied verbatim onto the generated runs.all item. */
 const CHILD_FIELDS = ["cwd", "model"] as const;
 export const TOP_LEVEL_CONTROLS_HINT = " Put worktree and other child controls on the subagent call itself; they apply to every child.";
 
@@ -49,7 +45,6 @@ function exactFields(value: unknown, path: string, allowed: readonly string[], h
 	return value;
 }
 
-/** Single pass: text inserted for a placeholder is never scanned again. Unrecognized brace text stays literal. */
 function compileTemplate(template: string, scope: TemplateScope): string {
 	const parts: string[] = [];
 	let cursor = 0;
@@ -105,7 +100,6 @@ const SETTLE_HELPER = [
 	"    return child;",
 	"  });",
 	"}",
-	// A failed child fails the workflow; the runtime keeps every settled child in the partial results.
 	"function failure(label, children) {",
 	"  return new Error(label + \": \" + children.filter(function (child) { return !child.ok; }).map(function (child) { return child.key + \" (\" + child.agent + \") failed\" + (child.error ? \": \" + child.error : \"\"); }).join(\"; \"));",
 	"}",

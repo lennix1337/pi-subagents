@@ -5,15 +5,9 @@ import type { AsyncStatus } from "../shared/types.ts";
 import { readStatus } from "../shared/utils.ts";
 import type { WorkflowScriptChildResult } from "./scripted-workflow.ts";
 
-/**
- * A top-level resume of a failed async workflow child starts a detached run. These records
- * link that run back to its workflow key without writing the workflow's own status or receipt.
- * The source run is terminal, so the live workflow host never writes its directory.
- */
 const REVIVAL_LINK_FILE = "workflow-revival.json";
 /** The same link, kept in the revived run's directory so reviving it again keeps the key. */
 export const REVIVAL_ORIGIN_FILE = "workflow-revival-origin.json";
-/** Recording refuses a deeper link, so readers bounded by this always reach the chain's end. */
 const MAX_REVIVAL_DEPTH = 16;
 const KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
@@ -23,7 +17,6 @@ interface WorkflowRevivalLink {
 	workflowKey: string;
 	sourceRunId: string;
 	revivedRunId: string;
-	/** 1 for a revival of the workflow's own child, one more for each revival of a revival. */
 	depth: number;
 }
 
@@ -74,8 +67,6 @@ export function recordWorkflowRevival(asyncDirRoot: string, sourceRunId: string,
 	try {
 		writePrivateAtomicJson(path.join(sourceDir, REVIVAL_LINK_FILE), link);
 	} catch (error) {
-		// Keep the origin exactly when the published link names this revival: an unlinked origin
-		// would only pin the run against retention, and a linked one protects the key's chain.
 		if (readLink(path.join(sourceDir, REVIVAL_LINK_FILE))?.revivedRunId !== revivedRunId) fs.rmSync(originFile, { force: true });
 		throw error;
 	}
@@ -100,7 +91,6 @@ export function projectWorkflowKeyRevival(asyncDirRoot: string, workflowRunId: s
 	try {
 		status = readStatus(path.join(asyncDirRoot, current));
 	} catch {
-		// Readers show "status unavailable" instead of failing the workflow's status or notice.
 	}
 	return { revivedRunIds, latestRunId: current, ...(status?.runId === current ? { state: status.state } : {}) };
 }

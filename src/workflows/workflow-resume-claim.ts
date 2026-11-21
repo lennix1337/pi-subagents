@@ -12,15 +12,6 @@ const RELEASED_CLAIM_FILE_PATTERN = /^resumed-by\.([1-9][0-9]*)\.json\.released-
 const REFUSAL_FILE = "resume-refused.json";
 const MAX_CLAIM_ROUNDS = 8;
 
-/**
- * Who continues a stopped workflow run. Claims are generation files `resumed-by.<n>.json` in the
- * stopped run's directory, and the highest n is the current claim. A claimant whose process is dead
- * is superseded by creating the next generation, so a takeover never moves a file another taker
- * may have just created. An owner whose launch did not start renames its own claim to
- * `resumed-by.<n>.json.released-<uuid>`; a released top means no claim, and the next taker creates
- * n+1, so claims below it are never judged again. Only the owner launches; once the claimed new
- * run's status.json exists the claim is permanent.
- */
 interface WorkflowResumeClaim extends RecordedPid {
 	version: 1;
 	claimedAt: number;
@@ -51,7 +42,6 @@ type WorkflowResumeClaimState =
 
 type ClaimLiveness = (claim: WorkflowResumeClaim) => PidLiveness;
 
-// Claims this process holds, shared by every runtime in the process so a reload keeps them.
 const heldClaimsKey = Symbol.for("pi-subagents.workflow-resume-claims.v1");
 const heldClaimsGlobal = globalThis as typeof globalThis & { [heldClaimsKey]?: Set<string> };
 const heldClaims = heldClaimsGlobal[heldClaimsKey] ?? (heldClaimsGlobal[heldClaimsKey] = new Set<string>());
@@ -69,12 +59,6 @@ function isClaim(value: unknown): value is WorkflowResumeClaim {
 		&& (claim.trigger === "auto" || claim.trigger === "manual" || claim.trigger === "reuse");
 }
 
-/**
- * The current claim. `unreadable` means a read failed for a reason other than a missing file,
- * which must fail closed: nothing proves its claimant dead. `open` blocks nothing: there is no
- * claim, the highest generation was given back by its owner, or it is corrupt. The next claim
- * goes above `generation` (0 when there was never a claim).
- */
 type TopClaim =
 	| { kind: "unreadable" }
 	| { kind: "open"; generation: number }
@@ -93,20 +77,17 @@ function readTopClaim(asyncDir: string, retries = 3): TopClaim {
 	} catch (error) {
 		return (error as NodeJS.ErrnoException).code === "ENOENT" ? { kind: "open", generation: 0 } : { kind: "unreadable" };
 	}
-	// A live file and a released one with the same n: the live one was created after the release.
 	if (releasedGeneration > generation || generation === 0) return { kind: "open", generation: Math.max(releasedGeneration, generation) };
 	const filePath = claimFilePath(asyncDir, generation);
 	let text: string;
 	try {
 		text = fs.readFileSync(filePath, "utf-8");
 	} catch (error) {
-		// A release renamed it after the listing: look again.
 		if ((error as NodeJS.ErrnoException).code === "ENOENT" && retries > 0) return readTopClaim(asyncDir, retries - 1);
 		return { kind: "unreadable" };
 	}
 	try {
 		const value = JSON.parse(text) as unknown;
-		// The file is created whole, so a body that does not parse is corrupt, not half-written.
 		return isClaim(value) ? { kind: "claim", generation, filePath, claim: value } : { kind: "open", generation };
 	} catch {
 		return { kind: "open", generation };
@@ -125,8 +106,7 @@ export function resumedRunStarted(sourceAsyncDir: string, newRunId: string): boo
 }
 
 function claimantLiveness(filePath: string, claim: WorkflowResumeClaim, liveness: ClaimLiveness | undefined): PidLiveness {
-	// A reload keeps the pid, so this process's own claim counts only while one of its runtimes holds
-	// it. The same pid in another pid namespace (a container sharing the temp root) is another process.
+	// external: processes in different PID namespaces can share a PID.
 	if (claim.pid === process.pid && claim.bootId === currentBootId() && claim.pidNamespaceScope === currentPidNamespaceScope()) return heldClaims.has(filePath) ? "alive" : "dead";
 	return liveness ? liveness(claim) : checkRecordedPidLiveness(claim);
 }
@@ -140,7 +120,6 @@ export function workflowResumeClaimState(asyncDir: string, options: { liveness?:
 	return claimantLiveness(top.filePath, top.claim, options.liveness) === "dead" ? { kind: "none" } : { kind: "busy", pid: top.claim.pid, newRunId: top.claim.newRunId };
 }
 
-/** Creates the claim file only if none exists, with its whole body in place at once. */
 function createClaimFile(filePath: string, claim: WorkflowResumeClaim): boolean {
 	const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
 	try {
@@ -172,7 +151,6 @@ export function claimWorkflowResume(asyncDir: string, input: { newRunId: string;
 		const top = readTopClaim(asyncDir);
 		if (top.kind === "unreadable") return { kind: "unreadable" };
 		if (top.kind === "claim") {
-			// Already claimed for this exact new run, as a resume does before it launches.
 			if (top.claim.newRunId === input.newRunId && top.claim.pid === process.pid) {
 				heldClaims.add(top.filePath);
 				return { kind: "owner" };
@@ -185,9 +163,7 @@ export function claimWorkflowResume(asyncDir: string, input: { newRunId: string;
 			heldClaims.add(filePath);
 			return { kind: "owner" };
 		}
-		// Another taker created that generation first: decide again from its claim.
 	}
-	// Every round lost to another taker; fail closed with whatever claim is there now.
 	const top = readTopClaim(asyncDir);
 	return top.kind === "claim" ? { kind: "busy", pid: top.claim.pid } : { kind: "unreadable" };
 }
@@ -196,7 +172,6 @@ export function claimWorkflowResume(asyncDir: string, input: { newRunId: string;
 export function releaseWorkflowResumeClaim(asyncDir: string, newRunId: string): void {
 	const top = readTopClaim(asyncDir);
 	if (top.kind !== "claim" || top.claim.newRunId !== newRunId || top.claim.pid !== process.pid) return;
-	// The only rename in the protocol: the owner moves its own claim aside.
 	try {
 		fs.renameSync(top.filePath, `${top.filePath}.released-${randomUUID()}`);
 	} catch (error) {

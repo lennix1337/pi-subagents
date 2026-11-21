@@ -167,7 +167,6 @@ export async function executeWorkflowHostCommand(input: {
 	let stdout = "";
 	let stderr = "";
 	let capture = "";
-	// The first reason a command is terminated is its outcome; a later timeout or abort cannot rewrite it.
 	let stopReason: "timeout" | "abort" | undefined;
 	let settled = false;
 

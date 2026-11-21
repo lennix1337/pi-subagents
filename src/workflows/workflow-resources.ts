@@ -195,7 +195,6 @@ function listWorkflowResourceNames(): string[] {
 	return WORKFLOW_RESOURCES.map((resource) => resource.name);
 }
 
-/** Internal resources for the data-only tasks/chain inputs: reserved against registration, never resolvable or listed by name. */
 const STRUCTURED_WORKFLOW_RESOURCE_NAMES: readonly string[] = ["tasks", "chain"];
 const STRUCTURED_WORKFLOW_RESOURCE_VERSION = 1;
 
