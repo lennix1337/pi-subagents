@@ -464,8 +464,8 @@ async function requestSlashRun(
 			throw error;
 		}
 
-		// Bridge emits STARTED synchronously during REQUEST emit.
-		// If not started, no bridge received the request.
+
+
 		if (!started && done) return;
 		if (!started) {
 			finish(() => reject(new Error(
@@ -714,9 +714,9 @@ export function registerSlashCommands(
 			if (!ctx.hasUI) return;
 			const { encodeInspectReply, handleInspectRpcArgs, INSPECT_WIDGET_KEY } = await import("../runs/background/inspect-rpc.ts");
 			const reply = handleInspectRpcArgs(args, { state });
-			// Emit-then-retract in one handler: stdio delivers the two widget
-			// updates in order, the host buffers the payload by requestId, and
-			// the dedicated key never accumulates visible state.
+			// external: stdio delivers widget updates in order.
+
+
 			ctx.ui.setWidget(INSPECT_WIDGET_KEY, encodeInspectReply(reply));
 			ctx.ui.setWidget(INSPECT_WIDGET_KEY, undefined);
 		},
@@ -848,9 +848,9 @@ export function registerSlashCommands(
 				sendSlashText(pi, usage);
 				return;
 			}
-			// Only the optional child selector is parsed as a flag. Everything
-			// after the run id (or selector) is free-form message text, including
-			// a leading token such as `--verbose`.
+
+
+
 			let childId: string | undefined;
 			let messageStart = 0;
 			if (rest[0] === "--child" && rest[1] && !rest[1].startsWith("--")) {
@@ -894,9 +894,9 @@ export function registerSlashCommands(
 				id: targetId,
 				message,
 				...(childIndex !== undefined ? { index: childIndex } : {}),
-				// Host-style exact-child authority, matching the extension RPC
-				// nonRecoveringSteer guarantee: never swap the addressed child for
-				// a pause-and-revive replacement after a missed acknowledgment.
+
+
+
 				steeringRecovery: false,
 			});
 		},
@@ -1100,8 +1100,8 @@ export function registerSlashCommands(
 		dispose: () => {
 			if (disposed) return;
 			disposed = true;
-			// A reload revokes the command context; do not let delayed responses
-			// resume a command against the old Pi context.
+			// external: Pi reload revokes the command context.
+
 			for (const controller of pendingRequests) controller.abort();
 			pendingRequests.clear();
 		},

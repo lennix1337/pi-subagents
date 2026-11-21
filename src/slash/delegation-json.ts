@@ -33,7 +33,7 @@ export function cloneJsonWithinByteLimit(input: unknown, maxBytes: number): Boun
 			return Object.is(value, -0) ? 0 : value;
 		}
 		if (typeof value === "string") {
-			// Quoting and escaping can only increase the encoded size.
+
 			addMinimumBytes(Buffer.byteLength(value, "utf8") + 2);
 			return value;
 		}
