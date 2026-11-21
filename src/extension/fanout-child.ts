@@ -242,9 +242,7 @@ export default function registerFanoutChildSubagentExtension(pi: ExtensionAPI, c
 	let unsubscribeAsyncStarted: (() => void) | undefined;
 	pi.on("session_start", (_event, ctx) => {
 		supervisorChannel.registerTools();
-		// The host applies the explicit allowlist to dynamic registration too.
 		if (!pi.getAllTools().some(tool => tool.name === NATIVE_SUPERVISOR_TOOL_NAME)) return;
-		// Downward asks belong to this coordinator, not its parent or persisted session file.
 		state.supervisorOwnerSessionId = ctx.sessionManager.getSessionId() || null;
 		unsubscribeAsyncStarted = pi.events.on(SUBAGENT_ASYNC_STARTED_EVENT, (payload: unknown) => {
 			const info = payload as AsyncStartedEvent;

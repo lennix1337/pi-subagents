@@ -14,11 +14,7 @@ interface ActivationDetails {
 
 const LOADER_NAME = "subagents_enable";
 const SUBAGENT_NAME = "subagent";
-// Declared with subagent, or once background-work providers exist (they report work only bg_wait reads).
 const WAIT_NAME = "bg_wait";
-// SUPERVISOR_NAME is declared with subagent: a fork launched through it then declares exactly this session's tools.
-// PARENT_SUPERVISOR_NAME (answering this session's children) is declared with subagent too, unless the session already
-// declared it: a changed tool set would miss the prompt cache. The channel declares it when a child request arrives.
 const UNLOAD_SENTINELS = new Set([LOADER_NAME, SUBAGENT_NAME, WAIT_NAME]);
 
 type ToolSelectionMessage = {
@@ -41,8 +37,7 @@ function setSelection(pi: ExtensionAPI, includeSubagent: boolean, includeLoader:
 	pi.setActiveTools([...new Set(next)]);
 }
 
-// Mirrors pi-ai's per-API transcript handling: without these flags, a mid-conversation tool change
-// makes Pi resend the conversation under a new leading system message, missing the prompt cache.
+// external: pi-ai transcript handling can resend history under a new leading system message after tool changes.
 function addsToolsWithoutCheckpoint(model: ExtensionContext["model"]): boolean {
 	const compat = model?.compat as {
 		supportsMidConvoSystemMessages?: boolean;
@@ -62,29 +57,21 @@ function addsToolsWithoutCheckpoint(model: ExtensionContext["model"]): boolean {
 	}
 }
 
-// Returns whether the loader is selected for this session. `replyOwed`: a child request already woke this session.
 function applyRecordedSelection(pi: ExtensionAPI, ctx: ExtensionContext, mode: "auto" | "dynamic", replyOwed: boolean): boolean {
 	const available = pi.getAllTools();
 	if (!Array.isArray(available) || !Array.isArray(pi.getActiveTools())) return true;
 	if (!available.some((tool) => tool.name === LOADER_NAME)) return true;
-	// SAFETY: The running Pi session manager exposes buildSessionContext, but its read-only extension type omits it.
 	const messages = (ctx.sessionManager as typeof ctx.sessionManager & { buildSessionContext(): { messages: ToolSelectionMessage[] } }).buildSessionContext().messages;
-	// A compaction without a checkpoint leaves its summary first, with no system message before it: the
-	// declarations from before it are lost, even when no tool selection was recorded after it.
 	const lost = messages.find((message) => message.role === "system" || message.role === "compactionSummary")?.role === "compactionSummary";
 	if (lost || hasNativeToolSelection(messages)) {
-		// Replayed here because a package-local pi-ai may be older than the running Pi.
 		const recorded = new Set<string>();
 		const unloadedNames = new Set<string>();
 		const declaredSentinels = new Set<string>();
-		// Tools the surviving transcript says something about: an addition, or a removal that is not an unload.
 		const evidenced = new Set<string>();
 		for (const message of messages) {
 			if (message.role !== "system") continue;
-			// Pi records an extension unload (update, reload) as a removal of each of its active tools, with no cause.
-			// While this extension is loaded, the loader, subagent or bg_wait stays declared, so a removal of declared
-			// sentinels that leaves none of them is that unload, not a choice, and the selection from before it stands.
-			// Pi removes only declared tools, so a removal naming an undeclared sentinel is a choice.
+			// external: Pi records extension unloads as removals of its active tools.
+			// external: Pi removes only declared tools.
 			const removedSentinels = (message.toolsRemoved ?? []).filter((tool) => UNLOAD_SENTINELS.has(tool.name));
 			const allDeclared = removedSentinels.every((tool) => declaredSentinels.has(tool.name));
 			for (const tool of message.toolsRemoved ?? []) declaredSentinels.delete(tool.name);
@@ -102,19 +89,9 @@ function applyRecordedSelection(pi: ExtensionAPI, ctx: ExtensionContext, mode: "
 				evidenced.add(tool.name);
 			}
 		}
-		// The loader and subagent record one activation state (cold, warm, eager); bg_wait and subagent_supervisor
-		// are declared on their own. Only when the activation state itself is lost is it decided as for a new
-		// session. The live tools are no evidence: Pi restores them from this transcript, or activates every
-		// extension tool on /reload.
 		const fresh = lost && !evidenced.has(LOADER_NAME) && !evidenced.has(SUBAGENT_NAME);
 		const startsEager = fresh && mode === "auto" && !addsToolsWithoutCheckpoint(ctx.model);
-		// Otherwise "auto" never adds the loader to a transcript that did not declare it: that is itself a tool change.
 		const loaderSelected = mode === "dynamic" || recorded.has(LOADER_NAME) || (fresh && !startsEager);
-		// An eager re-decision re-adds bg_wait only when the transcript is silent about it: a post-compaction
-		// removal that is not an unload is an operator choice, and a surviving declaration is recorded.has.
-		// A new process restores the transcript's tools, where the unload left this extension's tools inactive; only
-		// /reload re-adds them. Restoring them keeps a sentinel declared, so a later unload is recognised too. Tools of
-		// other extensions, and tools excluded for this process (not registered, so not in getAllTools), stay as they are.
 		const source = unloadedNames.size > 0 ? available.find((tool) => tool.name === LOADER_NAME)?.sourceInfo.path : undefined;
 		const restore = source === undefined ? [] : available
 			.filter((tool) => unloadedNames.has(tool.name) && recorded.has(tool.name) && tool.sourceInfo.path === source)
@@ -122,7 +99,6 @@ function applyRecordedSelection(pi: ExtensionAPI, ctx: ExtensionContext, mode: "
 		setSelection(pi, recorded.has(SUBAGENT_NAME) || startsEager, loaderSelected, recorded.has(WAIT_NAME) || (!evidenced.has(WAIT_NAME) && startsEager), replyOwed ? [...restore, PARENT_SUPERVISOR_NAME] : restore, replyOwed || recorded.has(PARENT_SUPERVISOR_NAME));
 		return loaderSelected;
 	}
-	// "auto" goes eager only for an empty session; any history keeps the tools it already sent.
 	const eager = mode === "auto" && messages.length === 0 && !addsToolsWithoutCheckpoint(ctx.model);
 	const kept = (name: string) => eager || (messages.length > 0 && pi.getActiveTools().includes(name));
 	setSelection(pi, kept(SUBAGENT_NAME), !eager, kept(WAIT_NAME), replyOwed ? [PARENT_SUPERVISOR_NAME] : [], replyOwed || messages.length > 0);
@@ -134,10 +110,9 @@ export function registerSubagentToolActivation(
 	options: { advertisedPrompt: () => string | undefined | Promise<string | undefined>; mode?: ToolActivationMode; hasPendingSupervisorRequest?: () => boolean },
 ): void {
 	const mode = options.mode ?? "auto";
-	// Same as --exclude-tools subagents_enable: without the loader, subagent stays active.
 	if (mode === "eager") return;
 
-	// Takes no arguments, but a stray one (DeepSeek sends `{ action: "enable" }`) must not fail validation.
+	// external: DeepSeek can send stray arguments to no-argument tools.
 	const parameters = Type.Object({});
 	const loader: ToolDefinition<typeof parameters, ActivationDetails> = {
 		name: LOADER_NAME,
@@ -175,7 +150,6 @@ export function registerSubagentToolActivation(
 	};
 	registerPinnedTool(pi, loader);
 
-	// Decided at session start and tree navigation only; switching models keeps the session's tools.
 	let loaderSelected = true;
 	const replyOwed = () => options.hasPendingSupervisorRequest?.() === true;
 	pi.on("session_start", (_event, ctx) => { loaderSelected = applyRecordedSelection(pi, ctx, mode, replyOwed()); });
@@ -183,8 +157,6 @@ export function registerSubagentToolActivation(
 	pi.on("before_agent_start", (event) => {
 		const available = pi.getAllTools();
 		if (!Array.isArray(available) || !available.some((tool) => tool.name === LOADER_NAME)) return;
-		// Another extension's background-work provider reports work only bg_wait can wait for, so a session with one
-		// declares bg_wait without enabling subagent, including when the provider registered after session start.
 		const providedWait = available.some((tool) => tool.name === WAIT_NAME) && listBackgroundWorkProviders().length > 0;
 		const names = [...(loaderSelected ? [LOADER_NAME] : []), ...(providedWait ? [WAIT_NAME] : [])];
 		if (names.length === 0) return;

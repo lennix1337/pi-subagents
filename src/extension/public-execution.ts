@@ -102,15 +102,13 @@ export function normalizePublicSubagentExecution<T extends PublicSubagentExecuti
 	if (params.workflowScriptPath !== undefined) {
 		return { ok: false, error: REMOVED_WORKFLOW_SCRIPT_PATH, mode: params.action === undefined ? "workflow" : "management" };
 	}
-	// Some MCP clients send the boolean branch of the workflow union as the string "true" (#2600).
-	// Coerce it here so no path can resolve it as a named resource or script file called "true".
+	// external: Some MCP clients send boolean workflow values as strings.
 	if (params.workflow === "true") params = { ...params, workflow: true };
 	const workflow = params.workflow;
 	if (workflow !== undefined && workflow !== true && (typeof workflow !== "string" || !workflow.trim())) {
 		return { ok: false, error: "workflow must be true (the ```js workflow block in this reply), a script path containing '/', or a named workflow resource.", mode: "workflow" };
 	}
 	const hasNamedWorkflow = typeof workflow === "string" && !isWorkflowScriptPath(workflow);
-	// workflowScript is the internal script carrier; model tool calls cannot set it.
 	if (workflow !== undefined && params.workflowScript !== undefined) {
 		return { ok: false, error: "workflow cannot be combined with an internal workflowScript.", mode: "workflow" };
 	}
@@ -179,7 +177,6 @@ export function normalizePublicSubagentExecution<T extends PublicSubagentExecuti
 	if (params.resume !== undefined) {
 		return { ok: false, error: "Top-level resume execution is not available. Put resume on a workflow script runs.run/runs.all item.", mode: "workflow" };
 	}
-	// action: "chain"/"tasks"/"parallel" stays a legacy error even where top-level chain/tasks are accepted.
 	const legacyOrchestrationAction = ["parallel", "tasks", "chain"].includes(normalizedAction?.toLowerCase() ?? "");
 	const hasStructuredWorkflow = options.structuredWorkflows === true && !legacyOrchestrationAction && (params.tasks !== undefined || params.chain !== undefined);
 	const hasLegacyOrchestration = (!hasStructuredWorkflow && (params.tasks !== undefined || params.chain !== undefined)) || params.parallel !== undefined || params.concurrency !== undefined || params.chainDir !== undefined;
@@ -191,7 +188,6 @@ export function normalizePublicSubagentExecution<T extends PublicSubagentExecuti
 			return { ok: false, error: "Pass either tasks or chain, not both.", mode: "workflow" };
 		}
 		const field = params.tasks !== undefined ? "tasks" : "chain";
-		// workflow and workflowScript were already rejected by the workflow-scripts feature check.
 		for (const [name, value] of [["action", params.action], ["agent", params.agent], ["step", params.step]] as const) {
 			if (value !== undefined) return { ok: false, error: `${field} cannot be combined with ${name}.`, mode: normalizedAction ? "management" : "workflow" };
 		}

@@ -212,9 +212,6 @@ function formatPermissionSystemSection(): string[] {
 	}
 	if (!isChild) lines.push("- foreground external ask forwarding: unavailable until the permission extension supports a session-scoped target");
 	lines.push(`- subagent process: ${isChild ? "yes (PI_SUBAGENT_CHILD=1)" : "no"}`);
-	// Whether pi-permission-system is installed and where it stores config is
-	// outside pi-subagents' control, so we only report the forwarding signal we
-	// own. Run `pi list` to confirm the permission extension is installed.
 	return lines;
 }
 

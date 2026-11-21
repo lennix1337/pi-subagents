@@ -1,6 +1,3 @@
-/**
- * TypeBox schemas for subagent tool parameters
- */
 
 import { Type } from "typebox";
 import type { DisabledFeatureSurface } from "../shared/disabled-features.ts";
@@ -56,8 +53,7 @@ const OutputSchemaOverride = Type.Unsafe({
 	description: "Structured output schema override; false disables an agent default.",
 });
 
-// Provider boolean branches intentionally overapproximate false-only runtime inputs.
-// Restricted function-declaration converters only support string enum members.
+// external: Some provider function-declaration converters support only string enum members.
 const AcceptanceOverride = Type.Unsafe({
 	anyOf: [
 		{ type: "string", enum: ["auto", "attested", "checked"] },
@@ -127,9 +123,6 @@ const WorkflowPreflightOverride = Type.Object({
 	lanes: Type.Array(WorkflowPreflightLane, { maxItems: 64 }),
 }, { additionalProperties: false, description: "workflow: true or a script path only; display-only hints; coverage warns." });
 
-// Runtime mission handlers validate these untrusted nested objects loudly. Keeping
-// their provider schema shallow avoids repeating a full durable-record schema in
-// every tool request.
 const MissionLaunchOverride = Type.Unsafe({
 	anyOf: [
 		{ type: "object", additionalProperties: true },
@@ -157,7 +150,6 @@ const SubagentParamProperties = {
 	agent: Type.Optional(Type.String({ description: "One-child agent or management target." })),
 	task: Type.Optional(Type.String({ description: "One-child task; requires agent." })),
 	extensionBindings: Type.Optional(Type.Unsafe({ type: "object", maxProperties: 16, additionalProperties: true, description: "Child-only plain JSON; package.name/1; depth 16, 256 props, 16 KiB." })),
-	// Management action (when present, tool operates in management mode)
 	action: Type.Optional(Type.String({ minLength: 1,
 		description: "Management/control only; omit for execution. validate accepts workflow: true or a script path. Discover: {action:\"guide\",options:{topic:\"tool-reference\"}}."
 	})),
@@ -210,7 +202,6 @@ const SubagentParamProperties = {
 	runMode: Type.Optional(Type.String({ description: "Attached run mode." })),
 	runStatus: Type.Optional(Type.String({ description: "Attached run status." })),
 	summary: Type.Optional(Type.String({ description: "Mission close summary." })),
-	// Agent configuration for create/update (nested to avoid conflicts with execution fields)
 	config: Type.Optional(Type.Unsafe({
 		anyOf: [
 			{ type: "object", additionalProperties: true },
@@ -253,7 +244,6 @@ const SubagentParamProperties = {
 		Type.String({ description: "Session log directory; default temp, independent of share." }),
 	),
 	control: Type.Optional(ControlOverrides),
-	// Workflow defaults forwarded to each runs.run/runs.all child unless overridden there.
 	output: Type.Optional(Type.Unsafe({
 		anyOf: [
 			{ type: "string" },
@@ -284,7 +274,6 @@ export const SubagentFlatParams = Type.Object(SubagentParamProperties);
 
 const thinking = SubagentParamProperties.thinking;
 
-// Management/control fields go inside one opaque `options` object, so they are not sent on every request.
 const { runId: _runId, maxRuntimeMs: _maxRuntimeMs, isolation: _isolation, ...ModelProperties } = SubagentParamProperties;
 const { agent, task, workflow, args, async, model, cwd, worktree, output, action, id, message, ...SubagentOptionProperties } = ModelProperties;
 
@@ -300,14 +289,11 @@ const ModelTopLevelProperties = {
 
 export const SubagentParams = keepTopLevelParameterDescriptions(Type.Object(ModelTopLevelProperties));
 
-// Replaces workflow scripts when disabledFeatures lists "workflow-scripts". Kept small because every
-// field is sent on every request; the executor validates step shapes and placeholders strictly.
 const StructuredTask = { type: "object", properties: { agent: { type: "string", minLength: 1 }, task: { type: "string" }, cwd: { type: "string" }, model: { type: "string" } }, required: ["agent", "task"], additionalProperties: false };
 const StructuredWorkflowProperties = {
 	action: Type.Optional(Type.String({ minLength: 1, description: "Management/control; omit for execution. See guide tool-reference." })),
 	task: Type.Optional(Type.String({ description: "One-child task or chain/tasks template ({task})." })),
 	tasks: Type.Optional(Type.Unsafe({ type: "array", minItems: 1, items: StructuredTask, description: "Parallel children; results in order." })),
-	// Flattened step: {agent, task?, as?} or {parallel}; no object-shape union for provider converters.
 	chain: Type.Optional(Type.Unsafe({
 		type: "array",
 		minItems: 1,
@@ -325,7 +311,6 @@ export function createSubagentParamsSchema(disabled?: DisabledFeatureSurface): t
 		if (structured && name === "task") return [[name, StructuredWorkflowProperties.task], ["tasks", StructuredWorkflowProperties.tasks], ["chain", StructuredWorkflowProperties.chain]];
 		return [[name, schema]];
 	}));
-	// SAFETY: only optional properties are dropped or added; the executor rejects disabled options and admits chain/tasks at runtime.
 	return keepTopLevelParameterDescriptions(Type.Object(enabledProperties)) as typeof SubagentParams;
 }
 

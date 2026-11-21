@@ -5,7 +5,6 @@ import packageJson from "../../package.json" with { type: "json" };
 import { writeAtomicJson } from "../shared/atomic-json.ts";
 import { getAgentDir } from "../shared/utils.ts";
 
-// major.minor.patch as one comparable number; undefined for anything else.
 const versionNumber = (version: unknown) => typeof version === "string" && /^\d+\.\d+\.\d+$/.test(version)
 	? version.split(".").reduce((total, part) => total * 1e6 + Number(part), 0)
 	: undefined;
@@ -25,7 +24,6 @@ export async function showUpgradeNotice(
 	try {
 		writeAtomicJson(statePath, { version });
 	} catch {
-		// Read-only installs cannot record the seen version. Without it the notice would repeat on every start, so skip it.
 		return;
 	}
 	if (previous === undefined || previous > current) return;

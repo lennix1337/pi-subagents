@@ -13,7 +13,6 @@ function featureText(disabled: DisabledFeatureSurface): FeatureText {
 	return (feature, text, disabledText = "") => disabled.features.has(feature) ? disabledText : text;
 }
 
-// Part of every built-in description and appended to custom ones, so it is sent on every request.
 export const SUBAGENT_SAFETY_GUIDANCE = `SAFETY-CRITICAL SUBAGENT GUIDANCE:
 - Delegate only when the operator asked, directly or through applicable user/project instructions; size, complexity or risk alone is not authorization.
 - Native async completion wakes this session: return control; do not sleep, poll or call bg_wait for it.
@@ -45,7 +44,6 @@ const scriptDetails = `• Scripts: JavaScript statement bodies with explicit re
 • runs.lanes([{key,stages:[{key,agent,task},{key,resume:'previous',task}]}]) runs first stages together, later stages sequentially per lane. Failures stay lane-local; only explicit structuredOutput.verdict === 'blocked' blocks a successful stage, never reviewer prose.
 `;
 
-// Opt-in through toolDescriptionMode "full": the rarer rules the default leaves to guide sections.
 const fullDetails = (on: FeatureText) => `DETAILS:
 ${on("workflow-scripts", scriptDetails)}• ${on("workflow-scripts", "Workflow child controls default onto runs.run/runs.all items; child fields override them.", "Top-level child controls apply to every chain/tasks child.")} worktree:true requires clean source, isolates each child and returns handoff artifacts; options.baseRef defaults to HEAD at allocation or a supported named ref, never full 40/64-character commit IDs or revision expressions.${on("usage-budgets", " usageBudget is shared across the workflow; already-running children are not stopped.")}
 • Async follows asyncByDefault (normally true); async:false only to block the parent, not for final reviews/gates. Consume results at dependency barriers. bg_wait is for provider/detached work without native notification that needs a same-turn result.
@@ -88,7 +86,6 @@ export interface ToolDescriptionOptions {
 	disabledFeatures?: DisabledFeatureSurface;
 }
 
-// No promptGuidelines: the description carries the authorization rule, so it is stated once.
 export function buildSubagentToolPromptMetadata(config: Pick<ExtensionConfig, "toolDescriptionMode"> = {}, disabledFeatures?: DisabledFeatureSurface): { promptSnippet?: string } {
 	if (config.toolDescriptionMode !== undefined) return {};
 	return { promptSnippet: disabledFeatures?.features.has("workflow-scripts") ? STRUCTURED_SUBAGENT_TOOL_PROMPT_SNIPPET : SUBAGENT_TOOL_PROMPT_SNIPPET };

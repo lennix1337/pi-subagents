@@ -19,14 +19,10 @@ export const SUBAGENT_GUIDE_TOPICS = [
 
 export type SubagentGuideTopic = (typeof SUBAGENT_GUIDE_TOPICS)[number];
 
-// Guide output stays in the parent's history and is re-sent on every later turn, so docs-backed
-// topics return a table of contents or one section, never a whole document.
 const SUBAGENT_GUIDE_SECTION_MAX_CHARS = 8000;
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-// /council must work under `pi --no-skills`, which drops the package skills from context,
-// so this topic serves the council skill together with the references it tells the model to read.
 const COUNCIL_FILES = [
 	"skills/council-mode/SKILL.md",
 	"skills/council-mode/references/pass-contracts.md",
@@ -95,7 +91,7 @@ function sectionText(lines: string[], section: GuideSection): string {
 
 function readGuideFiles(topic: string, files: string[], root: string): string[] {
 	try {
-		// Windows checkouts can convert docs to CRLF; sections and their boundaries are defined on LF lines.
+		// external: Windows checkouts can convert documentation to CRLF.
 		return files.map((file) => fs.readFileSync(path.join(root, file), "utf-8").replace(/\r\n/g, "\n"));
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
