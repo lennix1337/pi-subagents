@@ -66,7 +66,7 @@ export function createTmuxClient(options: { bin?: string; exec?: ExecTmux } = {}
 							finish(error("TMUX_UNAVAILABLE", "tmux is not installed or is not on PATH."));
 							return;
 						}
-						// Node reports its own timeout expiry as a killed child, not as our abort listener firing.
+						// external: Node reports its timeout as a killed child.
 						const killed = execError as NodeJS.ErrnoException & { killed?: boolean; signal?: string };
 						if (killed.killed === true || killed.signal) {
 							finish(error("TIMEOUT", `tmux command '${args.join(" ")}' timed out.`));

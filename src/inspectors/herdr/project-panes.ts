@@ -133,7 +133,7 @@ export interface ProjectPaneManager {
 }
 
 interface InternalProjectPaneManagerOptions extends ProjectPaneManagerOptions {
-	/** Preserve the historical model-facing action behavior without weakening the public API defaults. */
+
 	legacyToolCompatibility?: boolean;
 }
 

@@ -18,7 +18,7 @@ import type { InspectorAction, InspectorContext, InspectorLaunch, InspectorParam
 export { INSPECTOR_ACTIONS } from "./types.ts";
 export type { InspectorAction, InspectorParams, InspectorPlugin } from "./types.ts";
 
-// Covers a provider's slowest normal open (a 15 s split or launch plus its follow-up commands).
+// external: inspector providers may take 15 seconds to open.
 const INSPECTOR_LEASE_WAIT_MS = 30_000;
 
 function result(text: string, isError = false): AgentToolResult<Details> {
@@ -142,8 +142,8 @@ export async function handleInspectorAction(action: InspectorAction, params: Ins
 			? owner.status(context)
 			: result(`Inspector plugin '${owner.name}' does not support status for async run ${target.runId}.`, true);
 	}
-	// Open and close read, create and delete the target's binding. Two callers at once, including another Pi
-	// process sharing the run directory, would each open a pane and one binding would overwrite the other.
+
+
 	const label = target.index === undefined ? "" : ` child ${target.index}`;
 	const lockPath = path.join(fs.realpathSync.native(target.asyncDir), `inspector-${target.index ?? "root"}.lock`);
 	const deadline = Date.now() + (deps.leaseWaitMs ?? INSPECTOR_LEASE_WAIT_MS);
@@ -155,7 +155,7 @@ export async function handleInspectorAction(action: InspectorAction, params: Ins
 		release = tryLease(lockPath);
 	}
 	try {
-		// The wait may end with the lease in the same tick the caller cancelled; never act for a cancelled caller.
+
 		if (deps.signal?.aborted) return result(`Inspector ${action} for async run ${target.runId}${label} was cancelled while waiting for another inspector open or close to finish.`, true);
 		if (action === "inspector.open") {
 			for (const plugin of plugins) {
