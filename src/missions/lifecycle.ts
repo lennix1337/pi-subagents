@@ -101,7 +101,6 @@ function runStatusForResult(result: AgentToolResult<Details>): string {
 	return "completed";
 }
 
-
 const UNACCEPTED_ACCEPTANCE_STATUSES = new Set(["pending", "claimed", "review-required", "rejected"]);
 
 function acceptanceStatusOf(value: unknown): string | undefined {
@@ -126,7 +125,6 @@ export function finishedMissionStatus(record: MissionRecord, autoCreated: boolea
 	if (autoCreated) return "completed";
 	const unaccepted = (status: string | undefined) => status !== undefined && UNACCEPTED_ACCEPTANCE_STATUSES.has(status);
 	if (runAcceptance.some((run) => unaccepted(run.status))) return "waiting";
-
 	const reported = new Set(runAcceptance.map((run) => run.runId));
 	return record.workflowChildren.some((child) => !(child.runId !== undefined && reported.has(child.runId)) && unaccepted(child.acceptanceStatus)) ? "waiting" : "completed";
 }
@@ -252,7 +250,6 @@ export function attachMissionToLaunchResult(input: {
 						asyncDir: input.result.details.asyncDir,
 						mode: input.result.details.mode,
 						state: status.state,
-
 						...(Array.isArray(status.steps) ? { results: status.steps.map((step) => ({ acceptance: (step as { acceptance?: unknown } | null)?.acceptance })) } : {}),
 						...(firstText(input.result) ? { summary: firstText(input.result) } : {}),
 					}) ?? mission;
@@ -300,7 +297,6 @@ function parsePersistedBinding(value: unknown, source: string): MissionLaunchBin
 	if (input.autoCreated !== undefined && typeof input.autoCreated !== "boolean") throw new Error(`${source}.autoCreated must be boolean`);
 	return {
 		missionId: validateMissionId(input.missionId, `${source}.missionId`),
-
 		autoCreated: input.autoCreated !== false,
 		location: {
 			projectRoot: input.projectRoot as string,
@@ -351,7 +347,6 @@ export function syncMissionFromAsyncCompletion(value: unknown): MissionRecord | 
 				missionPath: missionRecordPath(binding.location, binding.missionId),
 			})}\n`, "utf-8");
 		} catch {
-
 		}
 		return undefined;
 	}

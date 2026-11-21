@@ -4,7 +4,6 @@ export const BACKGROUND_WORK_REGISTRY_KEY = "pi-subagents.background-work.v1";
 const MAX_PROVIDER_NAME_LENGTH = 128;
 const MAX_PROVIDERS = 100;
 const MAX_ITEM_ID_LENGTH = 256;
-
 const MAX_SESSION_ID_LENGTH = 4_096;
 const MAX_WAKE_CHANNEL_LENGTH = 256;
 const MAX_ITEMS_PER_PROVIDER = 10_000;

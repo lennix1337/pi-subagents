@@ -72,7 +72,6 @@ function errorText(input: { code: TmuxErrorCode; message: string }): string {
 	return `tmux inspector error (${input.code}): ${input.message}`;
 }
 
-
 const OWNER_OPTION = "@pi-subagents-inspector";
 
 function ownerTag(runId: string, index?: number): string {
@@ -116,11 +115,9 @@ export async function openTmuxInspector(
 			}
 			return result(`tmux inspector pane ${existing.paneId} is already open for async run ${context.target.runId}. Ctrl-C inside the pane closes it.`);
 		}
-
 		if (probe.state === "error") return result(errorText(probe.error), true);
 	}
 	// external: tmux split-window activates the new pane.
-
 	const originalPane = focus ? undefined : await client.run(["display-message", "-p", "#{pane_id}"], { timeoutMs: 5_000, signal: context.signal });
 	const split = await client.run([
 		"split-window", "-h", "-P", "-F", "#{pane_id}",
@@ -137,7 +134,6 @@ export async function openTmuxInspector(
 	if (originalPane?.ok && originalPane.data) {
 		await client.run(["select-pane", "-t", originalPane.data], { timeoutMs: 5_000, signal: context.signal });
 	}
-
 	const stamp = await client.run(["set-option", "-p", "-t", id, OWNER_OPTION, ownerTag(context.target.runId, context.target.index)], { timeoutMs: 5_000 });
 	if (!stamp.ok) {
 		await client.run(["kill-pane", "-t", id], { timeoutMs: 5_000 });
@@ -160,7 +156,6 @@ export async function openTmuxInspector(
 	try {
 		writeAtomicJson(bindingPath(context.target.asyncDir, context.target.index), binding);
 	} catch (error) {
-
 		await client.run(["kill-pane", "-t", id], { timeoutMs: 5_000 });
 		throw error;
 	}

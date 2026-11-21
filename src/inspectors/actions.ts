@@ -142,8 +142,6 @@ export async function handleInspectorAction(action: InspectorAction, params: Ins
 			? owner.status(context)
 			: result(`Inspector plugin '${owner.name}' does not support status for async run ${target.runId}.`, true);
 	}
-
-
 	const label = target.index === undefined ? "" : ` child ${target.index}`;
 	const lockPath = path.join(fs.realpathSync.native(target.asyncDir), `inspector-${target.index ?? "root"}.lock`);
 	const deadline = Date.now() + (deps.leaseWaitMs ?? INSPECTOR_LEASE_WAIT_MS);
@@ -155,7 +153,6 @@ export async function handleInspectorAction(action: InspectorAction, params: Ins
 		release = tryLease(lockPath);
 	}
 	try {
-
 		if (deps.signal?.aborted) return result(`Inspector ${action} for async run ${target.runId}${label} was cancelled while waiting for another inspector open or close to finish.`, true);
 		if (action === "inspector.open") {
 			for (const plugin of plugins) {

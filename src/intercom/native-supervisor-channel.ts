@@ -70,7 +70,6 @@ interface SupervisorReply {
 	requestId: string;
 	createdAt: number;
 	message: string;
-
 	error?: string;
 }
 
@@ -90,9 +89,7 @@ interface IntercomParams {
 type SupervisorWatch = (filename: fs.PathLike, listener: fs.WatchListener<string>) => fs.FSWatcher;
 
 interface NativeSupervisorChannelDeps {
-
 	getChannelDirs?: () => { dirs: string[]; retire?: () => void };
-
 	getCurrentOwnerStates?: () => Iterable<SubagentState>;
 	parentWake?: Pick<ParentWake, "sendMessage">;
 	platform?: NodeJS.Platform;
@@ -177,7 +174,6 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
 		signal?.addEventListener("abort", onAbort, { once: true });
 	});
 }
-
 
 function extendedDeadline(requestFile: string, deadline: number): number {
 	try {
@@ -430,7 +426,6 @@ function cleanupStaleEmptySupervisorChannels(nowMs = Date.now(), platform: NodeJ
 		try {
 			if (removeStaleEmptySupervisorChannel(path.join(SUPERVISOR_CHANNEL_ROOT, entry.name), nowMs, platform)) removed++;
 		} catch {
-
 		}
 	}
 	return removed;
@@ -439,8 +434,6 @@ function cleanupStaleEmptySupervisorChannels(nowMs = Date.now(), platform: NodeJ
 function requestMatchesOwner(request: SupervisorRequest, state: Pick<SubagentState, "supervisorOwnerSessionId" | "currentSessionId">): boolean {
 	const currentSessionId = state.supervisorOwnerSessionId;
 	if (currentSessionId && request.orchestratorSessionId === currentSessionId) return true;
-
-
 	// external: an exception in a timer or watcher can terminate Pi.
 	if (!state.currentSessionId || inheritedSessionIds(state.currentSessionId).length === 0) return false;
 	if (!request.runId || request.runId.startsWith(".") || path.basename(request.runId) !== request.runId) return false;
@@ -492,7 +485,6 @@ function removeRequestFile(file: string): void {
 	try {
 		fs.rmSync(file, { force: true });
 	} catch {
-
 	}
 }
 
@@ -548,7 +540,6 @@ function pendingHeader(request: PendingSupervisorRequest): string {
 function formatPendingLine(request: PendingSupervisorRequest): string {
 	const replyHint = request.expectsReply ? ` Reply: ${supervisorReplyHint(request.id)}` : "";
 	const header = `${pendingHeader(request)}${replyHint}`;
-
 	return request.message ? `${header}\n  ${request.message.replace(/\n/g, "\n  ")}` : header;
 }
 
@@ -603,7 +594,6 @@ function appendSupervisorReplyEntry(pi: ExtensionAPI, request: PendingSupervisor
 			createdAt: reply.createdAt,
 		});
 	} catch (error) {
-
 		console.error("Failed to journal native supervisor reply:", error);
 	}
 }
@@ -613,8 +603,6 @@ function resolvePendingRequest(pending: Map<string, PendingSupervisorRequest>, p
 	if (params.replyTo) {
 		const request = pending.get(params.replyTo);
 		if (!request) {
-
-
 			const current = requests.length ? `Pending now:\n${requests.map(pendingHeader).join("\n")}` : "No pending supervisor requests.";
 			throw new Error(`No pending supervisor request found for replyTo '${params.replyTo}'. It was answered, expired or withdrawn. ${current}`);
 		}
@@ -655,7 +643,6 @@ function buildParentSupervisorTool(pi: ExtensionAPI, pending: Map<string, Pendin
 		description: "Native pi-subagents supervisor channel. Use reply/pending/status to answer child subagent requests without overriding pi-intercom.",
 		parameters: IntercomParamsSchema,
 		async execute(_id, params) {
-
 			discover();
 			refreshPendingRequests(pending, state, onLifecycle, runState);
 			const input = params as IntercomParams;
@@ -699,11 +686,8 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 		return state;
 	};
 	const pending = new Map<string, PendingSupervisorRequest>();
-
 	const settleNotices = new Map<string, "reminded" | "warned" | "handled">();
 	let unsubscribeSettle: (() => void) | undefined;
-
-
 	const queuedNotices = new Set<string>();
 	let unsubscribeDelivery: Array<(() => void) | undefined> | undefined;
 	const requestCorrelations = new Map<string, SupervisorRequestCorrelation>();
@@ -785,8 +769,6 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 	const registerParentTools = (): void => {
 		if (!hasTool(pi, NATIVE_SUPERVISOR_TOOL_NAME)) pi.registerTool(buildParentSupervisorTool(pi, pending, state, observeRequestLifecycle, () => poll(), runState));
 	};
-
-
 	const declareParentTool = (): void => {
 		if (typeof pi.getActiveTools !== "function" || typeof pi.setActiveTools !== "function") return;
 		const active = pi.getActiveTools();
@@ -802,13 +784,11 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 		try {
 			cleanupStaleEmptySupervisorChannels(nowMs, platform);
 		} catch {
-
 		}
 	};
 
 	const poll = (): void => {
 		cleanupStaleChannelsIfDue();
-
 		refreshPendingRequests(pending, state, observeRequestLifecycle, runState);
 		if (queuedNotices.size) extendQueuedNotices();
 		const now = Date.now();
@@ -826,7 +806,6 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 			}
 			if (request.expectsReply && runState(request).blockingWorkflowChildren?.has(request.runId)) {
 				// external: Pi cannot deliver an ask behind the workflow call awaiting its child.
-
 				try {
 					writePrivateAtomicJson(replyPath(channelDir, request.id), {
 						type: "subagent.supervisor.reply", requestId: request.id, createdAt: now, message: "",
@@ -843,8 +822,6 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 			}
 			seenFiles.add(file);
 			if (!request.expectsReply) {
-
-
 				removeRequestFile(request.requestFile);
 				continue;
 			}
@@ -853,8 +830,6 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 			declareParentTool();
 			updateSettleSubscription();
 			markForegroundSupervisorAttention(request, state);
-
-
 			try {
 				const appended = (deps.parentWake ?? pi).sendMessage({
 					customType: SUPERVISOR_REQUEST_MESSAGE_TYPE,
@@ -983,7 +958,6 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 		const timeoutMs = askTimeoutMs();
 		for (const id of queuedNotices) {
 			const request = pending.get(id);
-
 			if (!request || requestExpiresAt(request, now) - now > timeoutMs / 2 || !fs.existsSync(request.requestFile)) continue;
 			const { channelDir: _channelDir, requestFile, ...stored } = request;
 			try {
@@ -1063,7 +1037,6 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 			if (!useNativeWatcher() && hasTransportDemand()) startPolling();
 		},
 		findPendingAsks: (target) => {
-
 			const channelDir = resolveSupervisorChannelDir(target.runId, target.agent, target.childIndex);
 			let files: string[];
 			try { files = fs.readdirSync(path.join(channelDir, REQUESTS_DIR)); }
@@ -1117,7 +1090,6 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 			try {
 				rootWatcher?.close();
 			} catch {
-
 			}
 			rootWatcher = undefined;
 			for (const watcher of requestWatchers.values()) {

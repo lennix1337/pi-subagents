@@ -283,7 +283,6 @@ export function validateMissionStoreConfig(value: unknown, label = "config.missi
 	};
 }
 
-
 function canonicalProjectRoot(root: string): string {
 	const missing: string[] = [];
 	let current = root;
@@ -291,7 +290,6 @@ function canonicalProjectRoot(root: string): string {
 		try {
 			return path.join(fs.realpathSync.native(current), ...missing.reverse());
 		} catch (error) {
-
 			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 			const parent = path.dirname(current);
 			if (parent === current) return root;
@@ -308,8 +306,6 @@ export function resolveMissionStoreLocation(input: {
 }): MissionStoreLocation {
 	const givenRoot = path.resolve(input.projectRoot);
 	const configuredDir = input.config?.directory;
-
-
 	const projectRoot = configuredDir ? givenRoot : canonicalProjectRoot(givenRoot);
 	const agentDir = input.agentDir ?? getAgentDir();
 	const missionDir = configuredDir ? expandConfiguredPath(configuredDir, givenRoot) : projectMissionDirectory(agentDir, projectRoot);
@@ -379,7 +375,6 @@ function pruneTerminalMissions(location: MissionStoreLocation, maxTerminal: numb
 			fs.rmSync(path.join(location.missionDir, record.id), { recursive: true, force: true });
 			if (location.writeGlobalIndex) fs.rmSync(indexPath(location, record), { force: true });
 		} catch {
-
 		}
 	}
 }

@@ -1,4 +1,3 @@
-
 import { classifyProgress, type ProgressAssessment, type ProgressPolicy, type ProgressSignal, type ProgressToolCall, type ProgressVerdict } from "./progress-signals.ts";
 
 export type ProgressActionMode = "report" | "nudge" | "stop";

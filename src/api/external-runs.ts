@@ -260,7 +260,6 @@ export function snapshotExternalRuns(sessionId: string, options: ExternalRunSnap
 			const run = trustedRecordValue(value, trusted.get(cacheKey)) ?? normalizeCachedRecord(current, cacheKey, value);
 			if (run.sessionId === safeSessionId) runs.push(run);
 		} catch (error) {
-
 			const message = `Malformed cached external run '${previewDisplayText(cacheKey.slice(sessionPrefix.length), EXTERNAL_RUN_LIMITS.maxIdentityLength)}': ${getErrorMessage(error)}`;
 			if (!options.ignoreMalformed) throw new Error(message, { cause: error instanceof Error ? error : undefined });
 			current.runs.delete(cacheKey);

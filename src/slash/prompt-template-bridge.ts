@@ -45,7 +45,6 @@ interface PromptTemplateBridgeOptions<Ctx extends { cwd?: string }> {
 		ctx: Ctx,
 		onUpdate: (result: PromptTemplateBridgeResult) => void,
 	) => Promise<PromptTemplateBridgeResult>;
-
 	executeStructured?: (
 		requestId: string,
 		params: DelegatedSubagentExecutionParams,
@@ -83,7 +82,6 @@ function sameRecentTools(
 	return left.every((tool, index) => tool.tool === right[index]?.tool && tool.args === right[index]?.args);
 }
 
-
 function sameUpdateUsage(
 	left: SubagentDelegationUpdate["usage"],
 	right: SubagentDelegationUpdate["usage"],
@@ -96,7 +94,6 @@ function sameUpdateUsage(
 		&& left.cacheWrite === right.cacheWrite
 		&& left.turns === right.turns;
 }
-
 
 function sameStructuredDelegationUpdateProgress(left: SubagentDelegationUpdate, right: SubagentDelegationUpdate): boolean {
 	return left.requestId === right.requestId
@@ -156,8 +153,6 @@ export function registerPromptTemplateDelegationBridge<Ctx extends { cwd?: strin
 		}
 		map.set(key, true);
 		if (map.size === 8_192) {
-
-
 			identitySaturated = true;
 		}
 	};

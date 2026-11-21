@@ -133,7 +133,6 @@ export interface ProjectPaneManager {
 }
 
 interface InternalProjectPaneManagerOptions extends ProjectPaneManagerOptions {
-
 	legacyToolCompatibility?: boolean;
 }
 

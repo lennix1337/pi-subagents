@@ -87,7 +87,6 @@ interface MainWatchdogRuntimeOptions {
 	reviewDescription?: string;
 	displayWarning?: (warning: WatchdogWarningDetails, options?: WatchdogWarningSendOptions) => void;
 	displayUserWarning?: (warning: WatchdogWarningDetails) => void;
-
 	displayClarification?: (content: string) => void;
 	reviewChangesOnly?: boolean;
 	lspDiagnostics?: WatchdogLspDiagnosticsFunction;
@@ -453,7 +452,6 @@ export class MainWatchdogRuntime {
 				return;
 			}
 			if ((outcome === "completed" || typeof outcome === "object") && this.status !== "failed" && this.status !== "stale") {
-
 				this.lastReviewInputSignature = signature;
 				if (changeSignature) this.lastReviewedChangeSignature = changeSignature.key;
 				this.currentChangedPaths = changeSignature?.changedPaths;
@@ -616,7 +614,6 @@ export class MainWatchdogRuntime {
 		}
 	}
 
-
 	private cancelMidRunReview(): void {
 		if (!this.midRunReviewing) return;
 		this.midRunGeneration++;
@@ -693,7 +690,6 @@ export class MainWatchdogRuntime {
 				this.reviewing = false;
 				this.activeReviewId = undefined;
 				this.activeReviewWarning = undefined;
-
 				if (this.status === "reviewing") this.status = this.pendingDeltas.length ? "queued" : "idle";
 			}
 			this.resolveWaiters(this.isSettled());
@@ -715,8 +711,6 @@ export class MainWatchdogRuntime {
 		this.deliverBoundaryWarning(details);
 	}
 
-
-
 	private deliverBoundaryWarning(details: WatchdogWarningDetails): void {
 		const identity = details.identity ?? reviewInputSignature([details.severity, details.summary, details.evidence].join("\n"));
 		if (this.lastBoundaryIdentity === identity) this.boundaryRepeats++;
@@ -732,7 +726,6 @@ export class MainWatchdogRuntime {
 		this.lastWarning = delivered;
 		this.routeWarning(delivered, stalemate ? { triggerTurn: false } : undefined);
 	}
-
 
 	private repeatableBoundaryIdentity(): string | undefined {
 		return this.waitingAtAgentEnd && !this.stalemate ? this.lastBoundaryIdentity : undefined;

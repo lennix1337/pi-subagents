@@ -1,8 +1,5 @@
 import type { IntercomBridgeConfig } from "../shared/types.ts";
 
-
-
-
 export const SUBAGENT_DELEGATION_REQUEST_EVENT = "prompt-template:subagent:request";
 export const SUBAGENT_DELEGATION_STARTED_EVENT = "prompt-template:subagent:started";
 export const SUBAGENT_DELEGATION_UPDATE_EVENT = "prompt-template:subagent:update";

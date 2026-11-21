@@ -14,7 +14,6 @@ import {
 interface SlashSubagentRequest {
 	requestId: string;
 	params: SubagentParamsLike;
-
 	ctx?: ExtensionContext;
 }
 

@@ -19,8 +19,6 @@ function positiveEnvNumber(name: string, fallback: number): number {
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-
-
 function maxHashFileBytes(): number {
 	return positiveEnvNumber("PI_SUBAGENTS_MAX_HASH_FILE_BYTES", DEFAULT_MAX_HASH_FILE_BYTES);
 }
@@ -50,7 +48,6 @@ function comparablePath(value: string): string {
 	try {
 		resolved = fs.realpathSync.native(resolved);
 	} catch {
-
 	}
 	return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 }
@@ -58,7 +55,6 @@ function comparablePath(value: string): string {
 function isHomeRepoRoot(root: string): boolean {
 	return comparablePath(root) === comparablePath(os.homedir());
 }
-
 
 function hasTrackedEntries(root: string): boolean | undefined {
 	const result = spawnSync("git", ["-C", root, "ls-files", "--cached", "--error-unmatch", "--", "."], {
@@ -114,10 +110,7 @@ function hashFileEntry(normalized: string, fullPath: string, stat: fs.Stats, bud
 			budget.bytes += stat.size;
 		} catch (error) {
 			const code = (error as NodeJS.ErrnoException).code;
-
 			if (code === "ENOENT") return { path: normalized, state: "deleted" };
-
-
 			hash = largeFileHash(stat);
 			if (code !== "ERR_FS_FILE_TOO_LARGE") {
 				console.warn("[pi-subagents] watchdog hashFile fell back to metadata for", normalized + ":", (error as Error)?.message);

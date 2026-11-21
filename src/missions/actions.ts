@@ -283,7 +283,6 @@ function refreshLinkedRunStatus(location: MissionStoreLocation, record: MissionR
 				: states.some((state) => state === "stopped" || state === "rejected" || state === "cancelled")
 					? "cancelled"
 					: states.length > 0 && states.every((state) => state === "complete" || state === "completed")
-
 						? finishedMissionStatus(record, !merged.some((run) => run.asyncDir && readMissionBinding(run.asyncDir)?.autoCreated === false), runAcceptance)
 						: record.status;
 	return { record: updateMission(location, record.id, { status, addRuns: updates }), warnings };

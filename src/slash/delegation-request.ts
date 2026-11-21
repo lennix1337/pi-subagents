@@ -166,7 +166,6 @@ export function parseSubagentDelegationRequest(data: unknown): SubagentDelegatio
 		ok: true,
 		request: {
 			...value,
-
 			...(intercomBridge ? { intercomBridge } : {}),
 			result: structuredSchema
 				? { kind: "structured", schema: structuredSchema }

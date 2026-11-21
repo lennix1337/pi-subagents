@@ -25,7 +25,6 @@ export function decodeSessionRoots(raw: string): string[] {
 		const decoded = parseStringArray(JSON.parse(Buffer.from(raw, "base64").toString("utf-8")));
 		if (decoded) return decoded;
 	} catch {
-
 	}
 	throw new Error("--session-roots must be a base64-encoded JSON array of strings.");
 }

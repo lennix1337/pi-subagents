@@ -274,8 +274,6 @@ async function runWatchdogAttempt(ctx: ExtensionContext, request: WatchdogReview
 	const baseStreamFn: StreamFn = options.streamFn ?? ((model, context, streamOptions) => ctx.modelRegistry.streamSimple(model, context, streamOptions));
 	const sessionId = ctx.sessionManager.getSessionId();
 	const streamFn: StreamFn = (model, context, streamOptions) => {
-
-
 		if (clarification) throw new Error("Watchdog review yielded for clarification.");
 		return baseStreamFn(model, context, {
 			...streamOptions,
@@ -334,7 +332,6 @@ async function runWatchdogAttempt(ctx: ExtensionContext, request: WatchdogReview
 			: { block: true, reason: `Watchdog reviews are read-only; tool '${toolCall.name}' is not allowed.` },
 		toolExecution: "sequential",
 	});
-
 	agent.subscribe((event) => { if (event.type === "tool_execution_start") toolCount++; });
 	const abort = () => agent.abort();
 	ctx.signal?.addEventListener("abort", abort, { once: true });

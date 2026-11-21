@@ -188,9 +188,7 @@ export function collectSubagentCost(
 		if (parentUsage) addUsage(parent, parentUsage);
 		const details = detailsFromSessionEntry(entry);
 		if (!details) continue;
-
 		if (details.mode === "workflow" && details.runId && details.asyncId) workflowRunIds.add(details.runId);
-
 		else if (details.asyncId && details.results.length === 0) asyncRunIds.add(details.asyncId);
 		for (const result of details.results) {
 			addChild({ agent: result.agent, runId: typeof result.runId === "string" ? result.runId : undefined, usage: usageFromValue(result.usage), sessionFile: result.sessionFile });
@@ -249,16 +247,13 @@ export function collectSubagentCost(
 				if (!usage || !addChild({ ...ref, usage })) unresolvedAsyncChildren += 1;
 			}
 		} catch (error) {
-
 			unresolvedAsyncChildren += 1;
-
 			const missing = (error as NodeJS.ErrnoException).code === "ENOENT" || ((error as Error).cause as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
 			if (!missing) console.error(`Failed to resolve async subagent usage for '${workflowRunId}':`, error);
 		}
 	}
 
 	for (const asyncRunId of asyncRunIds) {
-
 		if (completedRunIds.has(asyncRunId)) continue;
 		try {
 			const status = readStatus(path.join(DIRS.async, asyncRunId));
@@ -268,12 +263,10 @@ export function collectSubagentCost(
 			}
 			addArtifactsDir(status.cwd);
 			const steps = status.steps;
-
 			steps.forEach((step, index) => {
 				const flatIndex = steps.length > 1 ? index : undefined;
 				const usage = metadataUsage([...artifactsDirs], { runId: asyncRunId, agent: step.agent }, flatIndex === undefined ? [undefined, 0] : [flatIndex]);
 				const identity = flatIndex === undefined ? `run:${asyncRunId}` : `run:${asyncRunId}:${flatIndex}`;
-
 				const settled = step.status !== "pending" && step.status !== "running";
 				if (!addChild({ agent: step.agent, runId: asyncRunId, identity, usage }) && settled) unresolvedAsyncChildren += 1;
 			});

@@ -1,4 +1,3 @@
-
 import { requestAsyncSteer } from "../runs/background/control-channel.ts";
 
 /** Pi event-bus channel the watcher publishes PR events on. */
@@ -6,7 +5,6 @@ export const PR_WATCH_EVENT_CHANNEL = "gitwatch.pr-event";
 
 export const PR_WATCH_EVENT_KINDS = ["ci-passed", "ci-failed", "conflict", "ready", "review", "merged", "closed"] as const;
 export type PrWatchEventKind = typeof PR_WATCH_EVENT_KINDS[number];
-
 
 const TERMINAL_KINDS: ReadonlySet<PrWatchEventKind> = new Set<PrWatchEventKind>(["merged", "closed"]);
 

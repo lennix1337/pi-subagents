@@ -29,10 +29,7 @@ import { nestedResultsPath } from "../runs/shared/nested-events.ts";
 import { normalizeExtensionBindings, type ExtensionBindings } from "../runs/shared/extension-bindings.ts";
 import { assertRequiredChildExtensionsAdmitted, resolveRequiredChildExtensions } from "../shared/required-child-extensions.ts";
 
-
-
 export const SUBAGENT_LAUNCH_CONTRACT_VERSION = 3 as const;
-
 
 const PREFLIGHT_ORCHESTRATOR_TARGET = "preflight";
 
@@ -209,7 +206,6 @@ export type SubagentLaunchContractResult =
 	| { ok: true; contract: SubagentLaunchContract }
 	| { ok: false; code: SubagentLaunchContractReasonCode; message: string; diagnostics: SubagentLaunchContractDiagnostic[] };
 
-
 function claudeCodeFailureCode(message: string): SubagentLaunchContractReasonCode {
 	if (message.includes("subagent model scope")) return "model_scope";
 	if (message.startsWith("Thinking level '")) return "thinking_ceiling";
@@ -300,8 +296,6 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 	if (bridgeOverride && !bridgeOverride.ok) {
 		return { ok: false, code: "invalid_intercom_bridge", message: bridgeOverride.error, diagnostics };
 	}
-
-
 	if (input.orchestratorTarget !== undefined && (typeof input.orchestratorTarget !== "string" || !input.orchestratorTarget.trim())) {
 		return { ok: false, code: "invalid_intercom_bridge", message: "orchestratorTarget must be a non-empty string when provided.", diagnostics };
 	}
@@ -342,8 +336,6 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 	if (context === "fork") {
 		diagnostics.push({ code: "host_required", severity: "host-required", message: "Exact fork session branching requires Pi host session snapshots." });
 	}
-
-
 	const bridge = resolveIntercomBridge({
 		config: loadConfig().intercomBridge,
 		...(bridgeOverride ? { override: bridgeOverride.value } : {}),
@@ -382,7 +374,6 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 	if (resolvedSkills.missing.length > 0) diagnostics.push({ code: "missing_skill", severity: "error", message: `Missing skills: ${resolvedSkills.missing.join(", ")}` });
 
 	const externalRunner = agent.runner?.type === "external-cli" || agent.runner?.type === "external-job";
-
 	try {
 		assertRequiredChildExtensionsAdmitted([resolveRequiredChildExtensions(input.parentSessionId)], { agent: agent.name, runnerType: agent.runner?.type });
 	} catch (error) {
@@ -402,7 +393,6 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 			scope: modelScopes,
 			source: modelOrigin === "explicit" ? "explicit" : "inherited",
 		});
-
 	const thinkingOverride = input.thinking === undefined || splitKnownThinkingSuffix(primaryModel ?? input.model ?? "").thinkingSuffix
 		? undefined
 		: input.thinking === false ? "off" : input.thinking;
@@ -427,8 +417,6 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 		}
 	}
 	// external: Claude Code adapters accept model and thinking level outside the Pi child model.
-
-
 	if (agent.runner?.type === "external-cli" && isClaudeCodeAdapterId(agent.runner.adapter)) {
 		try {
 			const override = resolveClaudeCodeOverride({
@@ -479,9 +467,6 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 	const artifactsDir = artifactsEnabled ? getArtifactsDir(input.parentSessionFile ?? null, effectiveCwd, input.artifactDir) : undefined;
 	const artifactPaths = artifactsDir ? getArtifactPaths(artifactsDir, runId, agent.name, 0) : undefined;
 	const outputPath = resolveSingleOutputPath(behavior.output, effectiveCwd, effectiveCwd, artifactsDir ? path.join(artifactsDir, "outputs", runId) : undefined);
-
-
-
 	const sessionRoot = input.sessionDir ? path.join(path.resolve(input.sessionDir), runId) : input.sessionRoot ? path.join(path.resolve(input.sessionRoot), runId) : undefined;
 	const sessionDir = sessionRoot ? path.join(sessionRoot, "run-0") : undefined;
 	const lifecycleAsyncDir = input.nestedRootRunId
@@ -554,7 +539,6 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 			runtimeExtensions: toolPlan.runtimeExtensions,
 			configuredExtensions: toolPlan.configuredExtensions,
 			requiredExtensionIds: toolPlan.requiredExtensions.map(({ id }) => id),
-
 			extensionArgs: toolPlan.extensionArgs.filter((extensionPath) => !requiredExtensions.some(({ path }) => path === extensionPath)),
 			disableAmbientExtensions: toolPlan.disableAmbientExtensions,
 			fanoutAuthorized: toolPlan.fanoutAuthorized,

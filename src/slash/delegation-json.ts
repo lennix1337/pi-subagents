@@ -33,7 +33,6 @@ export function cloneJsonWithinByteLimit(input: unknown, maxBytes: number): Boun
 			return Object.is(value, -0) ? 0 : value;
 		}
 		if (typeof value === "string") {
-
 			addMinimumBytes(Buffer.byteLength(value, "utf8") + 2);
 			return value;
 		}

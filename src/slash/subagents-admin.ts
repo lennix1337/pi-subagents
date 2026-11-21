@@ -36,7 +36,6 @@ function allVisibleAgents(pi: RuntimeAgentOwner, cwd: string, preferredModelProv
 	const d = discoverAgentsAll(cwd, preferredModelProvider);
 	const allConfigured = [...d.project, ...d.user, ...d.package, ...d.builtin];
 	const visibleConfigured = allConfigured.filter((agent) => !agent.disabled);
-
 	const agents = mergeRuntimeAgents(pi, { agents: visibleConfigured }, allConfigured, { cwd, scope: "both", preferredModelProvider }).agents;
 	return agents.sort((a, b) => a.name.localeCompare(b.name) || sourceRank(a.source) - sourceRank(b.source));
 }
@@ -79,7 +78,6 @@ function modelFullId(model: ModelInfo): string {
 
 async function liveAvailableModels(ctx: ExtensionContext) {
 	try {
-
 		const result = await ctx.modelRegistry.refresh?.({ allowNetwork: false, signal: AbortSignal.timeout(5_000) });
 		const firstError = result?.errors.entries().next().value;
 		if (firstError) {
@@ -129,12 +127,7 @@ function savesThroughSettings(agent: AgentConfig, field: EditableOverrideField):
 	if (agent.source === "package") return true;
 	if (!agent.override) return false;
 	if (agent.override.fields?.includes(field) === true) return true;
-
-
-
 	if (agent.source !== agent.override.scope) return false;
-
-
 	return agent[field] !== agent.override.base[field];
 }
 
@@ -216,7 +209,6 @@ function metadataFor(agent: AgentConfig): string {
 }
 
 async function selectFromList(ctx: ExtensionContext, title: string, subtitle: string | undefined, items: SelectorItem[]): Promise<string | undefined> {
-
 	if (canRenderComponents(ctx)) {
 		const result = await ctx.ui.custom<SelectorResult>(
 			(tui, theme, kb, done) => new SelectorComponent(tui, theme, kb, { title, subtitle, items, done }),
@@ -353,7 +345,6 @@ async function saveAgentThinking(ctx: ExtensionContext, agent: AgentConfig, sele
 		: `Cleared '${agent.name}' thinking in ${updated.filePath}.`;
 }
 
-
 function metadataSummary(agent: AgentConfig): string {
 	return [
 		`Source: ${agent.source}`,
@@ -413,7 +404,6 @@ export async function openSubagentsAdmin(pi: ExtensionAPI, ctx: ExtensionContext
 	const agent = selection.agent;
 
 	if (!ctx.hasUI) {
-
 		sendAdminMessage(pi, metadataFor(agent));
 		return;
 	}
@@ -452,7 +442,6 @@ export async function openSubagentsAdmin(pi: ExtensionAPI, ctx: ExtensionContext
 			ctx.ui.notify(message, "info");
 			sendAdminMessage(pi, message);
 		} else if (action === "Show details") {
-
 			sendAdminMessage(pi, metadataFor(agent));
 		}
 	} catch (error) {

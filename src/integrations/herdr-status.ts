@@ -102,9 +102,6 @@ function workflowTaskLabel(data: Record<string, unknown>): string | undefined {
 function startedRun(data: unknown): HerdrStatusRun | undefined {
 	if (!isRecord(data) || typeof data.id !== "string" || !data.id) return undefined;
 	const taskLabel = workflowTaskLabel(data);
-
-
-
 	const isWorkflowCoordinator = data.mode === "workflow";
 	return {
 		id: data.id,
@@ -138,8 +135,6 @@ export function registerHerdrStatusBridge(options: HerdrStatusBridgeOptions): He
 	const refreshMs = options.refreshMs ?? DEFAULT_REFRESH_MS;
 	const timers = options.timers ?? { setInterval, clearInterval };
 	const runs = new Map<string, HerdrStatusRun>();
-
-
 	const attentionRuns = new Set<string>();
 	const acknowledgedAttention = new Set<string>();
 	const subscriptions: Array<() => void> = [];
@@ -154,8 +149,6 @@ export function registerHerdrStatusBridge(options: HerdrStatusBridgeOptions): He
 	let refreshTimer: ReturnType<typeof setInterval> | undefined;
 
 	const activeAgentNames = (): string[] => [...new Set([...runs.values()].flatMap((run) => run.agents?.length ? run.agents : run.agent ? [run.agent] : []))];
-
-
 	const activeSubagentCount = (): number => [...runs.values()].reduce((total, run) =>
 		total + (run.coordinator && !run.agents?.length ? 0 : Math.max(1, run.agents?.length ?? (run.agent ? 1 : 0))), 0);
 	const activeTaskLabel = (): string | undefined => [...runs.values()].reverse().find((run) => run.taskLabel)?.taskLabel;
@@ -194,8 +187,6 @@ export function registerHerdrStatusBridge(options: HerdrStatusBridgeOptions): He
 				try {
 					await runHerdr(next);
 				} catch {
-
-
 				}
 			}
 		})().finally(() => {
@@ -311,7 +302,6 @@ export function registerHerdrStatusBridge(options: HerdrStatusBridgeOptions): He
 		try {
 			replaceRuns(options.getRuns());
 		} catch {
-
 			publish();
 		}
 	};
