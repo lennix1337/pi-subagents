@@ -20,16 +20,10 @@ interface SubagentEntry {
 	data?: unknown;
 }
 
-/** Plain text, plus status words that take the theme's status color. */
 type Headline = ReadonlyArray<string | { status: string }>;
 
 type MessageKind = "ask" | "reply" | "result" | "attention" | "watchdog";
 
-/**
- * Theme colors for the label. Pi's themes offer few non-status colors that read
- * apart, so asks and attention notices, both a child needing the parent, share one,
- * and replies, the parent's own words, take the quiet text color.
- */
 const KIND_LABEL_COLORS = {
 	ask: "customMessageLabel",
 	attention: "customMessageLabel",
@@ -41,13 +35,11 @@ const KIND_LABEL_COLORS = {
 interface BlockView {
 	kind: MessageKind;
 	headline: Headline;
-	/** Markdown shown when the block is expanded. */
 	body: string;
 }
 
 type StatusTone = "success" | "error" | "warning";
 
-/** A Map, so a status word read from session data never resolves to an Object prototype key. */
 const STATUS_TONES = new Map<string, StatusTone>([
 	["completed", "success"],
 	["failed", "error"],
@@ -74,14 +66,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** The text Pi sends to the model for a custom message. */
 function contentText(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";
 	return content.flatMap((part: unknown) => isRecord(part) && typeof part.text === "string" ? [part.text] : []).join("\n");
 }
 
-/** A message that expands to the text the main agent read. */
 function readsContent(kind: MessageKind, headline: (message: SubagentMessage) => Headline): (message: SubagentMessage) => BlockView {
 	return (message) => ({ kind, headline: headline(message), body: contentText(message.content) });
 }
@@ -115,7 +105,6 @@ function isRunStatus(value: unknown): value is RunStatus {
 	return RUN_STATUSES.some((status) => status === value);
 }
 
-/** Agents and outcomes of a completion notice; notices saved before render details existed are read from their text. */
 function completionRuns(message: SubagentMessage): Array<{ agent: string; status: RunStatus }> | undefined {
 	const runs = isRecord(message.details) ? message.details.runs : undefined;
 	if (Array.isArray(runs)) {
@@ -152,7 +141,6 @@ function waitSubscriptionHeadline(details: unknown): Headline {
 	return [`bg_wait: run ${details.runId} `, { status: details.outcome }];
 }
 
-/** Workflow child notices saved before render details existed are read from their first line. */
 function workflowChildHeadline(message: SubagentMessage): Headline {
 	const { details } = message;
 	if (isRecord(details) && typeof details.childKey === "string" && isRunStatus(details.outcome)) {
@@ -172,10 +160,8 @@ function isWatchdogWarning(value: unknown): value is WatchdogWarning {
 		&& typeof value.recommendedAction === "string";
 }
 
-/** The model reads watchdog warnings as XML; people get the watchdog's readable text. */
 function watchdogWarningView(details: unknown, fallbackBody: string): BlockView {
 	if (!isWatchdogWarning(details)) return { kind: "watchdog", headline: ["watchdog warning"], body: fallbackBody };
-	// Every shown warning is "displayed"; the other labels say the run was held or the review went wrong.
 	const labels = stateLabels(details).filter((label) => label !== "displayed");
 	return {
 		kind: "watchdog",
@@ -246,13 +232,8 @@ function headlineText(headline: Headline, theme: Theme): string {
 	return plain ? text + theme.fg("customMessageText", safeTerminalText(plain)) : text;
 }
 
-/**
- * A click toggles one block until Pi's expand key changes the state of every
- * block. Keyed by the message or entry object, which Pi keeps across rebuilds.
- */
 const clickedBlocks = new WeakMap<SubagentMessage | SubagentEntry, { expandedByPi: boolean; expanded: boolean }>();
 
-/** The block Pi draws for its own [skill] and [compaction] messages. */
 class SubagentMessageBlock extends Box {
 	private readonly source: SubagentMessage | SubagentEntry;
 	private readonly view: BlockView;

@@ -1,6 +1,3 @@
-/**
- * Rendering functions for subagent results
- */
 
 import * as path from "node:path";
 import { createHash } from "node:crypto";
@@ -94,7 +91,7 @@ function capCompactMainWindowResult(component: Component, layout: MainWindowRend
 }
 
 function expandKeyHint(action: string): string {
-	// keyText is empty wherever Pi's app keybindings are not loaded (RPC, print mode), even when the key is bound.
+	// external: Pi does not load app keybindings in RPC or print mode.
 	return `Press ${keyText("app.tools.expand") || "the expand key"} ${action}`;
 }
 
@@ -299,8 +296,6 @@ function oneLine(text: string): string {
 
 const COMPACT_TASK_MAX_CHARS = 96;
 
-/** Display label for a child run: the derived session name (agent + task
- *  excerpt) when the launcher provided one, else the bare agent name. */
 function childDisplayName(result: { agent?: string; sessionName?: string } | undefined, fallback = "subagent"): string {
 	return result?.sessionName?.trim() || result?.agent || fallback;
 }
@@ -380,7 +375,6 @@ function workflowStepPriority(step: AsyncJobStep, currentNodeId?: string): numbe
 	return 3;
 }
 
-/** Merge materialized child rows with the planned workflow stages for rendering. */
 function workflowWidgetSteps(job: AsyncJobState, planned = job.mode === "workflow" ? workflowGraphStageNodes(job.workflowGraph) : []): AsyncJobStep[] {
 	const loaded = job.steps ?? [];
 	if (planned.length === 0) return loaded;
@@ -504,7 +498,6 @@ function laneStepForJob(job: AsyncJobState, steps = workflowWidgetSteps(job)): A
 	if (job.currentStep !== undefined) {
 		const current = steps[job.currentStep];
 		if (current && (current.index === undefined || current.index === job.currentStep)) return current;
-		// Active parallel groups retain flat indices while exposing only the group slice.
 		const indexedCurrent = steps.find((step) => step.index === job.currentStep);
 		if (indexedCurrent) return indexedCurrent;
 		return steps[0];
@@ -884,7 +877,6 @@ type ResultPresentation = {
 	glyph: string;
 	label: "running" | "detached" | "stopped" | "paused" | "failed" | "partial" | "completed";
 	tone: "accent" | "warning" | "error" | "success";
-	/** Recorded thinking level of the one child a running presentation stands for. */
 	thinking?: ThinkingLevel;
 };
 
@@ -1386,7 +1378,6 @@ function workflowChecklistWidgetLines(checklist: WorkflowChecklistProjection | u
 interface CompactWorkflowLaneRow {
 	key: string;
 	state: WorkflowChecklistState;
-	/** Recorded thinking level of the lane's child when the lane stands for exactly one. */
 	thinking?: ThinkingLevel;
 	agent?: string;
 	mode?: string;
@@ -1462,7 +1453,6 @@ function compactWorkflowFallbackState(job: AsyncJobState): WorkflowChecklistStat
 	}
 }
 
-/** Flatten the loaded checklist into one compact row per declared lane. */
 function compactWorkflowLaneRows(job: AsyncJobState, checklist: WorkflowChecklistProjection | undefined): CompactWorkflowLaneRow[] {
 	const groups = new Map<string, WorkflowChecklistItem[]>();
 	for (const item of checklist?.phases.flatMap((phase) => phase.items) ?? []) {
@@ -2563,12 +2553,6 @@ function widgetHeaderCounts(jobs: AsyncJobState[]): { running: AsyncJobState[]; 
 	};
 }
 
-// Round elapsed tracking for the collapsed one-line widget, keyed per mounted ui.
-// A "round" starts when the widget first observes a running job and ends when it
-// observes none. Timing is snapshot-based (renderWidget/container.render
-// observations), not a lifecycle-event clock, so sub-debounce transitions may be
-// merged by the caller. State is intentionally not cleared in component.dispose():
-// compaction can temporarily unmount the widget without ending the round.
 interface WidgetRoundState {
 	startedAt: number;
 }
@@ -2576,7 +2560,6 @@ const roundStateByUi = new WeakMap<object, WidgetRoundState>();
 function trackSubagentsRound(ui: object, jobs: readonly AsyncJobState[], now: number): void {
 	const running = jobs.filter((job) => job.status === "running");
 	if (running.length > 0) {
-		// Seed from the oldest running job so a round restored after a session resume matches the job rows.
 		if (!roundStateByUi.has(ui)) roundStateByUi.set(ui, { startedAt: Math.min(now, ...running.map((job) => job.startedAt ?? now)) });
 		return;
 	}
@@ -2663,9 +2646,6 @@ function selectProgressiveJobKeys(jobs: AsyncJobState[], previousKeys: string[],
 	return selected;
 }
 
-// Counts the leaf entries collectFleetStatusEntries (fleet-status.ts) makes for a running async job,
-// so this matches FleetView's "N active agents": a workflow counts only its loaded child runs;
-// another job counts its active steps, synthesized from `agents` when it has no steps.
 function runningLeafAgentCount(job: AsyncJobState, projectionFor: WorkflowWidgetProjectionLookup): number {
 	if (job.mode === "workflow") return (projectionFor(job).children ?? []).reduce((total, child) => total + runningLeafAgentCount(child, projectionFor), 0);
 	if (job.status !== "running") return 0;
@@ -2752,7 +2732,6 @@ function buildProgressiveWidgetLines(jobs: AsyncJobState[], theme: Theme, width:
 		hiddenJobs = jobs.filter((job) => !visibleJobKeys.includes(progressiveJobKey(job)));
 	}
 
-	// Rows left after every visible job line show the visible workflows' lanes.
 	let spareRows = rowCount - 1 - visibleJobs.length - (hiddenJobs.length > 0 ? 1 : 0);
 	const lines = [progressiveHeaderLine(jobs, theme, width, frame, projectionFor)];
 	for (const job of visibleJobs) {
@@ -2813,8 +2792,6 @@ function fitAdaptiveWidgetLines(jobs: AsyncJobState[], buildLines: () => string[
 		const session = widgetLayoutSession;
 		const lockedRows = widgetLayoutSession.lockedRows;
 		let rendered = buildProgressiveWidgetLines(jobs, theme, width, lockedRows, session.visibleJobKeys, frame, projectionFor, elapsedSuffix);
-		// The height stays fixed across content-only updates (#186). It grows when a new job would be hidden while the cap
-		// has room, and shrinks to content only when root jobs leave, so finished jobs leave no blank rows.
 		const capRows = Math.min(availableRows, collapsedWidgetLineBudget(rows));
 		if (rendered.visibleJobKeys.length < jobs.length && lockedRows < capRows) {
 			rendered = buildProgressiveWidgetLines(jobs, theme, width, capRows, session.visibleJobKeys, frame, projectionFor, elapsedSuffix);
@@ -2844,7 +2821,6 @@ function fitAdaptiveWidgetLines(jobs: AsyncJobState[], buildLines: () => string[
 		return buildSingleLineWidgetLines(jobs, theme, width, frame, elapsedSuffix);
 	}
 
-	// Lock to the rows the content fills so the fixed-height card has no blank padding.
 	const rendered = buildProgressiveWidgetLines(jobs, theme, width, Math.min(availableRows, collapsedWidgetLineBudget(rows)), [], frame, projectionFor, elapsedSuffix);
 	const lockedRows = rendered.contentRows;
 	widgetLayoutSession = { expanded, rows, columns, tier: "progressive", lockedRows, rootJobCount: jobs.length, visibleJobKeys: rendered.visibleJobKeys };
@@ -2898,14 +2874,12 @@ export function setInlineWorkflowCoverage(ui: ExtensionContext["ui"], coverage: 
 	asyncWidgetInvalidations.get(ui)?.();
 }
 
-/** Attach only to loaded workflow parents; orphan jobs remain top-level. */
 function widgetJobTree(jobs: AsyncJobState[], now: number): { roots: AsyncJobState[]; projectionFor: WorkflowWidgetProjectionLookup } {
 	const parents = new Map(jobs.filter((job) => job.mode === "workflow").map((job) => [job.asyncId, job]));
 	const childrenByParent = new Map<string, AsyncJobState[]>();
 	const roots: AsyncJobState[] = [];
 	for (const job of jobs) {
 		const parent = job.parentWorkflowRunId ? parents.get(job.parentWorkflowRunId) : undefined;
-		// Root-only adaptive summaries cannot advertise live work under a non-running parent.
 		const keepLiveRoot = isProgressiveActiveJob(job) && parent?.status !== "running";
 		if (parent && parent.asyncId !== job.asyncId && !keepLiveRoot) {
 			const children = childrenByParent.get(parent.asyncId) ?? [];
@@ -2966,7 +2940,6 @@ function buildWidgetComponent(jobs: AsyncJobState[], ui: ExtensionContext["ui"],
 		};
 		asyncWidgetUpdates.set(ui, update);
 		const component = Object.assign(container, {
-			// Only the mouse fields used here, without requiring newer Pi type exports.
 			handleMouse(event: { type: string; button: string; y: number; shift: boolean; alt: boolean; ctrl: boolean }) {
 				if (event.type !== "click" || event.button !== "left" || event.y !== 0) return undefined;
 				if (event.shift || event.alt || event.ctrl) return undefined;
@@ -3123,8 +3096,6 @@ export function buildWidgetLines(jobs: AsyncJobState[], theme: Theme, width = ge
  * Render the async jobs widget
  */
 export function renderWidget(ctx: ExtensionContext, jobs: AsyncJobState[], initiallyCollapsed = false, layout: AsyncWidgetLayout = "adaptive"): void {
-	// Advance round tracking on every widget update, including the empty-jobs
-	// cleanup path below, which never reaches container.render.
 	trackSubagentsRound(ctx.ui, jobs, Date.now());
 	if (jobs.length === 0) {
 		resetWidgetLayoutSession();
@@ -3137,8 +3108,7 @@ export function renderWidget(ctx: ExtensionContext, jobs: AsyncJobState[], initi
 		ctx.ui.setWidget(WIDGET_KEY, encodeAsyncStatusSnapshotWidget(jobs));
 		return;
 	}
-	// Pi replaces a widget by deleting and reinserting its key. Update the mounted
-	// component instead so progress cannot move it past other extensions' widgets.
+	// external: Pi replaces widgets by deleting and reinserting their keys.
 	const update = asyncWidgetUpdates.get(ctx.ui);
 	if (update) update(jobs);
 	else ctx.ui.setWidget(WIDGET_KEY, buildWidgetComponent(jobs, ctx.ui, initiallyCollapsed, layout));

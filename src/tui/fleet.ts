@@ -188,7 +188,6 @@ function asyncItems(run: AsyncRunSummary, description?: string): FleetItem[] {
 function orderFleetAsyncRuns(runs: AsyncRunSummary[], terminalLimit: number, trackedJobs: Map<string, AsyncJobState>): AsyncRunSummary[] {
 	const updatedAt = (run: AsyncRunSummary) => run.lastUpdate ?? run.endedAt ?? run.startedAt;
 	const byNewest = (left: AsyncRunSummary, right: AsyncRunSummary) => updatedAt(right) - updatedAt(left);
-	// Missing tracked starts must not inherit the summary's heartbeat-based display fallback.
 	const startedAt = (run: AsyncRunSummary) => {
 		const job = trackedJobs.get(run.id);
 		return job ? job.startedAt ?? 0 : run.startedAt;
@@ -354,7 +353,6 @@ function visibleWorkflowParentKeyForForegroundKey(state: SubagentState, key: str
 	return undefined;
 }
 
-/** The recorded level of the one child a running Fleet row stands for; a whole run or an external run has none. */
 function fleetItemThinkingLevel(item: FleetItem): ThinkingLevel | undefined {
 	switch (item.kind) {
 		case "foreground-active": return childThinkingLevel(item.activeChild ?? item.control);
@@ -683,8 +681,6 @@ function transcriptTarget(item: FleetItem, state: SubagentState): { path: string
 		};
 	}
 	const step = item.step ?? (item.run.steps.length === 1 ? item.run.steps[0] : undefined);
-	// External CLI logs are plain text, not structured session JSONL. Let the
-	// bounded async detail formatter select final output/stderr/stdout instead.
 	if (step?.runner?.type === "external-cli") return undefined;
 	const recordedSessionFile = step?.sessionFile ?? item.run.sessionFile;
 	const recordedPath = step?.transcriptPath ?? recordedSessionFile;
@@ -800,8 +796,7 @@ interface FleetTranscriptCache {
 
 function transcriptFingerprint(filePath: string): string {
 	try {
-		// ino and ctime catch a same-size, same-mtime replacement. Bigint keeps
-		// Windows file ids, which exceed 2^53, exact.
+		// external: Windows file IDs may exceed 2^53.
 		const stat = fs.statSync(filePath, { bigint: true });
 		return `${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
 	} catch {
@@ -1037,13 +1032,11 @@ export class SubagentFleetComponent implements Component {
 	}
 
 	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
-		// Block pointer fallback as well as inspector actions while a text/confirmation modal owns input.
 		if (this.steerDraft !== undefined || this.redoGuidanceDraft !== undefined || this.stopConfirming || this.actionBusy) {
 			return { handled: true, render: false };
 		}
 		const layout = this.renderedLayout;
 		if (!layout || layout.width !== event.width || layout.rows !== (this.tui.terminal?.rows ?? 32)) {
-			// Never use hit regions from a different size; wheel must not escape to the transcript.
 			return event.type === "wheel" ? { handled: true, render: false } : undefined;
 		}
 		if (event.type === "wheel" && fleetContains(layout.output, event.x, event.y)) {
@@ -1059,7 +1052,6 @@ export class SubagentFleetComponent implements Component {
 			this.selectItem(index);
 			return { handled: true, render: false };
 		}
-		// Unowned wheel inside the overlay would otherwise scroll the transcript behind it.
 		return event.type === "wheel" ? { handled: true, render: false } : undefined;
 	}
 
@@ -1287,7 +1279,6 @@ export class SubagentFleetComponent implements Component {
 		const body = transcript.events.length > 0
 			? renderFleetTranscript(transcript, width, this.theme, this.markdownTheme, { expandedTools: this.expandedTools })
 			: [];
-		// A failed read (refused path, read error) may recover without a metadata change, so retry it.
 		this.transcriptCache = transcript.readFailed
 			? undefined
 			: { path: target.path, fingerprint, width, expandedTools: this.expandedTools, transcript, body };

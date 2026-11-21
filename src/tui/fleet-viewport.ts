@@ -28,8 +28,6 @@ export class FleetViewport {
 	}
 
 	resetTop(): void {
-		// Apply again after the new view's dimensions arrive: disableFollow suppresses following
-		// at the actual content end, which may differ from the previous view's end.
 		this.resetTopOnLayout = true;
 		this.scroll.scrollTo(0, { disableFollow: true });
 	}
