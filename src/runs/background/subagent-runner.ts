@@ -241,7 +241,6 @@ export interface SubagentRunConfig {
 
 interface StepResult {
 	agent: string;
-	/** Human-readable display name for the child session, when derived at launch. */
 	sessionName?: string;
 	context?: "fresh" | "fork";
 	capabilityCeiling?: ResolvedSubagentCapabilityCeiling;
@@ -271,7 +270,6 @@ interface StepResult {
 	nativeMachine?: import("../../shared/types.ts").SingleResult["nativeMachine"];
 	thinking?: string;
 	requestedModel?: string;
-	/** True when the dispatch failed because the input exceeded the model's context window. */
 	contextOverflow?: boolean;
 	totalCost?: CostSummary;
 	artifactPaths?: ArtifactPaths;
@@ -686,25 +684,19 @@ interface SingleStepContext {
 	outputFile: string;
 	transcriptPath?: string;
 	piPackageRoot?: string;
-	/** Factory the runner creates this step's child session through. */
 	childSessions: ChildSessionFactory;
-	/** The launching executor's own child runtime; nested route, depth, and ceilings come from here. */
 	inheritedChildRuntime?: InheritedChildRuntime;
 	projectTrusted?: boolean;
 	registerInterrupt?: (interrupt: (() => void) | undefined) => void;
 	registerTimeout?: (interrupt: (() => void) | undefined) => void;
 	registerStop?: (stop: (() => void) | undefined) => void;
-	/** Receives the live child's steer handler while its session runs. */
 	registerSteer?: (steer: StepSteerHandler | undefined) => void;
-	/** Reports a live child's later steer consumption or unconsumed settlement. */
 	onSteerOutcome?: (request: SteerRequest, delivery: SteerDelivery) => void;
 	timeoutSignal?: AbortSignal;
 	stopSignal?: AbortSignal;
 	timeoutMessage?: string;
 	stopMessage?: string;
-	/** Resolved configured hard per-tool-call timeout (ms); fast tools still have a default when undefined. */
 	toolTimeoutMs?: number;
-	/** Effective step deadline (Date.now() + effective timeout) when a run budget exists. */
 	deadlineAt?: number;
 	childIntercomTarget?: string;
 	orchestratorIntercomTarget?: string;
@@ -718,9 +710,7 @@ interface SingleStepContext {
 	onExternalStreamActivity?: () => void;
 	onExternalJob?: (status: ExternalJobStatus) => void;
 	skipAcceptance?: () => boolean;
-	/** Authoritative owner decision after event delivery; undefined includes incomplete run-wide usage. */
 	usageBudgetExhausted?: () => boolean | undefined;
-	/** Existing run-owned budget configuration; cost allowance is not settled by the live token ledger. */
 	usageBudget?: UsageBudgetConfig;
 	orcaProgressTab?: OrcaProgressTab;
 }
