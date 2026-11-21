@@ -102,9 +102,9 @@ function workflowTaskLabel(data: Record<string, unknown>): string | undefined {
 function startedRun(data: unknown): HerdrStatusRun | undefined {
 	if (!isRecord(data) || typeof data.id !== "string" || !data.id) return undefined;
 	const taskLabel = workflowTaskLabel(data);
-	// The workflow coordinator itself is not a running leaf: it starts with its
-	// own `agent: "workflow"` identity, but its actual leaves each publish their
-	// own start event separately. Counting the coordinator here would double it.
+
+
+
 	const isWorkflowCoordinator = data.mode === "workflow";
 	return {
 		id: data.id,
@@ -138,8 +138,8 @@ export function registerHerdrStatusBridge(options: HerdrStatusBridgeOptions): He
 	const refreshMs = options.refreshMs ?? DEFAULT_REFRESH_MS;
 	const timers = options.timers ?? { setInterval, clearInterval };
 	const runs = new Map<string, HerdrStatusRun>();
-	// Child attention is addressed to the parent agent, so it only adds ⚠ to the
-	// metadata label and never raises Herdr's human-blocked state.
+
+
 	const attentionRuns = new Set<string>();
 	const acknowledgedAttention = new Set<string>();
 	const subscriptions: Array<() => void> = [];
@@ -154,8 +154,8 @@ export function registerHerdrStatusBridge(options: HerdrStatusBridgeOptions): He
 	let refreshTimer: ReturnType<typeof setInterval> | undefined;
 
 	const activeAgentNames = (): string[] => [...new Set([...runs.values()].flatMap((run) => run.agents?.length ? run.agents : run.agent ? [run.agent] : []))];
-	// Preserve the minimum count for ordinary runs with incomplete status;
-	// only an empty workflow coordinator contributes zero child agents.
+
+
 	const activeSubagentCount = (): number => [...runs.values()].reduce((total, run) =>
 		total + (run.coordinator && !run.agents?.length ? 0 : Math.max(1, run.agents?.length ?? (run.agent ? 1 : 0))), 0);
 	const activeTaskLabel = (): string | undefined => [...runs.values()].reverse().find((run) => run.taskLabel)?.taskLabel;
@@ -194,8 +194,8 @@ export function registerHerdrStatusBridge(options: HerdrStatusBridgeOptions): He
 				try {
 					await runHerdr(next);
 				} catch {
-					// Herdr integration is best effort; a later state transition or TTL
-					// refresh retries with the newest desired snapshot.
+
+
 				}
 			}
 		})().finally(() => {
@@ -311,7 +311,7 @@ export function registerHerdrStatusBridge(options: HerdrStatusBridgeOptions): He
 		try {
 			replaceRuns(options.getRuns());
 		} catch {
-			// Keep the last known active projection and retry on the next refresh.
+
 			publish();
 		}
 	};
