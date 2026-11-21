@@ -60,7 +60,6 @@ export function buildAdvertisedAgentCatalog(
 	const entries: string[] = [];
 	for (const agent of advertised) {
 		if (entries.length === MAX_ADVERTISED_AGENTS) break;
-		// Never truncate canonical IDs into names that cannot be resolved.
 		if (Buffer.byteLength(agent.name, "utf8") > MAX_CATALOG_BYTES) continue;
 		const entry = [
 			"  <subagent>",

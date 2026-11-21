@@ -1,17 +1,3 @@
-/**
- * Per-agent persistent memory scopes with read-only fallback.
- *
- * An agent definition may opt into a durable, role-specific memory scope via the
- * `memory` frontmatter field (e.g. `memory: { scope: "project", path:
- * "security-reviewer" }`). The first lines of a `MEMORY.md` file in the resolved
- * memory directory are injected into the child system prompt so recurring custom
- * agents can recall accumulated role notes. Agents without write tools receive a
- * read-only memory block instead.
- *
- * Memory directories live under a dedicated `agent-memory/` namespace so they
- * never collide with the owner's `~/.pi/agent/memory/{project}/` system.
- */
-
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -86,8 +72,7 @@ function comparablePath(candidate: string): string {
 function samePath(left: string, right: string): boolean {
 	if (comparablePath(left) === comparablePath(right)) return true;
 	if (process.platform !== "win32") return false;
-	// Git for Windows and Node can spell the same temp path through different
-	// drive or 8.3 aliases, so use filesystem identity as the fail-closed fallback.
+	// external: Windows paths can refer to the same file through drive or 8.3 aliases.
 	const leftStat = fs.statSync(left, { bigint: true });
 	const rightStat = fs.statSync(right, { bigint: true });
 	return leftStat.dev !== 0n && leftStat.ino !== 0n && leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino;
@@ -139,7 +124,6 @@ function resolveLinkedWorktreeMain(worktreeRoot: string): string {
 	}
 }
 
-/** Map the selected project path from a verified linked worktree onto the main checkout. */
 function resolveProjectMemoryRoot(projectRoot: string): string {
 	const gitRoot = findNearestGitRoot(projectRoot);
 	if (!gitRoot) return projectRoot;
@@ -205,8 +189,6 @@ export function resolveMemoryDir(
 			}
 		}
 	} catch {
-		// Treat unreadable paths as unsafe; skipping the memory injection is safer
-		// than handing a child prompt a path whose containment cannot be verified.
 		return { error: "memory path could not be verified" };
 	}
 
@@ -232,7 +214,7 @@ export function readMemoryFile(memoryDir: string): MemoryFileResult {
 	let fd: number;
 	try {
 		const noFollow = typeof fs.constants.O_NOFOLLOW === "number" ? fs.constants.O_NOFOLLOW : 0;
-		// A FIFO must not block the launch before fstat can reject non-files.
+		// external: opening a FIFO can block before fstat identifies it.
 		const nonBlock = typeof fs.constants.O_NONBLOCK === "number" ? fs.constants.O_NONBLOCK : 0;
 		fd = fs.openSync(file, fs.constants.O_RDONLY | noFollow | nonBlock);
 	} catch (error) {
@@ -271,7 +253,6 @@ export function readMemoryFile(memoryDir: string): MemoryFileResult {
 	}
 }
 
-/** Memory root for the agent's scope, or undefined when the scope has none to read (no project, or project trust declined). */
 function resolveMemoryRoot(memory: AgentMemoryConfig, cwd: string, projectTrusted: boolean | undefined): string | undefined {
 	if (memory.scope === "user") return path.join(getAgentDir(), AGENT_MEMORY_DIR_NAME);
 	if (projectTrusted === false) return undefined;

@@ -389,7 +389,6 @@ export function collectBoundedRefinementEvidence(cwd: string, agentName: string,
 
 	const artifactsDir = path.join(getProjectSubagentsDir(cwd), "artifacts");
 	if (fs.existsSync(artifactsDir)) {
-		// One stat per artifact: sorting by a comparator that stats both sides costs two syscalls per comparison.
 		const files = fs.readdirSync(artifactsDir)
 			.filter((file) => file.endsWith("_meta.json"))
 			.map((file) => {
