@@ -1,12 +1,4 @@
-/**
- * Scheduled progress supervisor for running async children.
- *
- * Each sweep lists the running children, classifies them with the deterministic
- * rules, and acts only as configured: report (default), nudge with a steer
- * message, or stop the child. It never retries or relaunches work, and it does
- * not call a model. Git is probed only for children that have been silent past
- * the stall window, so a healthy sweep costs no process spawn.
- */
+
 import { classifyProgress, type ProgressAssessment, type ProgressPolicy, type ProgressSignal, type ProgressToolCall, type ProgressVerdict } from "./progress-signals.ts";
 
 export type ProgressActionMode = "report" | "nudge" | "stop";

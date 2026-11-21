@@ -28,7 +28,7 @@ function runGit(root: string, args: string[]): { ok: boolean; stdout: string; st
 const BASELINE_ARGS = ["rev-parse", "--show-toplevel", "HEAD"];
 
 function parseBaseline(stdout: string): WatchdogDiffBaseline | undefined {
-	// HEAD is the last line; the repository path itself may contain newlines.
+	// external: Git repository paths may contain newline characters.
 	const lines = stdout.trim().split(/\r?\n/);
 	const ref = lines.pop();
 	const root = lines.join("\n");
@@ -44,7 +44,7 @@ export function captureWatchdogDiffBaseline(cwd: string): WatchdogDiffBaseline |
 /** HEAD at session start, so later child commits still show in the diff. Does not block the event loop. */
 export function startWatchdogDiffBaselineCapture(cwd: string): Promise<WatchdogDiffBaseline | undefined> {
 	return new Promise((resolve) => {
-		// Node throws spawn errors such as EPERM synchronously instead of passing them to the callback.
+		// external: Node may throw spawn errors synchronously.
 		try {
 			execFile("git", ["-C", cwd, ...BASELINE_ARGS], { encoding: "utf-8", windowsHide: true }, (error, stdout) => {
 				resolve(error ? undefined : parseBaseline(stdout));
