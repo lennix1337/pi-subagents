@@ -430,7 +430,7 @@ export async function createPrunedForkSessionWriter(
 	if (!named) throw new Error(`Pruned fork model '${config.model}' must resolve to provider/model.`);
 	const model = ctx.modelRegistry.find(named.provider, named.id);
 	if (!model) throw new Error(`Pruned fork model '${config.model}' was not found as '${baseModel}'.`);
-	// OpenCode rejects requests without its session header (400 MissingSessionID).
+	// external: OpenCode rejects requests without its session header (400 MissingSessionID).
 	const sessionId = ctx.sessionManager.getSessionId();
 	const sessionHeaders = opencodeSessionHeaders(model, sessionId);
 

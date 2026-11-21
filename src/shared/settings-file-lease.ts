@@ -10,11 +10,10 @@ export function resolveSettingsWriteTarget(filePath: string): string {
 			return fs.realpathSync.native(targetPath);
 		} catch (error) {
 			if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
-			// A trailing separator requires a directory; it cannot name a new settings file.
+			// external: a trailing filesystem path separator requires a directory.
 			if (targetPath.endsWith("/") || targetPath.endsWith(path.sep)) throw error;
 		}
 
-		// A missing target is allowed only when its physical parent already exists.
 		const parentPath = fs.realpathSync.native(path.dirname(targetPath));
 		const unresolvedPath = path.join(parentPath, path.basename(targetPath));
 		let linkText: string;
@@ -24,7 +23,7 @@ export function resolveSettingsWriteTarget(filePath: string): string {
 			if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
 			return unresolvedPath;
 		}
-		// Keep link text intact so the filesystem follows directory links before "..".
+		// external: filesystems resolve directory symlinks before subsequent .. path segments.
 		targetPath = path.isAbsolute(linkText) ? linkText : `${parentPath}${path.sep}${linkText}`;
 	}
 }

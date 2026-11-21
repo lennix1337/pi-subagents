@@ -1,6 +1,3 @@
-/**
- * Chain behavior, template resolution, and directory management
- */
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -9,7 +6,7 @@ import { discoverAgents, formatUnknownAgentError, unknownAgentDiagnosticContext,
 import { normalizeSkillInput } from "../agents/skills.ts";
 import { normalizeOutputOverride, type OutputOverrideInput, type ResolvedStepBehavior } from "../runs/shared/child-launch-plan.ts";
 import { CHAIN_RUNS_DIR, type AcceptanceInput, type AgentContract, type ChainGateLayer, type JsonSchemaObject, type OutputMode, type ToolBudgetConfig } from "./types.ts";
-const CHAIN_DIR_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CHAIN_DIR_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const INITIAL_PROGRESS_CONTENT = "# Progress\n\n## Status\nIn Progress\n\n## Tasks\n\n## Files Changed\n\n## Notes\n";
 
 export {
@@ -21,9 +18,6 @@ export {
 } from "../runs/shared/child-launch-plan.ts";
 export type { ChildLaunchPlan, ChildLaunchPlanInput, OutputOverrideInput, ResolvedStepBehavior, StepOverrides } from "../runs/shared/child-launch-plan.ts";
 
-// =============================================================================
-// Chain Step Types
-// =============================================================================
 
 /** Sequential step: single agent execution */
 export interface SequentialStep {
@@ -120,9 +114,6 @@ export interface ParallelStep {
 /** Union type for chain steps */
 export type ChainStep = SequentialStep | ParallelStep | DynamicParallelStep;
 
-// =============================================================================
-// Type Guards
-// =============================================================================
 
 export function isParallelStep(step: ChainStep): step is ParallelStep {
 	return "parallel" in step && Array.isArray((step as ParallelStep).parallel);
@@ -143,9 +134,6 @@ export function getStepAgents(step: ChainStep): string[] {
 	return [step.agent];
 }
 
-// =============================================================================
-// Chain Directory Management
-// =============================================================================
 
 export function createChainDir(runId: string, baseDir?: string): string {
 	const chainDir = path.join(baseDir ? path.resolve(baseDir) : CHAIN_RUNS_DIR, runId);
@@ -157,7 +145,6 @@ export function removeChainDir(chainDir: string): void {
 	try {
 		fs.rmSync(chainDir, { recursive: true });
 	} catch {
-		// Chain cleanup is best-effort. Runs can already have cleaned their temp dir.
 	}
 }
 
@@ -168,8 +155,6 @@ export function cleanupOldChainDirs(): void {
 	try {
 		dirs = fs.readdirSync(CHAIN_RUNS_DIR);
 	} catch {
-		// Startup cleanup is best-effort. If the scoped temp root is unreadable,
-		// skip cleanup instead of failing extension startup.
 		return;
 	}
 
@@ -181,14 +166,10 @@ export function cleanupOldChainDirs(): void {
 				fs.rmSync(dirPath, { recursive: true });
 			}
 		} catch {
-			// Skip directories that can't be processed; continue with others
 		}
 	}
 }
 
-// =============================================================================
-// Template Resolution
-// =============================================================================
 
 /** Resolved templates for a chain - string for sequential, string[] for parallel */
 export type ResolvedTemplates = (string | string[])[];
@@ -202,27 +183,20 @@ export function resolveChainTemplates(
 ): ResolvedTemplates {
 	return steps.map((step, i) => {
 		if (isParallelStep(step)) {
-			// Parallel step: resolve each task's template
 			return step.parallel.map((task) => {
 				if (task.task) return task.task;
-				// Default for parallel tasks is {previous}
 				return "{previous}";
 			});
 		}
 		if (isDynamicParallelStep(step)) {
 			return step.parallel.task ?? "{previous}";
 		}
-		// Sequential step: existing logic
 		const seq = step as SequentialStep;
 		if (seq.task) return seq.task;
-		// Default: first step uses {task}, others use {previous}
 		return i === 0 ? "{task}" : "{previous}";
 	});
 }
 
-// =============================================================================
-// Chain Instruction Injection
-// =============================================================================
 
 /**
  * Expand a leading `~`/`~/` to the user's home directory. Other forms (relative,
@@ -274,19 +248,16 @@ export function buildChainInstructions(
 	const prefixParts: string[] = [];
 	const suffixParts: string[] = [];
 
-	// READS - prepend to override any hardcoded filenames in task text
 	if (behavior.reads && behavior.reads.length > 0) {
 		const files = resolveExistingReadInstructionPaths(behavior.reads, chainDir, readExistenceDir);
 		if (files.length > 0) prefixParts.push(`[Read from: ${files.join(", ")}]`);
 	}
 
-	// OUTPUT - prepend so agent knows where to write
 	if (behavior.output) {
 		const outputPath = resolveChainPath(behavior.output, chainDir);
 		prefixParts.push(`[Write to: ${outputPath}]`);
 	}
 
-	// Progress instructions in suffix (less critical)
 	if (behavior.progress) {
 		const progressPath = path.join(chainDir, "progress.md");
 		if (isFirstProgressAgent) {
@@ -296,7 +267,6 @@ export function buildChainInstructions(
 		}
 	}
 
-	// Include previous step's summary in suffix if available
 	if (previousSummary && previousSummary.trim()) {
 		suffixParts.push(`Previous step output:\n${previousSummary.trim()}`);
 	}
@@ -312,14 +282,7 @@ export function buildChainInstructions(
 	return { prefix, suffix };
 }
 
-// =============================================================================
-// Parallel Step Support
-// =============================================================================
 
-/**
- * Resolve behaviors for all tasks in a parallel step.
- * Creates namespaced output paths to avoid collisions.
- */
 /** Exact discovery context, or explicit input for defensive fallback discovery. */
 export type ParallelBehaviorDiagnostics = UnknownAgentDiagnosticContext | { cwd: string; scope?: AgentScope };
 
@@ -340,11 +303,8 @@ export function resolveParallelBehaviors(
 			throw new Error(formatUnknownAgentError(task.agent, context));
 		}
 
-		// Build subdirectory path for this parallel task
 		const subdir = path.join(`parallel-${stepIndex}`, `${taskIndex}-${task.agent}`);
 
-		// Output: task override > agent default (namespaced) > false
-		// Absolute paths pass through unchanged; relative paths get namespaced under subdir
 		let output: string | false = false;
 		const taskOutput = normalizeOutputOverride(task.output);
 		const configOutput = normalizeOutputOverride(config.output);
@@ -352,20 +312,17 @@ export function resolveParallelBehaviors(
 			if (taskOutput === false) {
 				output = false;
 			} else if (path.isAbsolute(taskOutput)) {
-				output = taskOutput; // Absolute path: use as-is
+				output = taskOutput;
 			} else {
-				output = path.join(subdir, taskOutput); // Relative: namespace under subdir
+				output = path.join(subdir, taskOutput);
 			}
 		} else if (configOutput) {
-			// Agent defaults are always relative, so namespace them
 			output = path.join(subdir, configOutput);
 		}
 
-		// Reads: task override > agent default > false
 		const reads =
 			task.reads !== undefined ? task.reads : config.defaultReads ?? false;
 
-		// Progress: task override > agent default > false
 		const progress =
 			task.progress !== undefined
 				? task.progress

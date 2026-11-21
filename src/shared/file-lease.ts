@@ -39,8 +39,6 @@ export function tryLease(lockPath: string): (() => void) | undefined {
 		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 		const previous = readOwner(lockPath);
 		if (!previous || !deadOwner(previous)) return undefined;
-		// Retain the nonempty old directory as a fence: a delayed reclaimer of
-		// this token cannot rename a replacement lease over that destination.
 		const retired = `${lockPath}.retired-${previous.token}`;
 		try { fs.renameSync(lockPath, retired); }
 		catch (error) {

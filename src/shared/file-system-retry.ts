@@ -56,17 +56,13 @@ export function waitForFileSystemRetry(delayMs: number): void {
 	if (delayMs <= 0) return;
 	if (WAIT_VIEW) {
 		try {
-			// Callers are synchronous status/result writers; Atomics.wait gives
-			// Windows directory and rename locks time to clear without burning CPU.
 			Atomics.wait(WAIT_VIEW, 0, 0, delayMs);
 			return;
 		} catch {
-			// Fall through to the portable busy wait below.
 		}
 	}
 	const end = Date.now() + delayMs;
 	while (Date.now() < end) {
-		// Portable fallback for runtimes where Atomics.wait is unavailable.
 	}
 }
 

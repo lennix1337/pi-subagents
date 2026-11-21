@@ -11,7 +11,6 @@ function findLatestSessionFile(sessionDir: string): string | null {
 		files.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
 		return files[0] ?? null;
 	} catch {
-		// Session token lookup is optional metadata.
 		return null;
 	}
 }
@@ -44,12 +43,10 @@ export function parseSessionTokens(sessionDir: string): TokenUsage | null {
 					windowPeak = Math.max(windowPeak ?? 0, turnWindow);
 				}
 			} catch {
-				// Ignore malformed lines while scanning usage entries.
 			}
 		}
 		return { input, output, total: input + output, ...(window !== undefined ? { window, windowPeak } : {}) };
 	} catch {
-		// Usage extraction should not fail the run.
 		return null;
 	}
 }

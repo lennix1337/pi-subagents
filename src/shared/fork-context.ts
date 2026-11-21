@@ -1,14 +1,5 @@
-// Forking a parent transcript into a child copies the parent's assistant messages verbatim, signed
-// Anthropic thinking included. A signature covers its block's content, not a session, so a
-// verbatim copy stays valid in the branch, and keeping it lets the child's first request start
-// with its parent's prompt-cached bytes. pi-ai replays a signed block only to the model that
-// signed it and turns it into text or drops it for any other model, and Pi >= 0.85.0 recovers
-// from signed-thinking mismatches on the transport. Two kinds of block are still dropped: raw
-// `redacted_thinking` blocks, which are not Pi's own transcript shape, and signed thinking in a
-// `context_edit` replacement, whose content no longer has to match its signature. A pruned fork
-// rewrites inherited content, thinking included, so it still drops every signed or redacted
-// Anthropic thinking block. Dropping them never disables the child's thinking: it keeps the level
-// it asked for.
+// external: Anthropic thinking signatures cover the block content, not the session.
+// external: pi-ai replays signed thinking only to the signing model; Pi >= 0.85.0 recovers from signature mismatches.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -47,9 +38,7 @@ interface ForkableSessionManager {
 
 interface ForkContextResolverOptions {
 	openSession?: (path: string, sessionDir?: string) => BranchSessionManager;
-	/** Rewrite a created fork before its path can be used to spawn a child. */
 	pruneSession?: (sessionFile: string) => Promise<void>;
-	/** Run id that names this launch's fork directory, read when the first fork is created. */
 	runDirName: () => string;
 }
 
@@ -173,18 +162,7 @@ export function createForkContextResolver(
 	const openSession = options.openSession
 		?? sessionManager.openSession
 		?? ((file: string, dir?: string) => SessionManager.open(file, dir));
-	// Fork files must not land in the parent's top-level session directory.
-	// Pi's recent-session discovery (`pi -c` → findMostRecentSession) is
-	// non-recursive and picks the largest-mtime *.jsonl in that directory, so
-	// a still-running forked subagent — which keeps appending after the parent
-	// went idle — would hijack the next `pi -c` away from the conversation the
-	// user actually left. Nesting fork sessions in a per-parent directory keeps
-	// them invisible to that discovery; the `parentSession` header still
-	// records the tree relationship. The directory mirrors
-	// getSubagentSessionRoot() plus a "forks" level so fork files never sit
-	// loose next to run-N/ result directories. Derived from the file path
-	// rather than getSessionDir() so it also works when the manager cannot
-	// report its directory.
+	// external: Pi recent-session discovery is non-recursive and selects the newest JSONL by mtime.
 	const forksDir = path.join(
 		path.dirname(parentSessionFile),
 		path.basename(parentSessionFile, ".jsonl"),
@@ -201,7 +179,6 @@ export function createForkContextResolver(
 			if (!fs.existsSync(parentSessionFile)) {
 				throw new Error(`Parent session file does not exist: ${parentSessionFile}. Pi has not persisted enough history to fork yet.`);
 			}
-			// Nested resume accepts a session file only under a directory named by the run's id.
 			const sessionDir = path.join(forksDir, options.runDirName());
 			const sourceManager = openSession(parentSessionFile, sessionDir);
 			const sessionFile = sourceManager.createBranchedSession(leafId);
