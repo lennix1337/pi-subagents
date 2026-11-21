@@ -106,7 +106,6 @@ export function pruneLiveForegroundRuns(now = Date.now()): void {
 		try {
 			if (now - fs.statSync(file).mtimeMs > PANEL_LEDGER_RETENTION_MS) fs.rmSync(file, { force: true });
 		} catch {
-			// A record that cannot be inspected stays; the next prune tries again.
 		}
 	}
 }

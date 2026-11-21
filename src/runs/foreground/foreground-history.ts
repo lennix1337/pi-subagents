@@ -14,7 +14,6 @@ export const FOREGROUND_OWNER_EXITED_STOP_ERROR = "Subagent stopped because the 
 const MAX_INLINE_OUTPUT_BYTES = 64 * 1024;
 const MAX_RESUME_CONTRACT_BYTES = 64 * 1024;
 
-// One file per run, so Pi processes sharing the results dir never rewrite each other's records.
 function historyDir(resultsDir: string): string {
 	return path.join(resultsDir, "foreground-history");
 }
@@ -75,7 +74,6 @@ function hasRunningChild(run: Pick<ForegroundResumeRun, "children">): boolean {
 	return run.children.some((child) => child.status === "running");
 }
 
-/** A `running` record is kept only for a single run whose owning Pi process can be probed later. */
 function isAdmittedChildStatus(run: Partial<ForegroundResumeRun>, status: unknown): boolean {
 	return isRestorableForegroundStatus(status) || (status === "running" && run.mode === "single" && isRecordedPid(run.owner));
 }
@@ -114,7 +112,6 @@ function compactRun(run: ForegroundResumeRun): ForegroundResumeRun | undefined {
 	};
 }
 
-/** One saved run, or undefined when the file is missing, unreadable or invalid. */
 function readRunFile(filePath: string): ForegroundResumeRun | undefined {
 	try {
 		const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as unknown;
@@ -151,7 +148,6 @@ function isRestorableRun(value: unknown): value is ForegroundResumeRun {
 			&& isAdmittedChildStatus(run, child.status)));
 }
 
-/** Deletes the oldest final run files beyond the cap; running records stay, so the cap can be exceeded while runs are live. */
 function pruneHistory(dir: string, limit: number): void {
 	const files = historyFiles(dir);
 	if (files.length <= limit) return;
@@ -164,11 +160,8 @@ function pruneHistory(dir: string, limit: number): void {
 	}).sort((left, right) => left.mtimeMs - right.mtimeMs);
 	for (const { name, mtimeMs } of byAge.slice(0, byAge.length - limit)) {
 		const filePath = path.join(dir, name);
-		// A running record is replaced later by its run's final save, possibly in another Pi process;
-		// once its owner is confirmed dead nothing can replace it, so it is final.
 		const run = readRunFile(filePath);
 		if (run && hasRunningChild(run) && !ownerConfirmedDead(run)) continue;
-		// A file rewritten since the snapshot is a fresh record, not the old one judged here.
 		try {
 			if (fs.statSync(filePath).mtimeMs !== mtimeMs) continue;
 		} catch {
@@ -189,7 +182,6 @@ export function persistForegroundRun(run: ForegroundResumeRun, options: { result
 	const dir = historyDir(resultsDir);
 	if (!fs.existsSync(dir)) {
 		fs.mkdirSync(dir, { recursive: true });
-		// The single shared file used before per-run files is not read or migrated.
 		fs.rmSync(path.join(resultsDir, "foreground-history.json"), { force: true });
 	}
 	writePrivateAtomicJson(runHistoryPath(resultsDir, compact.runId), compact);
@@ -205,11 +197,9 @@ export function discardRunningForegroundRun(runId: string, options: { resultsDir
 
 /** For a record with a `running` child: its owning Pi process is gone. */
 export function ownerConfirmedDead(run: ForegroundResumeRun): boolean {
-	// readRunFile admits a running child only with a valid owner.
 	return checkRecordedPidLiveness(run.owner!) === "dead";
 }
 
-/** A run whose owning Pi process is gone loads as stopped and resumable; one whose owner may be alive is not loaded. */
 function restoreInterruptedRun(run: ForegroundResumeRun): ForegroundResumeRun | undefined {
 	if (!ownerConfirmedDead(run)) return undefined;
 	const { owner: _owner, ...rest } = run;
@@ -233,7 +223,6 @@ function restoreInterruptedRun(run: ForegroundResumeRun): ForegroundResumeRun | 
 /** State text for a remembered child; a child cut off by a Pi exit names the resume target. */
 export function foregroundChildStateLabel(run: Pick<ForegroundResumeRun, "runId">, child: Pick<ForegroundResumeChild, "status" | "error" | "sessionFile">): string {
 	if (child.status !== "stopped" || child.error !== FOREGROUND_OWNER_EXITED_STOP_ERROR) return child.status;
-	// Without a transcript there is nothing to resume from.
 	return child.sessionFile ? `interrupted when Pi exited · resume ${run.runId}` : "interrupted when Pi exited";
 }
 
@@ -242,7 +231,6 @@ export function restoreForegroundRunHistory(state: SubagentState, options: { res
 	if (!sessionId) return 0;
 	const dir = historyDir(options.resultsDir ?? DIRS.results);
 	const saved = historyFiles(dir).flatMap((name) => readRunFile(path.join(dir, name)) ?? []);
-	// Other sessions' records that may have been cut off, for a read-only pointer to them.
 	if (options.observeForeign) for (const run of saved) if (run.sessionId !== sessionId && hasRunningChild(run)) options.observeForeign(run);
 	const runs = saved.filter((run) => run.sessionId === sessionId).sort((left, right) => right.updatedAt - left.updatedAt).slice(0, options.limit ?? MAX_REMEMBERED_FOREGROUND_RUNS);
 	state.foregroundRuns ??= new Map();
