@@ -1,6 +1,4 @@
-/**
- * Agent discovery and configuration
- */
+
 
 import * as fs from "node:fs";
 import { parse as parseYaml } from "yaml";
@@ -119,7 +117,7 @@ interface BuiltinAgentOverrideConfig {
 	toolBudget?: ToolBudgetConfig | false;
 }
 
-/** Every field an `agentOverrides` entry may set; the Record type keeps it equal to BuiltinAgentOverrideConfig. */
+
 const BUILTIN_OVERRIDE_FIELDS: Record<keyof BuiltinAgentOverrideConfig, true> = {
 	description: true, advertise: true, machine: true, output: true, outputMode: true, defaultReads: true, model: true,
 	defaultProvider: true, fast: true, thinking: true, systemPromptMode: true, inheritProjectContext: true,
@@ -408,8 +406,8 @@ type PackageSettingsScope = Exclude<PackageScope, "root">;
 
 interface PackageSubagentPath {
 	dir: string;
-	// A package can be reachable from more than one settings scope. Keep the
-	// actual memberships instead of promoting a mixed-scope path to root.
+
+
 	scope: Set<PackageScope>;
 	packageName?: string;
 	packageVersion?: string;
@@ -433,8 +431,8 @@ function readJsonFileBestEffort(filePath: string): unknown {
 	try {
 		return JSON.parse(fs.readFileSync(filePath, "utf-8"));
 	} catch {
-		// Installed package scans are opportunistic; bad third-party manifests
-		// should not break local agent discovery.
+
+
 		return null;
 	}
 }
@@ -628,16 +626,16 @@ function collectPackageSubagentPaths(cwd: string, options: { includeUser: boolea
 		try {
 			return collectSettingsPackageRoots(settingsFile, baseDir);
 		} catch (error) {
-			// The raw source snapshot includes both settings scopes. Defer a
-			// strict failure until a projection actually selects this scope so an
-			// unrelated malformed settings file stays out of scoped discovery.
+
+
+
 			settingsErrors[scope] = error instanceof Error
 				? error
 				: new Error(`Failed to read settings file '${settingsFile}': ${String(error)}`, { cause: error });
 			return [];
 		}
 	};
-	// Resolving the project root reads project settings, which an untrusted project does not supply.
+
 	if (options.projectTrusted !== false) {
 		const projectRoot = findConfiguredProjectRoot(cwd) ?? cwd;
 		packageRoots.push({ root: projectRoot, scope: "root" });
@@ -860,7 +858,7 @@ function findProjectRootCandidates(cwd: string): string[] {
 		.map((value) => fs.realpathSync.native(value)));
 	let currentDir = cwd;
 	while (true) {
-		// ~/.pi and ~/.agents are user configuration, never an implicit project.
+
 		if (isDirectory(currentDir) && homeDirs.has(fs.realpathSync.native(currentDir))) return roots;
 		if (isProjectRootCandidate(currentDir)) roots.push(currentDir);
 
@@ -968,7 +966,7 @@ function writeSettingsFile(filePath: string, settings: Record<string, unknown>):
 	if (existingMode !== undefined) fs.accessSync(targetPath, fs.constants.W_OK);
 
 	const tempMode = existingMode === undefined ? undefined : existingMode | 0o200;
-	// Reuse the atomic temp/rename path while retaining settings' newline and existing mode.
+
 	const writeAtomicSettings = createAtomicJsonWriter({
 		mode: tempMode,
 		fs: {
@@ -1354,15 +1352,10 @@ function readSubagentSettings(filePath: string | null): SubagentSettings {
 	return parsedSettings;
 }
 
-/**
- * The default model for the parent's provider family: the key is the provider
- * itself or its family prefix (`anthropic` matches `anthropic-account-2`).
- * A bare model id runs on the parent's own provider, so a child stays on the
- * session's account and class instead of a fixed account.
- */
+
 function defaultModelForProvider(byProvider: Record<string, string> | undefined, provider: string): string | undefined {
 	if (!byProvider) return undefined;
-	// Own keys only: a provider named like an Object.prototype member must not read an inherited value.
+
 	const key = Object.hasOwn(byProvider, provider)
 		? provider
 		: Object.keys(byProvider).filter((candidate) => provider.startsWith(`${candidate}-`)).sort((a, b) => b.length - a.length)[0];
@@ -1661,7 +1654,7 @@ function applyCustomAgentOverrides(
 	userSettingsPath: string,
 	projectSettingsPath: string | null,
 ): AgentConfig[] {
-	// Apply user then project so project fields win without dropping user-only fields.
+
 	return agents.map((agent) => {
 		const userOverride = userSettings.overrides[agent.name];
 		const withUserOverride = userOverride
@@ -2034,7 +2027,7 @@ export function inspectAgentDefinitionDirectory(dir: string, operations: AgentDe
 				}
 			}
 			if (isDirectory) {
-				// Every file under a `.agents/skills` subtree is rejected below, so walking it only costs readdir and realpath calls.
+
 				if (!shouldPruneDiscoveryDir(root, filePath, entry.name) && !isLegacyAgentSkillPath(root, filePath)) visit(filePath);
 				continue;
 			}
@@ -2125,8 +2118,8 @@ function parseAgentRunnerFrontmatter(raw: string | undefined, agentName: string)
 
 function validateExternalRunnerProfile(frontmatter: Record<string, string>, agentName: string, runner: AgentRunnerConfig | undefined): void {
 	if (runner?.type !== "external-cli" && runner?.type !== "external-job") return;
-	// The code-owned Claude Code adapters accept an explicit model and thinking level:
-	// both are translated into their own argv rather than into a Pi child model.
+	// external: Claude Code adapters accept model and thinking level as command arguments.
+
 	const adapterAcceptsOverrides = runner.type === "external-cli" && isClaudeCodeAdapterId(runner.adapter);
 	const unsupported = ["tools", "excludeTools", "allowNestedSubagents", "allowedAgents", "model", "thinking", "extensions", "subagentOnlyExtensions", "mutationTools", "maxSubagentDepth", "skills", "skill", "skillPath", "toolBudget", "permission", "permissions"]
 		.filter((field) => frontmatter[field] !== undefined && !(adapterAcceptsOverrides && (field === "model" || field === "thinking")));
@@ -2474,17 +2467,17 @@ function resolveNearestProjectChainDirs(cwd: string): { readDirs: string[]; pref
 	};
 }
 const BUILTIN_AGENTS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "agents");
-// Candidate files and inspection state must describe the same cached builtin scan.
+
 const BUILTIN_AGENT_DEFINITION_INSPECTION = inspectAgentDefinitionDirectory(BUILTIN_AGENTS_DIR);
 const BUILTIN_AGENT_DEFINITION_FILES = readAgentDefinitionFiles(BUILTIN_AGENTS_DIR, BUILTIN_AGENT_DEFINITION_INSPECTION);
 
 export const EXTRA_AGENT_DIRS_ENV = "PI_SUBAGENT_EXTRA_AGENT_DIRS";
 
-// Additional read-only directories to scan for agent definitions, supplied by the
-// launcher via PI_SUBAGENT_EXTRA_AGENT_DIRS (PATH-style, split on os/path delimiter).
-// Lets a hermetic wrapper (e.g. a Nix-store install) expose bundled agents without
-// copying or symlinking them into the writable agent dir. Loaded as "user" source,
-// at lower precedence than agents the user placed in their own agent dir.
+
+
+
+
+
 function extraUserAgentDirs(): string[] {
 	const raw = process.env[EXTRA_AGENT_DIRS_ENV];
 	if (!raw) return [];
@@ -2512,7 +2505,7 @@ function readConfiguredAgentScanDirs(filePath: string | null, key: "agentScanDir
 	}
 }
 
-// Resolve existing ancestors to canonicalize missing descendants of symlinks.
+
 function canonicalAgentPath(filePath: string): string {
 	const resolved = path.resolve(filePath);
 	try {
@@ -2610,7 +2603,7 @@ export interface AgentDiscoverySnapshot {
 /** Undefined uses synchronous npm lookup; null skips global npm discovery. */
 export interface AgentDiscoveryOptions {
 	globalNpmRoot?: string | null;
-	/** False when the session declined project trust: project settings, agents, chains and packages are ignored. Defaults to true. */
+	/** False skips project-controlled sources. Defaults to true. */
 	projectTrusted?: boolean;
 }
 
@@ -2668,9 +2661,9 @@ function isPathWithin(root: string, candidate: string): boolean {
 function addDirectoryWatchPaths(paths: Set<string>, root: string, files: readonly string[], directories: readonly string[] = []): void {
 	const resolvedRoot = path.resolve(root);
 	paths.add(resolvedRoot);
-	// The initial recursive inspection is already bounded to this discovery
-	// root. Keep every visited directory in the fingerprint so a file added to
-	// an existing empty nested directory invalidates the snapshot too.
+
+
+
 	for (const directory of directories) {
 		if (isPathWithin(resolvedRoot, directory)) paths.add(path.resolve(directory));
 	}
@@ -2704,10 +2697,10 @@ function watchPathSignature(filePath: string, isExcluded?: (filePath: string) =>
 
 function discoveryFingerprint(sources: AgentDiscoverySources): string {
 	const exclusionIdentity = JSON.stringify(sources.exclusionRoots.map((root) => ({ resolved: root.resolved, real: canonicalAgentPath(root.resolved) })));
-	// A retargeted exclusion needs a fresh scan before fingerprinting old roots.
+
 	if (exclusionIdentity !== JSON.stringify(sources.exclusionRoots)) return exclusionIdentity;
 	const rootIdentities = JSON.stringify(sources.identityWatchPaths.map((root) => [root, canonicalAgentPath(root)]));
-	// Package metadata can redirect agents outside an excluded tree without chains.
+
 	const unfilteredPaths = new Set([...sources.packageSubagentPaths.watchPaths, ...(sources.chainWatchPaths ?? [])]);
 	return exclusionIdentity + "\n" + rootIdentities + "\n" + [...new Set([...sources.watchPaths, ...unfilteredPaths])]
 		.filter((filePath) => unfilteredPaths.has(filePath) || filePath === sources.userSettingsPath || filePath === sources.projectSettingsPath || !sources.isExcluded(filePath))
@@ -2755,7 +2748,7 @@ function buildAgentDiscoverySources(cwd: string, preferredModelProvider: string 
 	const userDirOld = path.join(getAgentDir(), "agents");
 	const userDirNew = path.join(os.homedir(), ".agents");
 	const userChainDir = getUserChainDir();
-	// The project's settings choose its root, so an untrusted project contributes no directories or settings at all.
+
 	const { readDirs: projectAgentDirs, candidateDirs: projectCandidateDirs, preferredDir: projectAgentsDir } = projectTrusted
 		? resolveNearestProjectAgentDirs(effectiveCwd)
 		: { readDirs: [], candidateDirs: [], preferredDir: null };
@@ -2823,8 +2816,8 @@ function buildAgentDiscoverySources(cwd: string, preferredModelProvider: string 
 		packageLoaded,
 		isExcluded,
 		exclusionRoots,
-		// Aliases outside excluded lexical subtrees can be retargeted into allowed
-		// storage. Watch only their identity, never the excluded target's contents.
+
+
 		identityWatchPaths: [...new Set([
 			...userScanDirs.watchPaths, ...projectScanDirs.watchPaths,
 			...extraUserAgentDirs(), userDirOld, userDirNew, ...projectCandidateDirs,
@@ -2885,9 +2878,9 @@ function ensureSettingsForScope(sources: AgentDiscoverySources, scope: AgentScop
 }
 
 function settingsForScope(sources: AgentDiscoverySources, scope: AgentScope): { user: SubagentSettings; project: SubagentSettings } {
-	// Parse only settings that participate in this projection. The source cache
-	// still retains both source trees, while malformed out-of-scope settings do
-	// not make an otherwise valid scoped projection fail.
+
+
+
 	ensureSettingsForScope(sources, scope, sources.preferredModelProvider);
 	return {
 		user: scope === "project" ? EMPTY_SUBAGENT_SETTINGS : sources.userSettings ?? EMPTY_SUBAGENT_SETTINGS,
@@ -3047,8 +3040,8 @@ export function discoverAgentSnapshot(
 	return { effective: buildEffectiveDiscovery(sources, trustedScope), all: buildAllDiscovery(sources, includeChains, trustedScope) };
 }
 
-// Pi loads nothing from an untrusted project's `.pi` directory, so declined trust leaves user scope.
-// A trusted lookup keeps its scope as given, including an omitted one from untyped callers.
+// external: Pi does not load configuration from an untrusted project.
+
 function trustedDiscoveryScope(cwd: string, scope: AgentScope, projectTrusted: boolean): AgentScope {
 	if (projectTrusted) return scope;
 	if (scope === "project") throw new Error(projectScopeRequiresTrustMessage(path.resolve(cwd)));
@@ -3111,7 +3104,7 @@ function discoverAgentsUncached(cwd: string, scope: AgentScope, preferredModelPr
 export function discoverAgents(cwd: string, scope: AgentScope, preferredModelProvider?: string, options: AgentDiscoveryOptions = {}): AgentDiscoveryResult {
 	const projectTrusted = options.projectTrusted !== false;
 	const trustedScope = trustedDiscoveryScope(cwd, scope, projectTrusted);
-	// The uncached path always loads the project's own package.json entries.
+
 	if (projectTrusted && trustedScope !== "both") return discoverAgentsUncached(cwd, trustedScope, preferredModelProvider, options);
 	const sources = getAgentDiscoverySources(cwd, preferredModelProvider, false, options.globalNpmRoot, projectTrusted);
 	return buildEffectiveDiscovery(sources, trustedScope);

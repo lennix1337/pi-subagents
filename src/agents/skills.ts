@@ -1,7 +1,3 @@
-/**
- * Skill resolution and caching for subagent extension
- */
-
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -30,13 +26,11 @@ interface ResolvedSkill {
 	disableModelInvocation?: boolean;
 }
 
-/** A discovered skill file; its metadata is read only for the skills a caller actually uses. */
 interface CachedSkillEntry {
 	name: string;
 	filePath: string;
 	source: SkillSource;
 	order: number;
-	/** Read on first use and kept with the entry, so it lives exactly as long as the TTL walk that found it. */
 	metadata?: { description?: string; disableModelInvocation?: boolean };
 }
 
@@ -84,7 +78,7 @@ function readOptionalJsonFile(filePath: string, label: string): unknown {
 		const code = typeof error === "object" && error !== null && "code" in error
 			? (error as { code?: unknown }).code
 			: undefined;
-		// ENOTDIR: a settings package entry may name a single extension file, so `<file>/package.json` is no manifest.
+		// external: opening a child of a regular file fails with ENOTDIR.
 		if (code === "ENOENT" || code === "ENOTDIR") return null;
 		const message = error instanceof Error ? error.message : String(error);
 		throw new Error(`Failed to read ${label} '${filePath}': ${message}`, {
@@ -97,7 +91,6 @@ function readJsonFileBestEffort(filePath: string): unknown {
 	try {
 		return JSON.parse(fs.readFileSync(filePath, "utf-8"));
 	} catch {
-		// Package scans over installed dependencies are opportunistic.
 		return null;
 	}
 }
@@ -168,7 +161,6 @@ function collectInstalledPackageSkillPaths(cwd: string, agentDir: string, includ
 	return results;
 }
 
-/** The settings files that can declare skills or packages; the project's is left out, unread, when `includeProject` is false. */
 function settingsFileSources<Source extends SkillSource>(
 	cwd: string,
 	agentDir: string,
@@ -308,7 +300,6 @@ function collectSettingsPackageSkillPaths(cwd: string, agentDir: string, include
 	return results;
 }
 
-/** With `includeProject` false, every project-controlled source is skipped before it is read. */
 function buildSkillPaths(cwd: string, agentDir: string, includeProject: boolean): SkillSearchPath[] {
 	const projectConfigDir = getProjectConfigDir(cwd);
 	const skillPaths: SkillSearchPath[] = [
@@ -390,13 +381,9 @@ function maybeReadSkillDisableModelInvocation(content: string): boolean | undefi
 		if (endIndex === -1) return undefined;
 		const parsed: unknown = parseYaml(normalized.slice(4, endIndex));
 		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
-		// Match the pi host's skill loader semantics: only YAML boolean true
-		// disables model invocation; strings and other values stay invocable.
-		// Hidden skills remain user-invocable via explicit `/skill:name` commands
-		// but must stay out of the model-facing default skill set.
+		// external: Pi treats only YAML boolean true as disabling model invocation.
 		return (parsed as Record<string, unknown>)["disable-model-invocation"] === true ? true : undefined;
 	} catch {
-		// Best-effort metadata extraction.
 		return undefined;
 	}
 }
@@ -406,7 +393,6 @@ function collectFilesystemSkills(cwd: string, agentDir: string, skillPaths: Skil
 	const seen = new Map<string, number>();
 	const visitedDirectories = new Map<string, number>();
 	let order = 0;
-	// One lookup of the global root per scan; it cannot change between two files of the same scan.
 	const globalRoot = resolveGlobalNpmRootSync();
 
 	const pushEntry = (name: string, filePath: string, sourceHint?: SkillSource) => {
@@ -462,7 +448,6 @@ function collectFilesystemSkills(cwd: string, agentDir: string, skillPaths: Skil
 			if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
 
 			const entryPath = path.join(dirPath, entry.name);
-			// The directory entry already says whether this is a directory; only a symlink needs stat to learn its target.
 			if (entry.isDirectory()) {
 				walkSkillDirectories(entryPath, sourceHint);
 				continue;
@@ -543,11 +528,6 @@ function collectFilesystemSkills(cwd: string, agentDir: string, skillPaths: Skil
 	return entries;
 }
 
-/**
- * Every skill visible from `cwd`, one per name, in discovery order.
- * The walk covers installed npm packages and skill trees on every miss, so it is kept for `LOAD_SKILLS_CACHE_TTL_MS`:
- * a bounded freshness trade-off for cross-process filesystem state that no cheaper owner tracks.
- */
 function getCachedSkills(cwd: string, projectTrusted?: boolean): CachedSkillEntry[] {
 	const now = Date.now();
 	const agentDir = getAgentDir();
@@ -587,7 +567,7 @@ function readSkill(
 	source: SkillSource,
 ): ResolvedSkill | undefined {
 	try {
-		// Read on every resolution: an mtime-keyed copy returns stale text when a file is rewritten within the same timestamp.
+		// external: filesystem timestamps may not change between rapid rewrites.
 		const raw = fs.readFileSync(skillPath, "utf-8");
 		const content = stripSkillFrontmatter(raw);
 		const description = parseSkillDescription(raw);
@@ -601,7 +581,6 @@ function readSkill(
 			source,
 		};
 	} catch {
-		// Treat unreadable skill files as unresolved so callers can surface as missing.
 		return undefined;
 	}
 }
@@ -669,10 +648,7 @@ export function resolveSkillsWithFallback(
 }
 
 export function buildSkillInjection(skills: ResolvedSkill[]): string {
-	// Hidden skills (disable-model-invocation: true) must never reach a child
-	// prompt, even if a caller resolves them by name. This is the single
-	// chokepoint every prompt-injection path funnels through, so filtering
-	// here closes the leak regardless of which caller assembled the list.
+	// external: disable-model-invocation excludes a skill from model-facing prompts.
 	const visibleSkills = skills.filter((skill) => !skill.disableModelInvocation);
 	if (visibleSkills.length === 0) return "";
 
@@ -709,10 +685,6 @@ export function normalizeSkillInput(
 	if (Array.isArray(input)) {
 		return [...new Set(input.map((s) => s.trim()).filter((s) => s.length > 0))];
 	}
-	// Guard against JSON-encoded arrays arriving as strings (e.g. '["a","b"]').
-	// Models sometimes serialise the skill parameter as a JSON string instead of
-	// a native array, and naively splitting on "," would embed brackets/quotes
-	// into the skill names, causing resolution to silently fail.
 	const trimmed = input.trim();
 	if (trimmed.startsWith("[")) {
 		try {
@@ -721,7 +693,6 @@ export function normalizeSkillInput(
 				return normalizeSkillInput(parsed);
 			}
 		} catch {
-			// Not valid JSON – fall through to comma-split
 		}
 	}
 	return [...new Set(input.split(",").map((s) => s.trim()).filter((s) => s.length > 0))];
