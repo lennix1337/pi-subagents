@@ -1,9 +1,3 @@
-/**
- * Builds the in-process launch for one child: the tool plan, the typed child
- * runtime config the hooks read, and the session launch input. Foreground
- * children are built in the parent process; background children are built in
- * the detached runner from the step it received in its config.
- */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ChildWatchdogConfig, ChildWatchdogStatusEvent } from "../../watchdog/child-status.ts";
@@ -149,7 +143,6 @@ export function createReportedChildSessionInput(launch: InProcessChildLaunch, tr
 	return withChildSessionErrorReporting(launch.session, transcriptWriter);
 }
 
-/** Escape XML-significant characters in a string for safe attribute interpolation. */
 function escapeXmlAttr(value: string): string {
 	return value
 		.replace(/&/g, "&amp;")
@@ -162,20 +155,13 @@ function inheritedCapabilityCeiling(inherited: InheritedChildRuntime | undefined
 	return inherited?.capabilityCeiling;
 }
 
-/**
- * The only value an in-process foreground child gets: its extension bindings, set while its
- * extensions load and start and then restored, so the parent keeps its own environment and a
- * child never sees the bindings of the session that launched it.
- */
 function foregroundProcessEnv(input: BuildInProcessChildLaunchInput): Record<string, string | undefined> {
 	return { [PI_SUBAGENT_EXTENSION_BINDINGS_ENV]: encodeExtensionBindings(input.extensionBindings) };
 }
 
-/** Environment values external child extensions read in the runner, which hosts only children. */
 function childProcessEnv(input: BuildInProcessChildLaunchInput, toolPlan: PiLaunchToolPlan): Record<string, string | undefined> {
 	const env: Record<string, string | undefined> = {};
 	env[PI_SUBAGENT_EXTENSION_BINDINGS_ENV] = encodeExtensionBindings(input.extensionBindings);
-	// Selectors resolved against Pi's built-in MCP never reach an adapter.
 	if (toolPlan.builtinMcpTools) env[MCP_DIRECT_TOOLS_ENV] = "__none__";
 	else if (!toolPlan.capabilityCeiling && input.mcpDirectTools?.length) env[MCP_DIRECT_TOOLS_ENV] = input.mcpDirectTools.join(",");
 	else if (toolPlan.capabilityCeiling && toolPlan.effectiveMcpSelections.length && !toolPlan.capabilityCeiling.denyExtensions) {
@@ -226,9 +212,8 @@ export function buildInProcessChildLaunch(input: BuildInProcessChildLaunchInput)
 		permissionRules: input.permissionRules,
 		runtimeSnapshotHost: input.runtimeSnapshotHost,
 	});
-	// Foreground children load no ambient extensions, so an extension's registerMcpServer() never runs in them.
 	if (input.host === "parent" && input.runtimeSnapshotHost && toolPlan.builtinMcpTools?.length) {
-		// Pi treats a session without a trust decision as trusted.
+		// external: Pi treats sessions without a trust decision as trusted.
 		const servers = extensionOnlyMcpServers(toolPlan.effectiveMcpSelections, input.runtimeSnapshotHost, input.cwd, input.projectTrusted !== false);
 		if (servers.length) throw new Error(`Agent '${input.childAgentName}' selects MCP tools from servers that extensions registered (${servers.join(", ")}). Only background children (async: true) load those extensions; run the agent in the background or add the server to the global mcp.json or a trusted project's .pi/mcp.json.`);
 	}

@@ -144,7 +144,6 @@ function validHostStepList(source: readonly HostStepNode[] | WorkflowGraphSnapsh
 		try {
 			hostSteps.push(parseHostStepNode(value, `hostSteps[${index}]`));
 		} catch {
-			// Renderers must not turn malformed host data into a fake child row.
 		}
 	}
 	return hostSteps;
@@ -222,11 +221,6 @@ function activityFor(source: {
 	return Object.keys(activity).length ? activity : undefined;
 }
 
-/**
- * The first source that reports a model wins; a lane's own child reports before its roster entry.
- * A launch model can carry a thinking suffix (`provider/id:low`) until the child's first reply; the
- * node reports the bare model and keeps the level in `thinking`.
- */
 function setStepModel(node: AsyncStatusSnapshotNode, ctx: ProjectionContext, ...sources: Array<{ model?: string; thinking?: string } | undefined>): void {
 	const { baseModel, thinkingSuffix } = splitKnownThinkingSuffix(sources.find((source) => source?.model)?.model ?? "");
 	const model = publicOptionalText(baseModel, ctx.caps.maxStringLength);

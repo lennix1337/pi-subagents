@@ -42,7 +42,6 @@ export function isReadonlyChildSessionReporting(launch: ChildSessionLaunch): boo
 	return proof?.reporting ? proof.reporting.launch === launch && proof.reporting.callback === descriptor?.value : !descriptor && !("onExtensionError" in launch);
 }
 
-/** Admit only own enumerable data: inspecting descriptors must not invoke getters. */
 function dataKeys(value: unknown): string[] | undefined {
 	if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return undefined;
 	const keys = Reflect.ownKeys(value);
@@ -53,7 +52,6 @@ function dataKeys(value: unknown): string[] | undefined {
 	return keys as string[];
 }
 
-/** Only reviewed data and the capture callbacks constructed below; no caller callback opt-in. */
 function readonlyConfig(config: ChildRuntimeConfig, capture?: OwnedCapture): string | undefined {
 	const strings = ["runId", "agent", "sessionName", "forkCacheKey", "parentSessionId", "orchestratorSessionId"];
 	const numbers = ["childIndex", "depth", "maxDepth"];

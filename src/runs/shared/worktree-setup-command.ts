@@ -91,7 +91,6 @@ export async function runSetupCommand(
 			cwd: options.cwd,
 			env: options.env ? { ...process.env, ...options.env } : process.env,
 			stdio: "pipe", shell: false, windowsHide: true,
-			// Isolated owned POSIX group, never unref'd or fire-and-forget.
 			detached: process.platform !== "win32",
 		});
 	} catch (error) {
@@ -108,7 +107,6 @@ export async function runSetupCommand(
 		const detail = result.processTree.diagnostic ? `: ${result.processTree.diagnostic}` : "";
 		result.error = commandError(`Worktree setup process tree settlement is unverified${detail}`, "PROCESS_TREE_UNVERIFIED");
 		result.outputIncomplete = true;
-		// Only local I/O is released; unknown descendant ownership remains retained.
 		child.stdin.destroy();
 		child.stdout.destroy();
 		child.stderr.destroy();
@@ -166,7 +164,6 @@ export async function runSetupCommand(
 		});
 		child.once("error", (error) => {
 			fail(error);
-			// A failed spawn has no direct process to await. Other errors do not prove exit.
 			if (child.pid === undefined) {
 				directSettled = true;
 				resolve();
@@ -195,7 +192,6 @@ export async function runSetupCommand(
 		if (termination) result.processTree = await termination;
 		releaseUnknownIO();
 		await close;
-		// Abort/overflow may arrive while draining stdio after direct exit.
 		if (termination) result.processTree = await termination;
 		const cancelled = cancellation();
 		if (cancelled) fail(cancelled);

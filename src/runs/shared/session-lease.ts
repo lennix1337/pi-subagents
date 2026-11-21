@@ -275,9 +275,6 @@ export function acquireSessionLease(request: SessionLeaseRequest, options: Sessi
 		if (!existingOwner || !demonstrablyStale(existingOwner, staleOptions)) {
 			throw new SessionLeaseConflictError(conflictMessage(canonicalSessionFile, existingOwner), existingOwner);
 		}
-		// The per-owner tombstone is retained. Every contender that observed this
-		// stale token targets the same occupied destination, so only the first can
-		// rename it and later contenders cannot move a successor lease by mistake.
 		const tombstone = `${leaseDir}.stale-${existingOwner.token.replace(/[^A-Za-z0-9._-]/g, "-")}`;
 		try {
 			fs.renameSync(leaseDir, tombstone);

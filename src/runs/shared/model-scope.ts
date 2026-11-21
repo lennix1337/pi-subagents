@@ -1,17 +1,3 @@
-/**
- * Optional model-scope enforcement for subagent model resolution.
- *
- * When `subagents.modelScope.enforce` is enabled in settings, a resolved model
- * that does not match any `allow` pattern is rejected. The severity depends on
- * where the model came from: an explicit caller-supplied model (`--model`,
- * tool-call `model`, or a TUI clarify pick) is a hard error, while a model
- * inherited from agent frontmatter / `defaultModel` / the parent session only
- * emits a warning so existing configurations keep working. Optional strict
- * enforcement makes inherited models hard errors too.
- *
- * The decision logic ({@link checkModelScope}) is a pure function of its
- * inputs so it can be unit-tested without touching the filesystem or config.
- */
 
 import { splitKnownThinkingSuffix } from "../../shared/model-info.ts";
 
@@ -56,7 +42,6 @@ function stripThinkingSuffix(model: string): string {
 	return splitKnownThinkingSuffix(model).baseModel;
 }
 
-/** Escape RegExp specials except `*`, then turn `*` into `.*`. */
 function globToRegExp(pattern: string): RegExp {
 	const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
 	return new RegExp(`^${escaped}$`, "i");
@@ -104,7 +89,6 @@ export function checkModelScope(
 	};
 }
 
-/** An empty scoped snapshot degrades `scoped` to `inherit`; absent inputs stay literal so enforced resolution fails closed. */
 function expandReservedPatterns(
 	pattern: string,
 	parentModel: { provider: string; id: string } | undefined,

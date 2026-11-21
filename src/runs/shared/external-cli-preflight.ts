@@ -50,7 +50,7 @@ function resolveBinary(command: string, env: NodeJS.ProcessEnv, platform: NodeJS
 		fs.accessSync(resolved, fs.constants.X_OK);
 		return resolved;
 	}
-	// Windows environment names are case-insensitive, and a copied process.env keeps its spelling (often `Path`).
+	// external: Windows environment names are case-insensitive.
 	const read = (name: string) => windows ? Object.entries(env).find(([key]) => key.toUpperCase() === name)?.[1] : env[name];
 	const pathExt = windows ? (read("PATHEXT") ?? ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean) : [];
 	const named = pathExt.some((extension) => command.toLowerCase().endsWith(extension.toLowerCase()));
@@ -61,7 +61,7 @@ function resolveBinary(command: string, env: NodeJS.ProcessEnv, platform: NodeJS
 			const candidate = path.join(directory, `${command}${extension}`);
 			try {
 				fs.accessSync(candidate, fs.constants.X_OK);
-				// A batch shim resolves its target from its own directory (%dp0%), so keep the path it was found at.
+				// external: Windows batch shims resolve %dp0% relative to their own directory.
 				return windows && BATCH_FILE.test(candidate) ? candidate : fs.realpathSync(candidate);
 			} catch {}
 		}
@@ -80,7 +80,7 @@ export function resolveExternalCliBinaryAvailability(command: string, env: NodeJ
 	}
 }
 
-// npm's cmd-shim output for a `#!/usr/bin/env node` bin, with CRLF normalized; the target path sits between the two parts.
+// external: npm cmd-shim emits a wrapper for env node bins.
 const NPM_NODE_SHIM_HEAD = '@ECHO off\nGOTO start\n:find_dp0\nSET dp0=%~dp0\nEXIT /b\n:start\nSETLOCAL\nCALL :find_dp0\n\nIF EXIST "%dp0%\\node.exe" (\n  SET "_prog=%dp0%\\node.exe"\n) ELSE (\n  SET "_prog=node"\n  SET PATHEXT=%PATHEXT:;.JS;=;%\n)\n\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\';
 const NPM_NODE_SHIM_TAIL = '" %*\n';
 

@@ -324,7 +324,6 @@ function currentWorktreePatch(worktreePath: string, baseCommit: string): { patch
 		try {
 			fs.rmSync(tempDir, { recursive: true, force: true });
 		} catch {
-			// Cleanup safety depends on preserving the worktree, not on best-effort temp-index deletion.
 		}
 	}
 }
@@ -349,8 +348,6 @@ async function probeWorktreeSource(tx: Pick<SetupTransaction, "git" | "gitChecke
 	if (repoCheck.status !== 0 || repoCheck.stdout.trim() !== "true") throw new Error("worktree isolation requires a git repository");
 	const toplevel = (await tx.gitChecked(cwd, ["rev-parse", "--show-toplevel"])).trim();
 
-	// pi-subagents writes durable runtime state under .pi/subagents/ by default;
-	// that state must not make managed isolation unusable for later runs.
 	const status = await tx.gitChecked(toplevel, ["status", "--porcelain", "--", `:!${PROJECT_SUBAGENTS_RELATIVE_DIR}`]);
 	if (status.trim().length > 0) {
 		throw new Error("worktree isolation requires a clean git working tree. Commit or stash changes first.");
@@ -444,9 +441,6 @@ function shortWorktreeHash(value: string): string {
 function truncateUtf8(value: string, maxBytes: number): string {
 	const bytes = Buffer.from(value, "utf-8");
 	if (bytes.length <= maxBytes) return value;
-	// Back off to a code-point boundary before decoding: cutting mid-sequence
-	// emits U+FFFD (3 bytes per dangling byte), which can push the re-encoded
-	// result beyond maxBytes (e.g. a 256-byte cap yields a 258-byte string).
 	let end = maxBytes;
 	while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end -= 1;
 	return bytes.subarray(0, end).toString("utf-8");
@@ -644,12 +638,6 @@ export function shouldDeferWorktreeCwd(requested: WorktreeProvider | undefined, 
 	return (requested ?? DEFAULT_WORKTREE_PROVIDER) !== "native" && !hasConfiguredWorktreeBaseDir(baseDir);
 }
 
-/**
- * Resolves the dedicated worktree root: the configured base directory or
- * PI_SUBAGENTS_WORKTREE_DIR when set, otherwise a `worktrees` folder sibling
- * to the repository. Managed leaves always nest one level deeper under the
- * project folder (`basename(repoRoot)`).
- */
 function resolveWorktreeDedicatedRoot(configuredBaseDir: string | undefined, repoRoot: string, relocateExtensionRepo = true): string {
 	const rawBaseDir = configuredBaseDir ?? process.env.PI_SUBAGENTS_WORKTREE_DIR;
 	let expanded: string;
@@ -675,11 +663,6 @@ function buildNativeProjectPath(dedicatedRoot: string, repoRoot: string): string
 	return path.join(dedicatedRoot, path.basename(repoRoot));
 }
 
-/**
- * Creates the project folder (parents included) so `git worktree add` can create
- * the leaf inside it. Must only run after `assertSafeWorktreeLocation` accepted
- * the planned leaf — an unsafe base must never be materialized on disk.
- */
 function ensureProjectWorktreeDir(dedicatedRoot: string, repoRoot: string): void {
 	try {
 		fs.mkdirSync(buildNativeProjectPath(dedicatedRoot, repoRoot), { recursive: true });
@@ -704,7 +687,6 @@ function isStrictChildPath(parent: string, child: string): boolean {
 	return Boolean(relative) && relative !== "." && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
-/** Fail closed before `git worktree add`: reject unsafe planned/realpath locations. */
 function assertSafeWorktreeLocation(worktreePath: string, repoRoot: string, dedicatedRoot: string): void {
 	const resolvedLeaf = normalizeComparableCwd(worktreePath);
 	const resolvedRepoRoot = normalizeComparableCwd(repoRoot);
@@ -893,7 +875,6 @@ async function runWorktreeSetupHook(
 		}
 		return [...uniquePaths];
 	} catch (error) {
-		// Semantic rejection occurs after exit: retain uncertainty, never signal an old PID.
 		tx.unknown(error);
 		throw error;
 	}
@@ -940,7 +921,6 @@ async function createNativeWorktree(
 	const naming = buildWorktreeNaming({ runId, index, agent, label: labels?.[index], task: tasks?.[index], branchPrefix });
 	const worktreePath = buildNativeWorktreePath(dedicatedRoot, toplevel, runId, index);
 	assertSafeWorktreeLocation(worktreePath, toplevel, dedicatedRoot);
-	// Absence is required before claiming any partial artifacts from this attempt.
 	const branch = await tx.git(toplevel, ["show-ref", "--verify", "--quiet", `refs/heads/${naming.requestedBranch}`], [0, 1]);
 	let pathExists = false;
 	try { fs.lstatSync(worktreePath); pathExists = true; }
@@ -1157,7 +1137,6 @@ function writeEmptyPatch(patchPath: string): void {
 	try {
 		fs.writeFileSync(patchPath, "", "utf-8");
 	} catch {
-		// Diff artifact writing is best-effort in error paths.
 	}
 }
 
@@ -1324,8 +1303,6 @@ async function compensateSetup(tx: SetupTransaction): Promise<WorktreeCleanupRep
 	const report: WorktreeCleanupReport = { state: "partial", tasks: [], pruned: false, errors: [] };
 	tx.progress.cleanup = report;
 	tx.progress.phase = "rollback";
-	// Cancellation stops allocation, not accounting. Compensation has ONLY the
-	// remaining original absolute deadline; it does not reuse the launch signal.
 	const git = async (args: string[], acceptedExitCodes: readonly number[] = [0]) => {
 		if (setupPoison) throw new Error(setupPoison);
 		tx.progress.command = { command: "git", args: ["-C", setup.cwd, ...args] };
@@ -1356,8 +1333,6 @@ async function compensateSetup(tx: SetupTransaction): Promise<WorktreeCleanupRep
 				await git(["worktree", "remove", "--force", attempt.path]);
 				task.worktreeRemoved = true;
 			} else {
-				// Native attempts were absent before mutation. Reconcile only exact
-				// registered path/branch identity; never recursively delete a guessed leaf.
 				const listed = (await git(["worktree", "list", "--porcelain"])).stdout;
 				const entry = listed.split("\n\n").find((block) => block.split("\n").includes(`worktree ${attempt.path}`));
 				if (entry) {
@@ -1484,7 +1459,6 @@ export function diffWorktrees(setup: WorktreeSetup, agents: string[], diffsDir: 
 	try {
 		fs.mkdirSync(diffsDir, { recursive: true });
 	} catch {
-		// Returning no diffs is safer than failing the whole command on artifact-dir issues.
 		return [];
 	}
 
@@ -1496,7 +1470,6 @@ export function diffWorktrees(setup: WorktreeSetup, agents: string[], diffsDir: 
 		try {
 			diffs.push(captureWorktreeDiff(setup, worktree, agent, patchPath));
 		} catch (error) {
-			// Preserve execution flow while retaining the failed capture as handoff evidence.
 			writeEmptyPatch(patchPath);
 			diffs.push(emptyDiff(index, agent, worktree.branch, patchPath, error instanceof Error ? error.message : String(error)));
 		}

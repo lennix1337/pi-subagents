@@ -166,11 +166,8 @@ export function formatSavedOutputReference(savedPath: string, fullOutput: string
 }
 
 const INLINE_OUTPUT_HEAD_CHARS = 2_000;
-/** Larger files are not read to check a cap; the output then stays whole. */
 const MAX_FULL_OUTPUT_FILE_BYTES = 50 * 1024 * 1024;
-/** The line finalizeSingleOutput appends when inline output was also saved to an explicit output file. */
 const SAVED_OUTPUT_LINE = /\n\nOutput saved to: (.+) \([^()\n]*\)\. Read this file if needed\.$/;
-/** How many trailing `\n\n` blocks a file-backed head may be followed by, such as a timed-out child's recovery summary. */
 const MAX_UNFILED_TRAILING_BLOCKS = 8;
 
 function readFullOutputFile(filePath: string): string | undefined {
@@ -183,7 +180,6 @@ function readFullOutputFile(filePath: string): string | undefined {
 	}
 }
 
-/** The longest prefix of output, ending before at most `maxTrailingBlocks` of its last `\n\n` blocks, that the file holds and that is worth capping. */
 function fileBackedHead(output: string, fullOutput: string, maxTrailingBlocks: number): string | undefined {
 	if (fullOutput.includes(output)) return output;
 	let end = output.length;

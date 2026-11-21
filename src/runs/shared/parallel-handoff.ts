@@ -149,7 +149,7 @@ export function resolveParallelHandoffChild(input: {
 
 function resolveExistingPath(candidate: string): string {
 	try {
-		// Unlike the JS resolver, native expands Windows 8.3 aliases before containment checks.
+		// external: Node native realpath expands Windows 8.3 aliases.
 		return fs.realpathSync.native(candidate);
 	} catch {
 		return path.resolve(candidate);
@@ -195,7 +195,6 @@ export function resolveRetainedWorktreeCwd(manifestPath: string, runId: string, 
 	if (path.isAbsolute(relativeCwd) || relativeCwd === ".." || relativeCwd.startsWith(`..${path.sep}`)) throw new Error(`Async run '${runId}' has an invalid managed worktree cwd.`);
 	const requiredCwd = path.join(cleanup.path, relativeCwd);
 	if (cleanup.worktreeRemoved || cleanup.branchRemoved) throw new Error(`Async run '${runId}' required managed worktree was removed: ${requiredCwd}`);
-	// The runner removes the worktree right after this marker, without the locks that guard resume admission.
 	if (cleanup.reason?.includes("pending durable handoff capture")) throw new Error(`Async run '${runId}' child ${childIndex} is still finalizing its managed worktree: ${requiredCwd}. Retry after the run settles; if it already ended, inspect ${manifestPath}.`);
 	let worktreeRoot = "";
 	let resolvedRequiredCwd = "";
@@ -511,7 +510,6 @@ function missingDiff(input: { manifestPath: string; stepIndex: number; taskIndex
 		fs.mkdirSync(path.dirname(patchPath), { recursive: true });
 		fs.writeFileSync(patchPath, "", "utf-8");
 	} catch {
-		// Handoff records the artifact failure below; patch creation remains best-effort.
 	}
 	return {
 		index: input.taskIndex,
@@ -667,11 +665,9 @@ export function writeWorktreeSetupHandoff(input: Omit<Parameters<typeof writePar
 }): ParallelHandoffReference | undefined {
 	const { progress, ...handoff } = input;
 	const { setup, attempts, cleanup } = progress;
-	// Preflight has no allocation identity yet. Its original error belongs to the caller.
 	if (attempts.length === 0 && setup.worktrees.length === 0) return undefined;
 	if (!setup.cwd || !setup.baseCommit) throw new Error("Cannot publish worktree allocation evidence without repository and base commit.");
 	const diagnostic = (text: string): string => text.slice(0, 512);
-	// Never copy argv, environment, Error objects or captured stdout/stderr into artifacts.
 	const commandEvidence = (command: WorktreeSetupProgress["command"]) => command && ({
 		pid: command.pid,
 		processGroupId: command.processGroupId,
@@ -705,7 +701,6 @@ export function writeWorktreeSetupHandoff(input: Omit<Parameters<typeof writePar
 			state: cleanup?.state ?? "partial",
 			pruned: cleanup?.pruned ?? false,
 			errors,
-			// An attempted native path is not a validated recovery task, even during rollback.
 			tasks: setup.worktrees.map((worktree) => {
 				const task = cleanup?.tasks.find((candidate) => candidate.index === worktree.index);
 				return task ? { ...task, reason: task.reason && diagnostic(task.reason), errors: task.errors?.map(diagnostic) } : {

@@ -135,7 +135,6 @@ export function validHostStepNodes(graph: WorkflowGraphSnapshot | undefined): Ho
 			if (nodeIdCounts.get(hostStep.id) !== 1) continue;
 			hostSteps.push(hostStep);
 		} catch {
-			// Renderers must not turn malformed host data into a fake child row.
 		}
 	}
 	return hostSteps.slice(0, HOST_STEP_MAX_COUNT);

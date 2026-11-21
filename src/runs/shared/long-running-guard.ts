@@ -55,7 +55,6 @@ export function resolveCurrentPath(toolName: string | undefined, args: Record<st
 	return undefined;
 }
 
-// Reads one shell word starting at `start`, removing quotes and escapes.
 function readShellWord(command: string, start: number): { word: string; end: number } {
 	let word = "";
 	let quote: string | undefined;
@@ -64,7 +63,7 @@ function readShellWord(command: string, start: number): { word: string; end: num
 		const char = command[i]!;
 		if (quote) {
 			if (char === quote) quote = undefined;
-			// Inside double quotes a backslash escapes only $ ` " \ and newline; elsewhere it stays.
+			// external: Shell double-quoted backslashes escape only $, backtick, double quote, backslash and newline.
 			else if (char === "\\" && quote === '"' && /[$`"\\\n]/.test(command[i + 1] ?? "")) word += command[++i];
 			else word += char;
 			continue;
@@ -77,7 +76,6 @@ function readShellWord(command: string, start: number): { word: string; end: num
 	return { word, end: i };
 }
 
-// First file an unquoted `>`, `>>`, or `tee` writes, skipping fd duplications (`>&1`) and /dev/null.
 function firstWrittenFile(command: string): string | undefined {
 	let quote: string | undefined;
 	for (let i = 0; i < command.length; i++) {
@@ -93,13 +91,13 @@ function firstWrittenFile(command: string): string | undefined {
 		if (char !== ">" && !isTee) continue;
 		let cursor = isTee ? i + 3 : command[i + 1] === ">" ? i + 2 : i + 1;
 		for (;;) {
-			// A newline ends the command, so arguments never continue onto the next line.
+			// external: A shell newline terminates the command.
 			while (cursor < command.length && /[ \t]/.test(command[cursor]!)) cursor++;
 			if (command[cursor] === "&") break;
 			const { word, end } = readShellWord(command, cursor);
 			cursor = end;
 			if (word && word !== "/dev/null" && !(isTee && word.startsWith("-"))) return word;
-			// tee takes several files and flags; a redirect takes one target.
+			// external: tee accepts multiple files; shell redirects take one target.
 			if (!isTee || !word) break;
 		}
 		i = cursor - 1;

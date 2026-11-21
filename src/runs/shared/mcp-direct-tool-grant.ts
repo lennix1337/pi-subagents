@@ -132,7 +132,6 @@ function getServerPrefix(serverName: string, mode: McpToolPrefix): string {
 	return sanitizeServerPrefix(serverName);
 }
 
-/** Adapter parity: characters outside [A-Za-z0-9_-] become `_<code point in hex>_`. */
 function sanitizeServerPrefix(serverName: string): string {
 	return Array.from(serverName, (char) => /^[A-Za-z0-9_-]$/.test(char) ? char : `_${char.codePointAt(0)!.toString(16)}_`).join("");
 }
@@ -140,9 +139,7 @@ function sanitizeServerPrefix(serverName: string): string {
 function formatToolName(toolName: string, serverName: string, prefix: McpToolPrefix): string {
 	const serverPrefix = getServerPrefix(serverName, prefix);
 	const sanitized = toolName.replace(/\./g, "_");
-	// Some servers prefix their tool names with the server name (codegraph ->
-	// codegraph_explore). pi-mcp-adapter registers such a name unchanged, so
-	// keep the two sides in agreement instead of demanding codegraph_codegraph_explore.
+	// external: pi-mcp-adapter leaves already server-prefixed tool names unchanged.
 	if (serverPrefix && sanitized.startsWith(`${serverPrefix}_`) && sanitized.length > serverPrefix.length + 1) {
 		return sanitized;
 	}

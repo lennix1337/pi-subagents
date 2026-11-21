@@ -201,9 +201,7 @@ function comparablePath(candidate: string): string {
 export function samePath(left: string, right: string): boolean {
 	if (comparablePath(left) === comparablePath(right)) return true;
 	if (process.platform !== "win32") return false;
-	// Git for Windows and Node can spell the same temp directory with different
-	// drive/short-name aliases. The directory identity is the final bounded
-	// fallback; never accept aliases when the filesystem cannot prove identity.
+	// external: Git for Windows and Node can use different drive and short-name aliases for the same directory.
 	try {
 		const leftStat = fs.statSync(left, { bigint: true });
 		const rightStat = fs.statSync(right, { bigint: true });
@@ -345,9 +343,6 @@ function discoverHandoffPaths(repoRoot: string, input: BuildWorktreeCleanupPlanI
 	if (input.handoffPath) add(input.handoffPath);
 	for (const candidate of input.handoffPaths ?? []) add(candidate);
 
-	// Project artifacts have a fixed, shallow handoff layout. Do not walk a temp
-	// or session root: those roots contain unrelated operator data and are not a
-	// source of ownership for cleanup candidates.
 	const artifactsDir = path.join(repoRoot, PROJECT_SUBAGENTS_RELATIVE_DIR, "artifacts");
 	const projectHandoffPath = path.join(artifactsDir, "handoff.json");
 	if (fs.existsSync(projectHandoffPath)) add(projectHandoffPath);
@@ -632,7 +627,6 @@ function buildManagedEntry(input: {
 	if (input.containmentInvalid || !pathInside(baseDir, pathInspection.realpath, true)) return blockedEntry(entry, "ineligible", "keep", `worktree real path is outside configured base directory '${baseDir}'`);
 	const recordedBaseDir = record.task.recordedBaseDir;
 	if (typeof recordedBaseDir !== "string" || !path.isAbsolute(recordedBaseDir)) return blockedEntry(entry, "unknown", "keep", "handoff metadata has no creation-time base directory proof");
-	// Compare the saved canonical string, without following a newly replaced ancestor.
 	const creationRelative = path.relative(recordedBaseDir, pathInspection.realpath);
 	if (!creationRelative || creationRelative === ".." || creationRelative.startsWith(`..${path.sep}`) || path.isAbsolute(creationRelative)) return blockedEntry(entry, "ineligible", "keep", `worktree real path is outside its creation-time recorded base directory '${recordedBaseDir}'`);
 

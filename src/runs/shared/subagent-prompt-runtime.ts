@@ -92,7 +92,6 @@ function registerRuntimeExtensionAcknowledgements(pi: ExtensionAPI, sink: ((ids:
 		onRuntimeEvent("agent_end", finalize);
 		onRuntimeEvent("session_shutdown", finalize);
 	} catch {
-		// Acknowledgement collection is optional observability and must not affect child execution.
 	}
 }
 
@@ -228,7 +227,6 @@ function childBoundary(options: ChildBoundaryOptions): string {
 }
 
 function appendChildBoundary(prompt: string, options: ChildBoundaryOptions): string {
-	// Pi's base prompt stays first so providers that recognize it by its opening still do.
 	return `${stripChildBoundaryInstructions(prompt)}\n\n${childBoundary(options)}`;
 }
 
@@ -236,12 +234,10 @@ export function rewriteSubagentPrompt(prompt: string, options: InheritedPromptOp
 	return appendChildBoundary(stripInheritedPromptText(prompt, options), options);
 }
 
-/** In place, so later handlers and the final render never see the removed context. */
 function filterChildPromptOptions(options: BeforeAgentStartEvent["systemPromptOptions"], inherited: InheritedPromptOptions): void {
 	if (!inherited.inheritProjectContext) options.contextFiles = [];
 	else if (!inherited.inheritGlobalContext) options.contextFiles = options.contextFiles.filter((file) => !isGlobalContextFile(file.path));
 	options.skills = inherited.inheritSkills ? options.skills.filter((skill) => skill.name !== "pi-subagents") : [];
-	// Role prompts can embed context, skill catalogs, or an earlier child's boundary as text.
 	if (options.customPrompt) options.customPrompt = stripInheritedPromptText(options.customPrompt, inherited);
 	if (options.appendSystemPrompt) options.appendSystemPrompt = stripInheritedPromptText(options.appendSystemPrompt, inherited);
 }
@@ -253,9 +249,6 @@ function rewritesChildPrompt(config: ChildRuntimeConfig): boolean {
 /** Installed after every other extension: a returned prompt freezes out sections added after it. */
 export function registerSubagentPromptBoundary(pi: ExtensionAPI, config: ChildRuntimeConfig): void {
 	if (!rewritesChildPrompt(config)) return;
-	// A returned prompt replaces the whole system prompt of every request. A fork must send its
-	// parent's prompt unchanged to reuse its prompt cache, so its boundary goes in its task
-	// message instead (see projectForkRequest).
 	if (config.forkCacheKey) return;
 	pi.on("before_agent_start", (event) => {
 		const finalized = appendChildBoundary(event.systemPrompt, { fanoutChild: config.fanoutChild, structuredOutput: Boolean(config.structuredOutput) });
@@ -318,19 +311,8 @@ export function modelBefore(messages: readonly { role: string }[], forkedAt: num
 	return undefined;
 }
 
-/**
- * Sections that describe what a session has (tools, skills, agents, docs, project files) rather
- * than who it is. A fork is told which tools it can call, and it inherited the rest with the
- * parent's prompt, so its own versions of these sections are not repeated in its task message.
- */
 const LOADOUT_SECTIONS = new Set(["tools", "rules", "docs", "skills", "advertised_subagents", "mcp_servers", "project_context"]);
 
-/**
- * The child's own instructions, which a fork sends in its task message instead of its system
- * prompt: the text its own system messages (`own`) add, the sections it changed except the loadout
- * ones, the tools it can call, and its boundary. `parent` is the inherited system messages and
- * `child` the whole request.
- */
 function forkInstructions(input: { parent: TranscriptMessages; child: TranscriptMessages; own: TranscriptMessages; boundary?: string }): string {
 	const parent = getCurrentSystemMessage(input.parent);
 	const child = getCurrentSystemMessage(input.child);
@@ -437,7 +419,7 @@ export function rewriteForkCacheProviderRequest(event: BeforeProviderRequestEven
 
 function portableToolId(id: string, preserveBoundedCompositeToolIds = false): string {
 	if (PORTABLE_TOOL_ID_PATTERN.test(id) && id.length <= MAX_PORTABLE_TOOL_ID_LENGTH) return id;
-	// Codex splits call_id|item_id on replay; each wire ID must remain portable and bounded.
+	// external: Codex splits call_id|item_id on replay.
 	if (preserveBoundedCompositeToolIds) {
 		const parts = id.split("|");
 		if (parts.length === 2 && parts.every((part) => PORTABLE_TOOL_ID_PATTERN.test(part) && part.length <= MAX_PORTABLE_TOOL_ID_LENGTH)) return id;
@@ -484,8 +466,7 @@ export function stripParentOnlySubagentMessages(messages: unknown[], options: { 
 	const preserveCurrentFanoutToolHistory = options.preserveFanoutToolHistory === true;
 	const sanitizeToolIds = options.sanitizeToolIds ?? true;
 	const inheritedBefore = options.inheritedBefore;
-	// Every message Pi projects from a session has a timestamp, so one without it was added at
-	// request time and is treated as the child's own.
+	// external: Pi session-projected messages have timestamps.
 	const inherited = (message: unknown) => inheritedBefore !== undefined && typeof (message as { timestamp?: unknown })?.timestamp === "number" && (message as { timestamp: number }).timestamp < inheritedBefore;
 	let changed = false;
 	const filtered: unknown[] = [];
@@ -580,7 +561,6 @@ function registerToolBudget(pi: ExtensionAPI, budget: ResolvedToolBudget | undef
 			try {
 				sendUserMessage?.(toolBudgetSoftNudge(budget, toolCount), { deliverAs: "steer" });
 			} catch {
-				// Budget nudges are advisory; blocking below remains authoritative.
 			}
 		}
 		if (!shouldBlockToolForBudget(budget, toolName, toolCount)) return undefined;
@@ -632,10 +612,6 @@ function registerStructuredOutputTool(pi: ExtensionAPI, structured: NonNullable<
 
 /** Register every child-side hook the prompt runtime owns for one child session. */
 export default function registerSubagentPromptRuntime(pi: ExtensionAPI, config?: ChildRuntimeConfig, drainObservation?: import("./readonly-drain-observation.ts").ReadonlyDrainObservation): void {
-	// A path-based load has no ChildRuntimeConfig. This can happen if an
-	// ambient-extension discovery path finds the runtime module in addition to
-	// the configured inline factory. It must be inert rather than crashing the
-	// child before startup; the inline factory remains the real registration path.
 	if (!config) return;
 	registerRuntimeExtensionAcknowledgements(pi, config.runtimeAcknowledgements);
 	registerPermissionGate(pi, config.permissions, config.childWatchdog);
@@ -665,7 +641,6 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI, config?:
 		resultFileCoalescer: { schedule: () => false, clear: () => {} },
 	} as unknown as SubagentState;
 	const nestedRootRunId = inheritedNestedRouteOf(config)?.rootRunId;
-	// fanout-child assigns config.hasPendingSupervisorRequest after this hook registers, so read it per wait.
 	if (typeof pi.registerTool === "function") registerWaitTool(pi, waitState, config.waitTool.enabled, undefined, config.waitTool.defaultTimeoutMs, { nestedRootRunId }, () => config.hasPendingSupervisorRequest?.() === true);
 	const supervisorMetadata = childSupervisorMetadata(config);
 	let nativeSupervisorClientRegistered = false;
@@ -705,11 +680,6 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI, config?:
 
 	onRuntimeEvent("before_provider_request", (event: unknown, ctx?: ExtensionContext) => rewriteForkCacheProviderRequest(event as BeforeProviderRequestEvent, ctx, config.forkCacheKey));
 
-	// A fork launch sets forkCacheKey. Pi writes the fork's session header when it copies the
-	// parent's branch, so every inherited message is older and every message this child writes,
-	// also after a resume, is not.
-	// The inherited system messages and model are read from the session once: a request may hold
-	// only Pi's collapsed leading message, and what came before the fork never changes.
 	let inherited: { session: string; forkedAt: number; system: Array<{ role: string }>; model?: InheritedModel } | undefined;
 	const readInherited = (ctx: ExtensionContext | undefined) => {
 		const header = ctx?.sessionManager?.getHeader();
@@ -725,16 +695,12 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI, config?:
 	if (config.forkCacheKey) onRuntimeEvent("before_provider_headers", (event: unknown, ctx?: ExtensionContext) => {
 		applyForkSessionAffinity((event as { headers?: Record<string, string | null | undefined> } | undefined)?.headers, ctx?.model, config.parentSessionId, readInherited(ctx)?.model);
 	});
-	// The strip runs on context_with_system, not context: Pi treats any change a context handler
-	// makes to the message list as a rewritten conversation and folds every mid-conversation system
-	// message into the leading one, so every later request would miss the prompt cache. The strip
-	// passes system messages through unchanged, and a fork's projection reads the stripped list.
+	// external: Pi treats context handler message changes as rewritten history and folds system messages into the leading one.
 	onRuntimeEvent("context_with_system", (event: unknown, ctx?: ExtensionContext) => {
 		if (!event || typeof event !== "object" || !("messages" in event) || !Array.isArray(event.messages)) return undefined;
 		const forkedAt = config.forkCacheKey ? Date.parse(ctx?.sessionManager?.getHeader()?.timestamp ?? "") : Number.NaN;
 		const stripped = stripParentOnlySubagentMessages(event.messages, {
 			sanitizeToolIds: !COMPOSITE_TOOL_ID_APIS.has(ctx?.model?.api ?? ""),
-			// Providers that reuse the Codex Responses wire under their own api id (e.g. cliproxyapi-codex-responses) split call_id|item_id the same way.
 			preserveBoundedCompositeToolIds: ctx?.model?.api?.endsWith("-codex-responses") === true,
 			preserveFanoutToolHistory: config.fanoutChild,
 			...(Number.isFinite(forkedAt) ? { inheritedBefore: forkedAt } : {}),
@@ -744,9 +710,7 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI, config?:
 		return messages === event.messages ? undefined : { messages };
 	});
 
-	// pi-intercom asks at session start for this session's intercom ID. Claiming
-	// the route there frees the session name for the readable label. An older
-	// pi-intercom never asks and routes by name, so the route stays the name.
+	// external: Current pi-intercom requests a session intercom ID at session start; older versions route by name.
 	const routingName = config.intercomSessionName;
 	let intercomIdClaimed = false;
 	if (routingName) {
@@ -765,7 +729,6 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI, config?:
 			pi.setSessionName(childSessionName);
 		}
 
-		// Filter the inputs instead of returning a prompt; the boundary hook appends the boundary last.
 		if (!rewritesChildPrompt(config)) return;
 		filterChildPromptOptions((event as BeforeAgentStartEvent).systemPromptOptions, {
 			inheritProjectContext: config.inheritProjectContext ?? true,

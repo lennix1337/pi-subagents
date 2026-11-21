@@ -24,7 +24,6 @@ export function projectChildToolActivity(
 /** The async journal is a boundary: validate and allowlist, never spread its records onto the bus. */
 export function readChildToolActivity(value: unknown): SubagentChildToolActivityEvent | undefined {
 	if (!value || typeof value !== "object") return;
-	// SAFETY: value is a non-null object; each public field is validated below before use.
 	const event = value as Record<string, unknown>;
 	if (event.type !== "subagent.child-tool-activity" || event.version !== 1) return;
 	if (typeof event.runId !== "string" || !event.runId
@@ -49,7 +48,6 @@ export function emitChildToolActivity(events: Pick<IntercomEventBus, "emit">, ac
 	try {
 		events.emit(SUBAGENT_CHILD_TOOL_ACTIVITY_EVENT, activity);
 	} catch (error) {
-		// Observability listeners must not interrupt the child's execution or journal replay.
 		console.error("Failed to emit child tool activity event:", error);
 	}
 }

@@ -1,6 +1,6 @@
 export const TOOL_TIMEOUT_ENV = "PI_SUBAGENT_TOOL_TIMEOUT_MS";
 
-/** Maximum delay a Node.js timer accepts without overflow. */
+// external: Node.js timers overflow above their maximum supported delay.
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 export const DEFAULT_FAST_TOOL_TIMEOUT_MS = 300_000;
@@ -18,7 +18,6 @@ export const DEFAULT_FAST_TOOL_TIMEOUT_TOOLS = new Set([
 /** Tools whose normal job can be to wait for a person or another run. */
 export const TOOL_TIMEOUT_EXEMPT_TOOLS = new Set(["contact_supervisor", "intercom", "bg_wait"]);
 
-// Backward-compatible export name for existing callers/tests.
 export const TOOL_TIMEOUT_ALLOWLIST = TOOL_TIMEOUT_EXEMPT_TOOLS;
 
 export function isToolTimeoutExempt(toolName: string | undefined): boolean {

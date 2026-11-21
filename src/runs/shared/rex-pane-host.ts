@@ -21,9 +21,8 @@ const sessionWindows = Compile(Type.Object({ windows: Type.Array(Type.Object({ w
 const blockProcess = Compile(Type.Object({ foreground: Type.Object({ pid: Type.Integer() }) }));
 const bridgeManifestPid = Compile(Type.Object({ pid: Type.Integer() }));
 
-/** Rex runtime directories go under /tmp: the bridge socket path inside a macOS TMPDIR exceeds the unix socket path limit. */
+// external: macOS TMPDIR paths can exceed Unix socket path limits for Rex bridge sockets.
 function rexAccess(): PlacementMachineAccess { return localMachineAccess({ env: { ...rexCommandEnv(), TMPDIR: "/tmp" } }); }
-/** The same /tmp rule on the remote, whatever TMPDIR its SSH session has. */
 function rexSshAccess(machine: RexSshMachineReference, access: PlacementMachineAccess = sshMachineAccess(machine)): PlacementMachineAccess { return { ...access, shellCommand: (script, args) => remoteShellCommand(`TMPDIR=/tmp; export TMPDIR; ${script}`, args) }; }
 
 interface RexEndpoint { access: PlacementMachineAccess; bin: string; session: string; server?: string }
@@ -32,7 +31,6 @@ export interface RexPaneCandidate { present: boolean; foregroundPid?: number; br
 
 function asRexMachine(machine: PlacementMachineReference): RexMachineReference { if (machine.provider !== "rex") throw new Error("The Rex pane host only places runs on Rex machines."); return machine; }
 
-/** Runs one rex command on the pane machine with --autostart=false, the recorded server, and no inherited Rex selectors; exit 4 always throws. */
 async function runRex(endpoint: Pick<RexEndpoint, "access" | "bin" | "server">, args: string[], what: string): Promise<PlacementCommandResult & { status: number }> {
 	const result = await endpoint.access.runAsync(endpoint.access.shellCommand('exec /usr/bin/env -u REX_SESSION -u REX_BLOCK -u REX_SERVER "$@"', [endpoint.bin, ...rexGlobalArgs(endpoint.server), ...args]), { timeout: REX_CALL_TIMEOUT_MS, maxBuffer: REX_MAX_OUTPUT });
 	if (result.error) throw new Error(`Rex ${what} failed: ${result.error.message}`, { cause: result.error });
@@ -46,13 +44,11 @@ function requireRexSuccess(result: PlacementCommandResult, what: string): void {
 	if (result.status !== 0) throw new Error(`Rex ${what} exited with code ${result.status}: ${result.stderr.trim().slice(0, 512)}`);
 }
 
-/** Parses rex's JSON output against its schema; undefined when the shape does not match. */
 function parseRexJson<T extends TSchema>(text: string, validator: Validator<{}, T>, what: string): StaticEncode<T, {}> | undefined {
 	let value: unknown; try { value = JSON.parse(text); } catch { throw new Error(`Rex ${what} returned malformed JSON.`); }
 	return validator.Check(value) ? value : undefined;
 }
 
-/** One remote lookup, matching resolveRexBinary: `$REX_BIN_DIR/rex`, then `rex` on PATH, then the Rex server bundle under the remote home. */
 async function resolveRemoteRexBinary(access: PlacementMachineAccess, machine: RexSshMachineReference): Promise<string> {
 	const script = `for c in "\${REX_BIN_DIR:+$REX_BIN_DIR/rex}" "$(command -v rex 2>/dev/null)" "$HOME/${REX_BUNDLE_BIN}"; do if [ -n "$c" ] && [ -f "$c" ] && [ -x "$c" ]; then printf '%s\\n' "$c"; exit 0; fi; done; exit 1`;
 	const found = await access.runAsync(access.shellCommand(script), { timeout: REX_CALL_TIMEOUT_MS, maxBuffer: 64 * 1024 });
@@ -62,7 +58,6 @@ async function resolveRemoteRexBinary(access: PlacementMachineAccess, machine: R
 	return bin;
 }
 
-/** The pane's cwd as the remote Pi will report it: `~` expanded and symlinks resolved. Rex does not expand `~` itself. */
 async function resolveRemoteCwd(access: PlacementMachineAccess, machine: RexSshMachineReference): Promise<string> {
 	const script = `case "$1" in "~") d=$HOME;; "~/"*) d=$HOME/\${1#"~/"};; *) d=$1;; esac; cd -P -- "$d" 2>/dev/null && pwd -P`;
 	const resolved = await access.runAsync(access.shellCommand(script, [machine.cwd]), { timeout: REX_CALL_TIMEOUT_MS, maxBuffer: 64 * 1024 });
@@ -72,7 +67,6 @@ async function resolveRemoteCwd(access: PlacementMachineAccess, machine: RexSshM
 	return cwd;
 }
 
-/** The remote Pi as a Rex tab's login environment finds it. */
 async function resolveRemotePi(access: PlacementMachineAccess, machine: RexSshMachineReference): Promise<string> {
 	const found = await access.runAsync(access.shellCommand(`exec "\${SHELL:-/bin/sh}" -lc 'command -v pi'`), { timeout: REX_CALL_TIMEOUT_MS, maxBuffer: 64 * 1024 });
 	if (found.error) throw new Error(`Could not look for Pi on ${machine.id}: ${found.error.message}`, { cause: found.error });
@@ -89,10 +83,6 @@ async function labeledSessions(endpoint: Pick<RexEndpoint, "access" | "bin">): P
 	return parsed.sessions.filter((session) => session.label === REX_SSH_SESSION_LABEL).map((session) => session.session_id);
 }
 
-/**
- * The session labeled `subagents` on the SSH machine, created when there is none. Rex allows duplicate labels, so two or
- * more fail closed, also after creating one. Only launch calls this; reconnect and cleanup use the recorded session id.
- */
 async function subagentsSession(endpoint: Pick<RexEndpoint, "access" | "bin">, machine: RexSshMachineReference): Promise<string> {
 	return withHerdrPaneAllocationLock(JSON.stringify(["rex-session", machine.target, REX_SSH_SESSION_LABEL]), async () => {
 		let sessions = await labeledSessions(endpoint);
@@ -159,10 +149,6 @@ async function readBridgePid(connection: RexConnection, runtimeDir: string): Pro
 	return parseRexJson(manifest.stdout, bridgeManifestPid, "bridge manifest")?.pid;
 }
 
-/**
- * `window new` failed, timed out, or printed something unreadable, so the server may still have opened this run's window.
- * Find it by the run's tab label in the recorded session and close its blocks with the same close-then-prove-gone rule.
- */
 async function closeUntrackedRexWindow(connection: RexConnection, label: string, failure: Error): Promise<never> {
 	try {
 		const inspected = await runRex(connection, ["session", "inspect", connection.session, "--json"], "session inspect");
@@ -179,7 +165,6 @@ async function closeUntrackedRexWindow(connection: RexConnection, label: string,
 	throw failure;
 }
 
-/** Opens the run's background window; on any failure, closes the window the server may have opened before rethrowing. */
 async function openRexWindow(connection: RexConnection, label: string, cwd: string, argv: string[]) {
 	try {
 		const created = await runRex(connection, ["window", "new", "-s", connection.session, label, "-c", cwd, "--focus=false", "--json", "--", ...argv], "window new");
@@ -242,7 +227,6 @@ function runtimeDirPresent(access: PlacementMachineAccess, runtimeDir: string): 
 	return result.status === 0;
 }
 
-/** A closed local Pi removes its own runtime directory on shutdown, so already-removed counts as removed. */
 function removeRexRuntimeDir(access: PlacementMachineAccess, runtimeDir: string): void {
 	if (!runtimeDirPresent(access, runtimeDir)) return;
 	try { removePlacedRuntimeDir(access, runtimeDir); } catch (error) { if (runtimeDirPresent(access, runtimeDir)) throw error; }
@@ -253,7 +237,7 @@ export class RexPlacedRunOwner extends PlacedRunOwner<RexConnection, RexMachineR
 	private constructor(machine: RexMachineReference, runId: string, runtimeDir: string, connection: RexConnection, access: PlacementMachineAccess, host: PlacementPaneHost<RexConnection, RexPaneCandidate>) { super(machine, runId, runtimeDir, connection, host, access, () => removeRexRuntimeDir(access, runtimeDir)); }
 	/** A Rex SSH owner's machine carries the resolved remote cwd, and its host reconnects only to the session recorded here. */
 	static async create(machine: RexMachineReference, runId: string, options: { sshAccess?: PlacementMachineAccess } = {}): Promise<RexPlacedRunOwner> {
-		// A short hash names the directory, so /tmp/pi-subagents-herdr-<hash>-XXXXXXXX/bridge.sock (57 bytes) fits the 103-byte macOS socket path limit for any run id.
+		// external: Unix socket paths on macOS have a 103-byte limit.
 		const hash = createHash("sha256").update(runId).digest("hex").slice(0, 12);
 		if (isRexLocalMachine(machine)) {
 			const access = rexAccess(), runtimeDir = await createPlacedRuntimeDir(access, hash);

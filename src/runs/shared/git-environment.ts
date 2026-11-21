@@ -18,7 +18,7 @@ const GIT_ROUTING_VARIABLES = new Set([
 ]);
 
 function isGitRoutingVariable(name: string): boolean {
-	// Windows environment names are case-insensitive, and Git for Windows reads them that way.
+	// external: Windows environment names are case-insensitive.
 	const upper = name.toUpperCase();
 	return GIT_ROUTING_VARIABLES.has(upper) || /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/.test(upper);
 }

@@ -562,7 +562,6 @@ function routeFromIndexEntry(rootRunId: string, filePath: string): NestedRoute |
 			try {
 				writeAtomicJson(routeFilePath, { rootRunId, capabilityToken: metadata.capabilityToken, createdAt: typeof metadata.createdAt === "number" ? metadata.createdAt : Date.now() });
 			} catch {
-				// The route index already carries enough data for reload lookup.
 			}
 		}
 		return route;
@@ -757,14 +756,8 @@ export function projectNestedEvents(route: NestedRoute): NestedRegistry {
 		const retainedEvents = processedEvents.slice(-1000);
 		const evictedEvents = processedEvents.slice(0, -1000);
 		registry = { ...registry, processedEvents: retainedEvents };
-		// Parent projection is the only writer to this sidecar registry. Child and
-		// runner processes only create immutable event files, so parent status.json
-		// remains owned by the existing runner writer and is never rewritten here.
 		writeAtomicJson(registryPath(route), registry);
 
-		// The registry retains only a bounded filename cursor. Remove the old
-		// immutable status records after the cursor is durable; otherwise an evicted
-		// filename is rediscovered on the next projection and replayed forever.
 		for (const entry of evictedEvents) {
 			const eventPath = path.join(route.eventSink, entry);
 			if (!containedPath(route.eventSink, eventPath)) continue;
@@ -778,7 +771,6 @@ export function projectNestedEvents(route: NestedRoute): NestedRegistry {
 					.some((line) => line.trim() && parseControlResult(line.trim(), route));
 				if (hasStatusRecord && !hasControlResult) fs.unlinkSync(eventPath);
 			} catch {
-				// A cleanup failure must not make a successfully projected status fail.
 			}
 		}
 	}

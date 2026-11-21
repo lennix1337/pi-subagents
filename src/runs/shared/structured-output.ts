@@ -178,8 +178,7 @@ async function importCompile(): Promise<CompileJsonSchema> {
 	} catch (error) {
 		failures.push(`direct import failed: ${error instanceof Error ? error.message : String(error)}`);
 	}
-	// Pi's extension loader imports this compiled file natively, so the lazy import above misses
-	// Pi's host-package aliases when TypeBox is installed only in Pi's own tree.
+	// external: Pi loads this compiled extension natively, bypassing host-package aliases.
 	const envRoot = process.env[PI_CODING_AGENT_PACKAGE_ROOT_ENV]?.trim() || undefined;
 	if (!envRoot) failures.push(`${PI_CODING_AGENT_PACKAGE_ROOT_ENV} is not set`);
 	const roots = new Map<string, string>();
@@ -468,6 +467,5 @@ export function cleanupStructuredOutputRuntime(runtime: StructuredOutputRuntime 
 	try {
 		fs.rmSync(path.dirname(runtime.schemaPath), { recursive: true, force: true });
 	} catch {
-		// Best-effort temp cleanup.
 	}
 }
