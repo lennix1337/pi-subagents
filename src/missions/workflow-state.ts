@@ -75,7 +75,7 @@ function windowsProcessStartKey(pid: number): string | undefined {
 let currentProcessKey: string | undefined | null = null;
 
 function processStartKey(pid: number): string | undefined {
-	// Foreign PIDs can be reused while this process lives, so resolve them afresh.
+	// external: operating systems can reuse process IDs.
 	if (pid !== process.pid) return computeProcessStartKey(pid);
 	if (currentProcessKey === null) currentProcessKey = computeProcessStartKey(pid);
 	return currentProcessKey;

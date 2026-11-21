@@ -101,13 +101,7 @@ function runStatusForResult(result: AgentToolResult<Details>): string {
 	return "completed";
 }
 
-/**
- * Acceptance ledger statuses that mean nobody accepted the child's result:
- * evidence is missing, only self-reported with a required review pending,
- * or rejected. A run that ends with one of them does not complete a mission
- * the caller asked for with `mission` or `missionId`. Missions made by default
- * for ordinary launches still complete, since nobody is expected to close them.
- */
+
 const UNACCEPTED_ACCEPTANCE_STATUSES = new Set(["pending", "claimed", "review-required", "rejected"]);
 
 function acceptanceStatusOf(value: unknown): string | undefined {
@@ -132,7 +126,7 @@ export function finishedMissionStatus(record: MissionRecord, autoCreated: boolea
 	if (autoCreated) return "completed";
 	const unaccepted = (status: string | undefined) => status !== undefined && UNACCEPTED_ACCEPTANCE_STATUSES.has(status);
 	if (runAcceptance.some((run) => unaccepted(run.status))) return "waiting";
-	// A run reported here supersedes its older workflow child record.
+
 	const reported = new Set(runAcceptance.map((run) => run.runId));
 	return record.workflowChildren.some((child) => !(child.runId !== undefined && reported.has(child.runId)) && unaccepted(child.acceptanceStatus)) ? "waiting" : "completed";
 }
@@ -258,7 +252,7 @@ export function attachMissionToLaunchResult(input: {
 						asyncDir: input.result.details.asyncDir,
 						mode: input.result.details.mode,
 						state: status.state,
-						// A run that finished before this launch result was attached keeps its acceptance in the status steps.
+
 						...(Array.isArray(status.steps) ? { results: status.steps.map((step) => ({ acceptance: (step as { acceptance?: unknown } | null)?.acceptance })) } : {}),
 						...(firstText(input.result) ? { summary: firstText(input.result) } : {}),
 					}) ?? mission;
@@ -306,7 +300,7 @@ function parsePersistedBinding(value: unknown, source: string): MissionLaunchBin
 	if (input.autoCreated !== undefined && typeof input.autoCreated !== "boolean") throw new Error(`${source}.autoCreated must be boolean`);
 	return {
 		missionId: validateMissionId(input.missionId, `${source}.missionId`),
-		// Bindings saved before this field existed belong to runs that completed their mission without an acceptance check.
+
 		autoCreated: input.autoCreated !== false,
 		location: {
 			projectRoot: input.projectRoot as string,
@@ -357,7 +351,7 @@ export function syncMissionFromAsyncCompletion(value: unknown): MissionRecord | 
 				missionPath: missionRecordPath(binding.location, binding.missionId),
 			})}\n`, "utf-8");
 		} catch {
-			// Mission bookkeeping is secondary to preserving the completed async result.
+
 		}
 		return undefined;
 	}
