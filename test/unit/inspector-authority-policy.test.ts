@@ -53,8 +53,6 @@ async function run(action: string, policy?: AuthorityPolicyConfig, ui?: { confir
 	return { text: result.content.find((entry) => entry.type === "text")?.text ?? "", ...(result.isError === undefined ? {} : { isError: result.isError }) };
 }
 
-// `project.open` spawns the Herdr CLI, so point the client at a path that cannot
-// exist whenever the policy is expected to let the action through.
 async function withoutHerdr<T>(body: () => Promise<T>): Promise<T> {
 	const previous = process.env.HERDR_BIN;
 	process.env.HERDR_BIN = path.join(os.tmpdir(), "pi-subagents-absent-herdr-binary");

@@ -80,8 +80,6 @@ describe("nested route index", () => {
 
 		const index = buildNestedRouteIndex();
 
-		// readdir order is not guaranteed, so the contract is deduplication: exactly
-		// one route is indexed per root run id, not a specific winner.
 		const indexed = index.get("dup-root");
 		assert.ok(indexed, "expected one route for dup-root");
 		const tokens = new Set([first.capabilityToken, second.capabilityToken]);

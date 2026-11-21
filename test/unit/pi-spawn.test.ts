@@ -382,9 +382,6 @@ describe("getPiSpawnCommand", () => {
 
 	it("resolves CLI script from package bin when argv1 is not runnable JS", () => {
 		const packageJsonPath = "/opt/pi/package.json";
-		// Compute expected path the same way the production code does:
-		// path.resolve(path.dirname(packageJsonPath), binPath) — which on Windows
-		// prepends the current drive letter to POSIX absolute paths.
 		const cliPath = path.resolve(
 			path.dirname(packageJsonPath),
 			"dist/cli/index.js",

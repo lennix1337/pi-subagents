@@ -73,7 +73,6 @@ describe("external inspector registration", () => {
 			{ version: 1, plugin: { ...provider(), close: false } },
 		];
 		for (const input of invalid) {
-			// SAFETY: undefined is a valid initial result; the synchronous owner fills it during emit.
 			const request = { ...input, result: undefined as InspectorRegistrationRequest["result"] };
 			owner.events.emit(INSPECTOR_REGISTER_EVENT, request);
 			assert.equal(request.result?.ok, false);
@@ -133,7 +132,6 @@ describe("inspector open and close serialization", () => {
 	const reply = (text: string) => ({ content: [{ type: "text" as const, text }], details: { mode: "management" as const, results: [] } });
 	const text = (response: Awaited<ReturnType<typeof handleInspectorAction>>) => response.content.map((part) => part.type === "text" ? part.text : "").join("");
 
-	/** A provider that reuses a saved binding and takes a moment between reading and writing it, like a real pane split. */
 	function bindingProvider(log: string[], options: { gate?: Promise<void>; throwOnOpen?: () => boolean } = {}) {
 		const bindings = new Map<string, string>();
 		let panes = 0;

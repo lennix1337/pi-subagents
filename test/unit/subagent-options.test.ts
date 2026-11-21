@@ -13,7 +13,6 @@ import { SUBAGENT_CHILD_ENV } from "../../src/runs/shared/child-runtime-config.t
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-// One valid value per management/control field the model passes inside options.
 const OPTION_SAMPLES: Record<string, unknown> = {
 	extensionBindings: { "pkg/1": {} }, capabilities: true, name: "nightly", dir: "/tmp/run", handoffPath: "handoff.json",
 	repo: "/repo", planId: "plan-1", laneId: "lane-1", merge: {}, supersession: {}, index: 0, childId: "child-1",

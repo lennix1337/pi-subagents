@@ -34,7 +34,6 @@ interface ConfigureResources {
 	toolCeiling: string[];
 }
 
-/** The remote Pi session context the bridge reads; `isProjectTrusted` is absent on hosts older than Pi's trust concept. */
 interface RemoteContext {
 	sessionManager: { getSessionId(): string; getSessionFile(): string };
 	model: { provider: string; id: string };
@@ -43,20 +42,17 @@ interface RemoteContext {
 	isProjectTrusted?: () => boolean;
 }
 
-/** The bridge's executed configure path, driven through a fake `node:net` server so no socket or remote host is used. */
 function startBridge() {
 	const handlers = new Map<string, BridgeHandler>();
 	const pi = { registerTool() {}, registerCommand() {}, on(name: string, handler: BridgeHandler) { handlers.set(name, handler); }, getActiveTools: () => ["read"], setActiveTools() {} };
 	let connect: ((socket: FakeBridgeSocket) => void) | undefined;
 	const originalCreateServer = netModule.createServer;
-	// SAFETY: the bridge calls only listen and close on the server and registers one connection listener.
 	netModule.createServer = ((listener: (socket: FakeBridgeSocket) => void) => {
 		connect = listener;
 		return { listen() {}, close() {} };
 	}) as unknown as typeof netModule.createServer;
 	syncBuiltinESMExports();
 	try {
-		// SAFETY: the bridge uses only registerTool, registerCommand, on, getActiveTools and setActiveTools of the extension API.
 		registerHerdrPiBridge(pi as never);
 	} finally {
 		netModule.createServer = originalCreateServer;
@@ -90,8 +86,6 @@ function remoteContext(trust: Pick<RemoteContext, "isProjectTrusted">): RemoteCo
 	};
 }
 
-// The remote Pi's own trust governs the remote machine's project files. Resource assembly runs in the bridge's
-// `configure` handler, so these tests drive that handler rather than the helper.
 describe("pane-native bridge project trust", () => {
 	const previous = { cwd: process.cwd(), run: process.env[HERDR_PI_RUN_ENV], dir: process.env[HERDR_PI_RUNTIME_DIR_ENV], agentDir: process.env.PI_CODING_AGENT_DIR };
 	const realFetch = globalThis.fetch;
@@ -100,8 +94,6 @@ describe("pane-native bridge project trust", () => {
 	let bridge: ReturnType<typeof startBridge> | undefined;
 
 	beforeEach(() => {
-		// A bridge, skill or refinement lookup that tried the network would fail here rather than leave the machine.
-		// SAFETY: the stub rejects every call, which is all a caller of fetch observes here.
 		globalThis.fetch = (() => Promise.reject(new Error("outbound network is rejected in this test"))) as typeof fetch;
 		root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-bridge-trust-"));
 		const agentDir = path.join(root, "agent-dir");

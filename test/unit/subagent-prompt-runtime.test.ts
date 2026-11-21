@@ -150,7 +150,6 @@ it("does not grant nested wait access for an invalid inherited route", async (t)
 	fs.writeFileSync(path.join(dir, "status.json"), JSON.stringify({ runId, sessionId: "owner", mode: "single", state: "running", pid: process.pid, startedAt: Date.now(), steps: [] }));
 	updateActiveRunIndex(dir, "running");
 	const tools = new Map<string, { execute: Function }>();
-	// SAFETY: this fixture supplies the registration API and session identity used by the empty wait path.
 	registerSubagentPromptRuntime({
 		on: () => {}, registerTool: (tool: { name: string; execute: Function }) => tools.set(tool.name, tool),
 	} as never, childConfig({ runtimeState: { currentSessionId: "owner" } as SubagentState, nestedRoute: { ...route, capabilityToken: "invalid" } }));
@@ -180,7 +179,6 @@ it("registered child bg_wait discovers nested personas and agent_end drains the 
 		updateActiveRunIndex(asyncDir, state);
 	};
 	try {
-		// SAFETY: this fixture supplies the registration/event APIs exercised by the wait and drain hooks.
 		registerSubagentPromptRuntime({
 			on: (event: string, fn: Function) => handlers.set(event, [...(handlers.get(event) ?? []), fn]),
 			registerTool: (tool: { name: string; execute: Function }) => tools.set(tool.name, tool),
@@ -230,7 +228,6 @@ it("fanout child bg_wait yields to a descendant's supervisor request while the a
 		cwd: process.cwd(), hasUI: false, isIdle: () => false,
 		sessionManager: { getSessionFile: () => sessionFile, getSessionId: () => ownerSessionId, getEntries: () => [] },
 	};
-	// SAFETY: this fixture supplies the registration/event APIs both child hooks use; other calls are inert.
 	const pi = new Proxy({
 		events,
 		on: (event: string, fn: Function) => {
@@ -247,7 +244,6 @@ it("fanout child bg_wait yields to a descendant's supervisor request while the a
 			startedAt: Date.now(), lastUpdate: Date.now(), steps: [{ agent: "worker", status: "running" }],
 		}));
 		updateActiveRunIndex(asyncDir, "running");
-		// Real hook order: the prompt runtime registers bg_wait before fanout-child installs the supervisor channel.
 		for (const hook of createChildHooks(childConfig({ fanoutChild: true, nestedRoute: route }))) hook.factory(pi);
 		for (const fn of handlers.get("session_start") ?? []) await fn({ reason: "startup" }, ctx);
 		events.emit(SUBAGENT_ASYNC_STARTED_EVENT, { id: runId, asyncDir, sessionId: sessionFile, agents: ["worker"] });
@@ -1228,7 +1224,6 @@ describe("subagent prompt runtime", () => {
 		const task = { role: "user", content: "Task", timestamp: 1 };
 		const call = { role: "assistant", content: [{ type: "toolCall", id: "call_1", name: "subagent", arguments: {} }], timestamp: 2 };
 		const result = { role: "toolResult", toolCallId: "call_1", toolName: "subagent", content: [], isError: false, timestamp: 3 };
-		// A mid-conversation system message must stay where it is, or the cached prefix ends at the tools.
 		const sectionUpdate = { role: "system", content: "", sections: { time: "Now: 10:00" }, timestamp: 4 };
 		const next = { role: "user", content: "Continue", timestamp: 5 };
 
@@ -1309,7 +1304,7 @@ describe("subagent prompt runtime", () => {
 		}
 
 		it("preserves composite ids for a custom provider on the Codex Responses wire", () => {
-			// DeepSeek's Responses endpoint rejects a call_id that is not shaped like the one it issued.
+			// external: DeepSeek Responses rejects a call_id not shaped like the issued one.
 			const messages = history("call_00_ET_9AVPsTo5MNbdb2i4IbPv5443|0a48e5ac-df6b-47c9-a133-4da6b380fa82");
 			assert.ok(contextHandler);
 			assert.equal(contextHandler({ messages }, { model: { ...model, api: "cliproxyapi-codex-responses" } } as never), undefined);

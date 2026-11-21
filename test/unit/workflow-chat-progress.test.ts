@@ -124,7 +124,6 @@ describe("workflow chat progress rendering", () => {
 				const result = await createExecutor().execute(
 					"wf-headless",
 					{
-						// A non-literal agent reaches launch-time resolution instead of pre-launch validation.
 						workflowScript: `const agent = "missing-agent"; return await runs.run("scout", { agent, task: "scan" });`,
 						async: false,
 						chatProgress: scenario === "explicit off" ? "off" : "auto",

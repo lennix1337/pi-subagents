@@ -17,7 +17,6 @@ it("loads the executor and Fleet within seconds of a session starting, not at se
 	const executorLoaded = () => isLoaded(["runs", "foreground", "subagent-executor.ts"]);
 	const fleetLoaded = () => isLoaded(["tui", "fleet.ts"]);
 
-	// A top-level session; this test may itself run inside a subagent child.
 	delete process.env.PI_SUBAGENT_CHILD;
 	const { default: registerSubagentExtension } = await import("../../src/extension/index.ts");
 	const { createEventBus } = await import("@earendil-works/pi-coding-agent");
@@ -31,7 +30,6 @@ it("loads the executor and Fleet within seconds of a session starting, not at se
 	const ctx = {
 		cwd: process.cwd(), isIdle() { return false; }, hasUI: false, model: undefined,
 		ui: { setWidget() {}, theme: { fg: (_name: string, text: string) => text, bg: (_name: string, text: string) => text, bold: (text: string) => text } },
-		// A real TUI session has a file; OptChat's readiness query carries the session id, not that path.
 		sessionManager: { getSessionId: () => "preload-session", getSessionFile: () => path.join(process.cwd(), "no-such-dir", "preload-session.jsonl"), getEntries: () => [] },
 		modelRegistry: { getAvailable: () => [] },
 	};

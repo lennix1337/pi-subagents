@@ -9,7 +9,6 @@ import { appendWorkflowChildJournal, matchWorkflowReuse, readNamedWorkflowReuseS
 const CWD = "/repo";
 
 function okResult(runId: string): WorkflowScriptChildResult {
-	// SAFETY: reuse only reads `ok` and `runId` from a settled journal result.
 	return { ok: true, runId } as WorkflowScriptChildResult;
 }
 

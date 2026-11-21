@@ -23,9 +23,6 @@ describe("file system retry budget", () => {
 	});
 
 	it("keeps the ladder length, because callers use it as an attempt budget", () => {
-		// run-fanout-budget.ts and workflow-state.ts index this array by attempt
-		// number and treat an undefined entry as "timed out acquiring lock".
-		// Dropping entries would silently shrink those budgets.
 		for (const budget of ["0", "1", "250", "100000"]) {
 			const delays = resolveFileSystemRetryDelays({ [FS_RETRY_MAX_TOTAL_MS_ENV]: budget }, BASE);
 			assert.equal(delays.length, BASE.length, `length preserved for budget ${budget}`);
@@ -47,8 +44,6 @@ describe("file system retry budget", () => {
 			throw Object.assign(new Error("EPERM"), { code: "EPERM" });
 		}, { retryDelaysMs: delays, wait: (delayMs) => slept.push(delayMs) }), /EPERM/);
 		assert.equal(attempts, BASE.length + 1, "all attempts still run");
-		// waitForFileSystemRetry returns immediately for <= 0, so the thread is
-		// never parked even though wait() is still called between attempts.
 		assert.ok(slept.every((value) => value === 0), "no non-zero sleep is requested");
 	});
 

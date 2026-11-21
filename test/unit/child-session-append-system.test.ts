@@ -6,9 +6,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { createDefaultChildSessionFactory, type ChildSessionLaunch, type PiCodingAgentModule } from "../../src/runs/shared/child-session.ts";
 
-// Real Pi resource loading, stopped right before a session is created.
 function piCapturingAppendPrompt(captured: string[][]): PiCodingAgentModule {
-	// SAFETY: the factory touches only these members before createAgentSession, which throws to end the launch.
 	return {
 		ModelRuntime: { create: async () => ({}) },
 		SettingsManager,
@@ -30,7 +28,6 @@ function launch(cwd: string, prompt: Pick<ChildSessionLaunch, "systemPrompt" | "
 		hooks: [],
 		noSkills: true,
 		noContextFiles: true,
-		// SAFETY: the loader path under test reads no other runtime field.
 		runtime: { fanoutChild: false, depth: 1, waitTool: { enabled: false }, fast: false } as ChildSessionLaunch["runtime"],
 		...prompt,
 	};

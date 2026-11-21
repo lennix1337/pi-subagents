@@ -17,7 +17,6 @@ function createHarness(sessionManager: { getSessionId(): string } = SessionManag
 	const calls: unknown[][] = [];
 	let idle = true;
 	let time = 0;
-	// No sendUserMessage: a wake that sent a user message would throw here.
 	const wake = createParentWake({
 		sendMessage: (...args: unknown[]) => { calls.push(["sendMessage", ...args]); },
 	} as never, () => time);
@@ -32,7 +31,6 @@ function createHarness(sessionManager: { getSessionId(): string } = SessionManag
 }
 
 const notice = (content: string) => ({ customType: "subagent-test", content, display: true });
-// Each run's trigger: a user prompt's text, or the type of the custom message that started it.
 const runTrigger = (event: { messageType: "user"; prompt: string } | { messageType: "custom"; message: { customType: string } }) =>
 	event.messageType === "user" ? event.prompt : `custom:${event.message.customType}`;
 
@@ -266,7 +264,7 @@ for (const emptyResponse of [false, true]) it(`starts an idle parent's completio
 	}
 });
 
-// Pi's compact() aborts a live run first, so a manual /compact mid-tool also ends the run with an aborted signal.
+// external: Pi compact() aborts a live run first.
 for (const stopWith of ["abort", "compact"] as const) it(`${stopWith === "abort" ? "does not restart" : "resumes"} a parent whose run was stopped mid-tool by ${stopWith}`, { timeout: 30_000 }, async () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-parent-wake-abort-"));
 	const agentDir = path.join(root, "agent");
@@ -308,7 +306,6 @@ for (const stopWith of ["abort", "compact"] as const) it(`${stopWith === "abort"
 		theme,
 		notify: (text: string) => { notices.push(text); },
 	};
-	// A failed result skips the completion batch window, so it reaches the parent at once.
 	const completion = (id: string) => ({ id, sessionId, completionOwnerId: currentCompletionOwnerId(), success: false, summary: `${id} needs the parent.` });
 	const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
 	let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
@@ -384,7 +381,6 @@ it("composes prior drafts, unresolved supervisor and empty completion safeguards
 			});
 			const state = { currentSessionId: sessionId, supervisorOwnerSessionId: sessionId,
 				completionOwnerId: "owner", asyncJobs: new Map(), foregroundControls: new Map() } as SubagentState;
-			// Append notices without launching another run; explicit prompt below owns this run.
 			const parentWake = { sendMessage(message: Parameters<typeof api.sendMessage>[0]) {
 				api.sendMessage(message, { triggerTurn: false }); return true;
 			} };
@@ -477,7 +473,6 @@ it("does no idle settle work without delegated work", { timeout: 30_000 }, async
 		session?.dispose();
 		if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 		else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
-		// Windows can hold a just-written session file briefly (the same case as supervisor-ask-registration's cleanup).
 		fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 	}
 });

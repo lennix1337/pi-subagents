@@ -25,10 +25,7 @@ function fixture() {
 	return { root, projectRoot, agentDir, location };
 }
 
-// The real project sits one level deeper than the link, so "../x" names different
-// directories when resolved from each path.
 function symlinkedFixture() {
-	// .native also expands Windows 8.3 short names (RUNNER~1), matching the store's canonical root.
 	const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-missions-")));
 	const realRoot = path.join(root, "physical", "project");
 	const linkRoot = path.join(root, "link");
@@ -64,7 +61,6 @@ describe("mission store", () => {
 
 	it("finds a mission through a symlinked project root and its real path", () => {
 		const test = symlinkedFixture();
-		// prepareMissionLaunch takes no agentDir, so point the default at the fixture.
 		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
 		process.env.PI_CODING_AGENT_DIR = test.agentDir;
 		try {
@@ -444,7 +440,6 @@ describe("mission store", () => {
 				});
 				child.stderr?.on("data", (chunk) => { stderr += String(chunk); });
 				return new Promise<void>((resolve, reject) => {
-					// On Windows each writer cold-starts Node and spawns powershell.exe for lock process identity, so 5s was too short under CI load.
 					const timeout = setTimeout(() => { child.kill(); reject(new Error(`${key} writer timed out`)); }, 20_000);
 					child.on("exit", (code, signal) => {
 						clearTimeout(timeout);

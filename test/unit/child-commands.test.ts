@@ -12,7 +12,6 @@ import { createChildCommandRuntime, controlChildCommand, readChildCommandState }
 const ctx = { sessionManager: { getSessionId: () => "test-session", getSessionFile: () => undefined } } as ExtensionContext;
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(predicate: () => boolean, diagnostic?: () => unknown) {
-	// Waits on real Node child processes, which can take several seconds to start on loaded Windows runners.
 	const deadline = Date.now() + 10_000;
 	while (!predicate()) { assert.ok(Date.now() < deadline, `condition did not become true${diagnostic ? `: ${JSON.stringify(diagnostic())}` : ""}`); await delay(10); }
 }
@@ -248,7 +247,6 @@ describe("child command lifecycle transitions", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-child-settled-"));
 		const commands = createChildCommandRuntime(dir);
 		try {
-			// Reading isError runs inside the settle callback, one microtask before the run records its end.
 			const result: AgentToolResult<undefined> = { content: [{ type: "text", text: "done" }], details: undefined, get isError() { queueMicrotask(() => commands.operate("cancel", "settled")); return false; } };
 			const tool = commands.wrap(fakeTool(async () => result));
 			await tool.execute("settled", {}, undefined, undefined, ctx);
@@ -266,7 +264,6 @@ describe("child command lifecycle transitions", () => {
 		try {
 			let release!: () => void;
 			const gate = new Promise<void>((resolve) => { release = resolve; });
-			// The command ignores its abort signal, so it outlives shutdown() and the yield timer.
 			const tool = commands.wrap(fakeTool(async () => { await gate; return { content: [{ type: "text", text: "late" }], details: undefined }; }));
 			const pending = tool.execute("slow", { yieldTimeMs: 20 }, undefined, undefined, ctx);
 			const stopping = commands.shutdown();

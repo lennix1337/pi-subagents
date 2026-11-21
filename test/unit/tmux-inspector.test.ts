@@ -13,7 +13,6 @@ function tempRoot(): string {
 	return fs.mkdtempSync(path.join(os.tmpdir(), "tmux-inspector-test-"));
 }
 
-/** A temp async dir already holding a tmux binding for run-1 and pane %6. */
 function boundRoot(extra: Record<string, unknown> = {}, index?: number): string {
 	const root = tempRoot();
 	fs.mkdirSync(path.join(root, "inspectors"), { recursive: true });
@@ -47,7 +46,6 @@ function launch(mission?: { id: string; path: string }): InspectorLaunch {
 	return { executable: "node", argv: ["x"], displayCommand: "node x", allowSteer: true, allowStop: true, sessionRoots: [], ...(mission ? { mission } : {}) };
 }
 
-/** Scripted tmux client: maps first argument word to a queued response. "!CODE|message" entries resolve to error results. */
 function fakeClient(responses: Record<string, string[]>, commands: string[] = []): TmuxClient {
 	const queue = Object.fromEntries(Object.entries(responses).map(([key, value]) => [key, [...value]]));
 	return {
@@ -206,7 +204,6 @@ describe("tmux inspector open", () => {
 
 	it("kills the created pane when saving the binding fails", async () => {
 		const root = tempRoot();
-		// A file where the bindings directory belongs makes the binding write fail after the split.
 		fs.writeFileSync(path.join(root, "inspectors"), "");
 		const commands: string[] = [];
 		const client = fakeClient({

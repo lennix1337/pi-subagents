@@ -87,7 +87,6 @@ describe("async run status inspection", () => {
 				const resultsDir = path.join(root, "results");
 				if (source !== "nested") fs.mkdirSync(asyncDir, { recursive: true });
 				fs.mkdirSync(resultsDir);
-				// Escaping expands each unsafe code point, so budget the final rendered text.
 				const entries = Array.from({ length: 100 }, (_, i) => `entry-${i}: ${"世界😀\u202e".repeat(70)}`);
 				entries.push("huge: " + "😀".repeat(10_000), "latest context");
 				const sessionFile = path.join(root, "session.jsonl");
@@ -527,7 +526,6 @@ describe("async run status inspection", () => {
 			const asyncRoot = path.join(root, "runs");
 			const asyncDir = path.join(asyncRoot, "run-phantom-output");
 			fs.mkdirSync(asyncDir, { recursive: true });
-			// A workflow run orchestrates children elsewhere and never writes output-<index>.log itself.
 			fs.writeFileSync(path.join(asyncDir, "status.json"), JSON.stringify({
 				runId: "run-phantom-output",
 				mode: "workflow",
@@ -548,7 +546,6 @@ describe("async run status inspection", () => {
 			const text = textContent(result);
 			assert.equal(result.isError, undefined);
 			assert.doesNotMatch(text, /Output: .*output-0\.log/);
-			// The status.json fallback still supplies the transcript body.
 			assert.match(text, /Recent output from status\.json:/);
 			assert.match(text, /CHILD_RECENT/);
 		} finally {
@@ -768,7 +765,6 @@ describe("async run status inspection", () => {
 				resultsDir: path.join(root, "results"),
 			});
 
-			// One malformed line must not erase run state, artifacts, or the safe lines.
 			const text = textContent(result);
 			assert.match(text, /Run: run-binary-output/);
 			assert.match(text, /State: complete/);

@@ -78,7 +78,7 @@ it("isolates retained acknowledgement state and merges completions accepted befo
 	assert.equal(otherManager.settle([original]), undefined, "same UUID on another manager cannot inherit state");
 	otherManager.notifier.dispose();
 	const replacement = harness(manager);
-	await replacement.deliver(); // Accepted by the new runtime before session_start binds it.
+	await replacement.deliver();
 	const early = { ...replacement.sent[0], role: "custom" };
 	replacement.bind();
 	assert.equal(replacement.settle([original, early]).continue, true);

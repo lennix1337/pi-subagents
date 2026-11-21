@@ -17,7 +17,6 @@ function detailRows(lines: string[]): string[] {
 	return lines.filter((line) => line.endsWith("⎿  read"));
 }
 
-// Each mount resets the layout session that widgets share, so finish one widget before mounting the next.
 function mountWidget(layout: AsyncWidgetLayout, initiallyCollapsed = false) {
 	let widget: Widget | undefined;
 	let expanded = false;
@@ -28,7 +27,6 @@ function mountWidget(layout: AsyncWidgetLayout, initiallyCollapsed = false) {
 			setWidget: (_key: string, factory: WidgetFactory | undefined) => { widget = factory?.({ requestRender() {} }, theme); },
 		},
 	};
-	// SAFETY: the TUI path only reads hasUI, mode, and the supplied widget/expansion methods.
 	const tuiContext = ctx as never;
 	renderWidget(tuiContext, []);
 	renderWidget(tuiContext, jobs, initiallyCollapsed, layout);
@@ -45,7 +43,6 @@ describe("async widget layout", () => {
 	beforeEach(() => {
 		rows = Object.getOwnPropertyDescriptor(process.stdout, "rows");
 		Object.defineProperty(process.stdout, "rows", { configurable: true, value: 60 });
-		// A fixed clock keeps the spinner frame equal across the renders a test compares.
 		Date.now = () => 2_000;
 	});
 	afterEach(() => {
@@ -72,7 +69,6 @@ describe("async widget layout", () => {
 			widget.click();
 			const folded = widget.lines();
 			assert.equal(folded.length, 1, `${layout}: ${folded.join("\n")}`);
-			// The fold line appends the running round's elapsed time, starting at 0s for a fresh mount.
 			assert.match(folded[0]!, /^ \S subagents \(4\/4 running 0s\)$/);
 			widget.click();
 			assert.deepEqual(widget.lines(), unfolded, `${layout}: a second click restores the layout`);
@@ -107,7 +103,6 @@ describe("async widget layout", () => {
 		function foldedWidget() {
 			let widget: Widget | undefined;
 			const ctx = { hasUI: true, mode: "tui", ui: { getToolsExpanded: () => false, setWidget: (_key: string, factory: WidgetFactory | undefined) => { widget = factory?.({ requestRender() {} }, theme); } } };
-			// SAFETY: the TUI path only reads hasUI, mode, and the supplied widget/expansion methods.
 			return (shown: AsyncJobState[]) => {
 				renderWidget(ctx as never, shown, true);
 				return widget!.render(120)[0]!.trimEnd();

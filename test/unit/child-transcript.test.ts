@@ -207,9 +207,7 @@ describe("createChildTranscriptWriter", () => {
 			maxBytes: 900,
 		});
 		writer.writeInitialUserMessage("seed record that fits within the cap");
-		// This single line exceeds the remaining budget and triggers truncation.
 		writer.writeStdoutLine("x".repeat(5_000));
-		// Further writes must be no-ops.
 		writer.writeStdoutLine("after truncation");
 
 		assert.equal(writer.getError(), undefined);
@@ -245,7 +243,6 @@ describe("createChildTranscriptWriter", () => {
 
 	it("reports an init error and drops subsequent writes when the transcript path cannot be created", () => {
 		const dir = tmpDir();
-		// Precreate a regular file where a directory is expected so mkdirSync fails deterministically.
 		const blocker = path.join(dir, "blocker-file");
 		fs.writeFileSync(blocker, "blocks the transcript dir", "utf-8");
 		const transcriptPath = path.join(blocker, "transcript.jsonl");

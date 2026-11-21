@@ -14,7 +14,6 @@ function resolveScript(input: Parameters<typeof resolveStructuredWorkflowResourc
 	return resolved.resource.script;
 }
 
-/** Run a resolved script with fake children. `respond` returns the child result; default output echoes the key. */
 async function runScript(script: string, respond: (launch: Launch) => Partial<WorkflowScriptChildResult> | Promise<Partial<WorkflowScriptChildResult>> = () => ({})) {
 	const launches: Launch[] = [];
 	const execution = await runWorkflowScript({
@@ -31,7 +30,6 @@ async function runScript(script: string, respond: (launch: Launch) => Partial<Wo
 	return { value: execution.value, launches };
 }
 
-/** Run a script expected to fail; returns the error message and the settled children the runtime kept. */
 async function runFailingScript(script: string, respond: Parameters<typeof runScript>[1]) {
 	const launches: Launch[] = [];
 	const error = await runScript(script, (launch) => {
@@ -72,7 +70,6 @@ describe("structured workflow resources", () => {
 			],
 		});
 		const { value, launches } = await runScript(script, async ({ key }) => {
-			// The first group member settles last; the joined output must still follow input order.
 			if (key === "step-3-1") await delay(30);
 			return {};
 		});

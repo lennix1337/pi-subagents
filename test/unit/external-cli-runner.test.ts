@@ -444,7 +444,6 @@ require("fs").writeFileSync(${JSON.stringify(argvPath)}, JSON.stringify(args));
 			{ command: "argv-cli" },
 			{ command, preflight: { id: "argv-cli", versionArgs: ["--version"], helpArgs: ["--help"] } },
 		];
-		// The child inherits the parent environment, whose Windows key is usually `Path`.
 		const previousPath = process.env.PATH;
 		process.env.PATH = `${dir}${path.delimiter}${previousPath}`;
 		try {

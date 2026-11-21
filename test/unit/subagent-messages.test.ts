@@ -6,7 +6,6 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { CustomMessageComponent, initTheme } from "@earendil-works/pi-coding-agent";
 import { renderSubagentEntry, renderSubagentMessage } from "../../src/tui/subagent-messages.ts";
 
-// Markdown bodies read Pi's markdown theme, which Pi initializes at startup.
 initTheme("dark");
 
 const plainTheme = {
@@ -25,14 +24,12 @@ type TestTheme = typeof plainTheme;
 
 function renderMessage(customType: string, details: unknown, options: { content?: string; expanded?: boolean; width?: number; theme?: TestTheme } = {}): string[] {
 	const message = { customType, content: options.content ?? "", details };
-	// SAFETY: the renderer reads only fg, bg, and bold from Pi's theme.
 	const component = renderSubagentMessage(message, { expanded: options.expanded ?? false }, (options.theme ?? plainTheme) as never);
 	assert.ok(component, `no renderer for ${customType}`);
 	return component.render(options.width ?? 100).map((line) => line.trimEnd());
 }
 
 function renderEntry(customType: string, data: unknown, options: { expanded?: boolean; width?: number; theme?: TestTheme } = {}): string[] {
-	// SAFETY: the renderer reads only fg, bg, and bold from Pi's theme.
 	const component = renderSubagentEntry({ customType, data }, { expanded: options.expanded ?? false }, (options.theme ?? plainTheme) as never);
 	assert.ok(component, `no renderer for ${customType}`);
 	return component.render(options.width ?? 100).map((line) => line.trimEnd());
@@ -46,7 +43,6 @@ function stripAnsi(text: string): string {
 	return text.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
-/** The collapsed line's label color and its headline before the hint, with theme tokens marked. */
 function tokenLine(line: string | undefined): { label: string; headline: string } | undefined {
 	const match = /^\[customMessageBg\] <(\w+)><b>\[subagent\]<\/b><\/\1> (.*) <dim>\((?:click|ctrl\+o) to expand\)<\/dim>\[\/customMessageBg\]$/.exec(line ?? "");
 	return match ? { label: match[1]!, headline: match[2]! } : undefined;
@@ -56,10 +52,8 @@ function tonedHeadline(customType: string, details: unknown, content = ""): stri
 	return tokenLine(renderMessage(customType, details, { content, theme: tokenTheme, width: 400 })[1])?.headline;
 }
 
-// keyText resolves Pi's expand key through the pi-tui copy that pi-coding-agent loads.
 async function bindExpandKey(t: TestContext, keys: string): Promise<void> {
 	const agentEntry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
-	// SAFETY: this path is pi-tui's package entry, resolved from where pi-coding-agent loads it.
 	const tui = await import(pathToFileURL(createRequire(agentEntry).resolve("@earendil-works/pi-tui")).href) as typeof import("@earendil-works/pi-tui");
 	const previous = tui.getKeybindings();
 	tui.setKeybindings(new tui.KeybindingsManager({ ...tui.TUI_KEYBINDINGS, "app.tools.expand": { defaultKeys: keys, description: "Toggle tool output" } }));
@@ -284,7 +278,6 @@ describe("subagent messages in the main chat", () => {
 		const message = { customType: "subagent_supervisor_request", content: "Should I continue?", details: { ...request, reason: "need_decision" } };
 		const otherMessage = { ...message };
 		const render = (target: typeof message, expandedByPi: boolean) => {
-			// SAFETY: the renderer reads only fg, bg, and bold from Pi's theme.
 			const component = renderSubagentMessage(target, { expanded: expandedByPi }, plainTheme as never);
 			assert.ok(component);
 			return component;

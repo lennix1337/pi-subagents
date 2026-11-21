@@ -7,12 +7,6 @@ import * as path from "node:path";
 import { describe, it } from "node:test";
 import { computeWatchdogRepoChangeSignature } from "../../src/watchdog/change-signature.ts";
 
-// The module under test hashes file content via `fs.readFileSync`, whose ESM
-// binding cannot be reassigned (module namespaces are frozen) and mock.module is
-// gated behind an experimental flag not passed by the runner. However, the ESM
-// `readFileSync` dispatches through the CJS module's `openSync`, so patching
-// `require("node:fs").openSync` deterministically forces the inner read error
-// paths without touching lstat/readdir (which do not go through openSync).
 const require = createRequire(import.meta.url);
 const cjsFs = require("node:fs") as { openSync: typeof fs.openSync; lstatSync: typeof fs.lstatSync };
 
@@ -178,7 +172,7 @@ describe("watchdog change signature", () => {
 		setThreshold(1024, t);
 
 		const filePath = path.join(repo, "big.txt");
-		fs.writeFileSync(filePath, Buffer.alloc(4096, 0x61)); // 4 KiB > 1 KiB threshold
+		fs.writeFileSync(filePath, Buffer.alloc(4096, 0x61));
 		const mtime = new Date(1_600_000_000_000);
 		fs.utimesSync(filePath, mtime, mtime);
 
@@ -187,10 +181,6 @@ describe("watchdog change signature", () => {
 		assert.equal(typeof sig?.key, "string");
 		assert.ok(sig?.changedPaths.includes("big.txt"));
 
-		// The per-file hash is not exposed on the public signature, so prove the
-		// metadata marker (largeFileHash = "large:size:mtime") behaviorally: content
-		// is unchanged but the mtime changes, so a metadata-keyed hash yields a new
-		// key while a content SHA-256 (unfixed main) would produce the same key.
 		const laterMtime = new Date(1_600_000_100_000);
 		fs.utimesSync(filePath, laterMtime, laterMtime);
 		const afterMtime = computeWatchdogRepoChangeSignature(repo);
@@ -321,7 +311,6 @@ describe("watchdog change signature", () => {
 		assert.ok(sig, "expected a signature");
 		assert.ok(sig?.changedPaths.includes("nested/big.txt"));
 
-		// Same behavioral proof as above, for a file nested in a subdirectory.
 		const laterMtime = new Date(1_600_000_100_000);
 		fs.utimesSync(filePath, laterMtime, laterMtime);
 		const afterMtime = computeWatchdogRepoChangeSignature(repo);
@@ -332,7 +321,6 @@ describe("watchdog change signature", () => {
 		const repo = createRepo("watchdog-inner-toolarge-");
 		t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
 
-		// Small file (default threshold) so it enters the content-hash try branch.
 		fs.writeFileSync(path.join(repo, "small.txt"), "hello\n", "utf-8");
 
 		const warnings: string[] = [];
@@ -388,9 +376,6 @@ describe("watchdog change signature", () => {
 		const repo = createRepo("watchdog-outer-");
 		t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
 
-		// Use a deterministic stat failure to exercise the outer fail-safe on every
-		// platform without depending on POSIX permissions or ENOTDIR/ENOENT differences
-		// between Unix and Windows.
 		fs.writeFileSync(path.join(repo, "x.txt"), "changed\n", "utf-8");
 
 		const warnings: string[] = [];
@@ -421,9 +406,6 @@ describe("watchdog change signature", () => {
 		assert.ok(sig, "expected a signature");
 		assert.ok(sig?.changedPaths.includes("small.txt"));
 
-		// Content-hashed files ignore mtime: an mtime-only change must NOT alter the
-		// key (would fail if the metadata marker leaked into the normal path). A
-		// content change must alter it.
 		const laterMtime = new Date(1_600_000_100_000);
 		fs.utimesSync(filePath, laterMtime, laterMtime);
 		assert.equal(computeWatchdogRepoChangeSignature(repo)?.key, sig?.key, "mtime-only change must not alter key for small files");

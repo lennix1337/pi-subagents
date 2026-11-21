@@ -20,7 +20,6 @@ describe("terminal run index", () => {
 			};
 			writeRun("recent", 5_000);
 			writeRun("old", 1_000);
-			// An unreadable marker is removed when read, so its survival proves it was not read.
 			const sessionDir = path.join(root, TERMINAL_RUN_INDEX_DIR, encodeIndexSegment(sessionId));
 			const oldMarker = fs.readdirSync(sessionDir).find((name) => name.endsWith(`-${encodeIndexSegment("old")}.json`))!;
 			fs.writeFileSync(path.join(sessionDir, oldMarker), "{not json");

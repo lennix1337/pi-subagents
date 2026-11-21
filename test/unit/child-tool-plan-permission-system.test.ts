@@ -1,8 +1,3 @@
-/**
- * Permission-system compatibility tests:
- * - <active_agent> tag injection into child system prompts
- * - Permission-system extension auto-detection
- */
 
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
@@ -39,7 +34,7 @@ function createFixture() {
 }
 
 afterEach(() => {
-	// Windows cannot delete a process's current directory.
+	// external: Windows cannot delete a process's current directory.
 	process.chdir(originalCwd);
 	for (const key of Object.keys(originalEnv)) {
 		const value = originalEnv[key as keyof typeof originalEnv];
@@ -50,7 +45,6 @@ afterEach(() => {
 		try {
 			fs.rmSync(root, { recursive: true, force: true });
 		} catch {
-			// best effort
 		}
 	}
 	tempRoots.length = 0;
@@ -70,7 +64,6 @@ function childLaunch(overrides: Partial<BuildInProcessChildLaunchInput> = {}): B
 	};
 }
 
-/** The system prompt the child session receives (append mode by default). */
 function childSystemPrompt(result: ReturnType<typeof buildInProcessChildLaunch>): string {
 	const prompt = result.session.systemPrompt ?? result.session.appendSystemPrompt;
 	assert.ok(prompt !== undefined, "expected a child system prompt");
@@ -209,7 +202,7 @@ describe("resolvePermissionSystemExtension", () => {
 		);
 		const result = resolvePermissionSystemExtension();
 		assert.ok(result, "expected extension path");
-		if (!result) return; // narrow for TS
+		if (!result) return;
 		assert.ok(
 			result.endsWith(path.join("pi-permission-system", "src", "index.ts")),
 		);

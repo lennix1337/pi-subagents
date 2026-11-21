@@ -18,10 +18,6 @@ interface Fake {
 	testRuns: number[];
 }
 
-/**
- * Scripted git and test runner. `testExit` is consumed in order: the first run is
- * the green run with the fix, the second is the red run without it.
- */
 function fake(options: { status?: string; testExit?: number[]; failArgs?: (args: string[]) => boolean; throwOnCall?: number }): Fake {
 	const gitCalls: string[][] = [];
 	const testRuns: number[] = [];

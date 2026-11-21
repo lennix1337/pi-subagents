@@ -13,8 +13,6 @@ test("detached spawn does not keep an inherited bundled-layout PI_PACKAGE_DIR", 
 	const bundled = fs.mkdtempSync(path.join(os.tmpdir(), "bundled-pi-"));
 	const previous = process.env.PI_PACKAGE_DIR;
 	const previousRoot = process.env[PI_CODING_AGENT_PACKAGE_ROOT_ENV];
-	// The launch path consults this variable when argv discovery cannot identify
-	// the host; an ambient value from the outer environment would change the spawn env.
 	delete process.env[PI_CODING_AGENT_PACKAGE_ROOT_ENV];
 	process.env.PI_PACKAGE_DIR = bundled;
 	const spawn = t.mock.method(childProcess, "spawn", () => {
@@ -22,8 +20,6 @@ test("detached spawn does not keep an inherited bundled-layout PI_PACKAGE_DIR", 
 	});
 	syncBuiltinESMExports();
 	try {
-		// Re-evaluate the module's launch-time host detection: the top-level
-		// import already cached a root resolved against the ambient environment.
 		const { executeAsyncSingle: launch } = await import("../../src/runs/background/async-execution.ts?pi-package-dir");
 		const result = launch("spawn-package-dir", {
 			agent: "worker",
@@ -55,8 +51,6 @@ test("detached launch honors the package-root environment override when host det
 	const detected = [resolvePiPackageRoot(), resolveInstalledPiPackageRoot()].filter((dir): dir is string => Boolean(dir));
 	assert.ok(detected.length > 0, "fixture must start with a detectable host root");
 	const manifests = detected.map((dir) => path.join(dir, "package.json"));
-	// A real, complete host root: the override must carry it through the
-	// launch while the same mock reproduces the closed failure without it.
 	const override = detected[0]!;
 	const exists = fs.existsSync;
 	t.mock.method(fs, "existsSync", (file) => manifests.includes(String(file)) ? false : exists(file));
@@ -67,7 +61,6 @@ test("detached launch honors the package-root environment override when host det
 	});
 	syncBuiltinESMExports();
 	try {
-		// Re-evaluate the module's launch-time host detection with auto-discovery hidden.
 		const { executeAsyncSingle: launch } = await import("../../src/runs/background/async-execution.ts?env-package-root");
 		const result = launch("env-package-root", {
 			agent: "worker", task: "Inspect files", agentConfig: makeAgent("worker"),
@@ -88,7 +81,6 @@ test("detached launch honors the package-root environment override when host det
 test("detached launch ignores a whitespace-only package-root override", async (t) => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "blank-package-root-"));
 	const previousArgv = process.argv[1];
-	// No real host entry: this fixture withholds both host-relative and installed discovery.
 	process.argv[1] = path.join(root, "missing-host.mjs");
 	const previous = process.env[PI_CODING_AGENT_PACKAGE_ROOT_ENV];
 	process.env[PI_CODING_AGENT_PACKAGE_ROOT_ENV] = "   ";
@@ -100,7 +92,6 @@ test("detached launch ignores a whitespace-only package-root override", async (t
 	const spawn = t.mock.method(childProcess, "spawn", () => { throw new Error("must not spawn"); });
 	syncBuiltinESMExports();
 	try {
-		// With auto-discovery hidden, a blank override must not count as a host root.
 		const { executeAsyncSingle: launch } = await import("../../src/runs/background/async-execution.ts?blank-package-root");
 		const result = launch("blank-package-root", {
 			agent: "worker", task: "Inspect files", agentConfig: makeAgent("worker"),
@@ -126,7 +117,6 @@ test("npm detached launch fails closed when the detected package root is absent"
 	const previousArgv = process.argv[1];
 	process.argv[1] = path.join(root, "missing-host.mjs");
 	const previous = process.env[PI_CODING_AGENT_PACKAGE_ROOT_ENV];
-	// An ambient override would satisfy host detection and defeat the fixture.
 	delete process.env[PI_CODING_AGENT_PACKAGE_ROOT_ENV];
 	const manifests = [resolvePiPackageRoot(), resolveInstalledPiPackageRoot()]
 		.filter((dir): dir is string => Boolean(dir)).map((dir) => path.join(dir, "package.json"));
@@ -136,7 +126,6 @@ test("npm detached launch fails closed when the detected package root is absent"
 	const spawn = t.mock.method(childProcess, "spawn", () => { throw new Error("must not spawn"); });
 	syncBuiltinESMExports();
 	try {
-		// Re-evaluate the module's launch-time host detection with the package withheld.
 		const { executeAsyncSingle: launch } = await import("../../src/runs/background/async-execution.ts?missing-npm-root");
 		const result = launch("missing-npm-root", {
 			agent: "worker", task: "Inspect files", agentConfig: makeAgent("worker"),

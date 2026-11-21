@@ -22,7 +22,6 @@ describe("PI_SUBAGENT_EXTRA_AGENT_DIRS discovery", () => {
 	beforeEach(() => {
 		for (const key of MANAGED_ENV) saved[key] = process.env[key];
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-extra-agent-dirs-"));
-		// Isolate from the developer's real user agent dirs so defaults are empty.
 		agentDir = path.join(tempDir, "agent");
 		const homeDir = path.join(tempDir, "home");
 		cwd = path.join(tempDir, "workspace");

@@ -11,8 +11,6 @@ const launch = { capture: { finalDrainHeld: () => false }, session: {
 	runtime: { fanoutChild: false, fast: false, depth: 1, waitTool: { enabled: false } },
 } } as InProcessChildLaunch;
 
-// A child that stops after its terminal assistant message emits `agent_end` but Pi may
-// never follow it with `agent_settled`; the run still has to settle and publish its reply.
 it("settles and keeps the reply when the child ends on agent_end without agent_settled", { timeout: 10_000 }, async () => {
 	let listener: Parameters<ChildSession["subscribe"]>[0] = () => {};
 	const messages: ChildSession["messages"] = [];
@@ -27,7 +25,6 @@ it("settles and keeps the reply when the child ends on agent_end without agent_s
 			listener({ type: "message_end", message });
 			listener({ type: "turn_end" });
 			listener({ type: "agent_end", messages });
-			// The real child resolves this only once its agent loop is settled or aborted.
 			return new Promise<void>((resolve) => { releasePrompt = resolve; });
 		},
 		async steer() {}, async followUp() {}, async dispose() {},
@@ -49,8 +46,6 @@ it("settles and keeps the reply when the child ends on agent_end without agent_s
 	assert.equal(aborted, true, "the re-armed drain must abort the child so its loop can end");
 });
 
-// Pi's order after a final reply: agent_end, then a threshold auto-compaction (a model call that
-// can take seconds), then agent_settled. Ending the run early would cancel the compaction.
 it("lets a compaction that runs after the final agent_end finish", { timeout: 10_000 }, async () => {
 	let listener: Parameters<ChildSession["subscribe"]>[0] = () => {};
 	const messages: ChildSession["messages"] = [];

@@ -11,8 +11,6 @@ import { REX_BUNDLE_BIN } from "../../src/runs/shared/rex-machine.ts";
 import { closeOwnedRexPane, connectRex, REX_SSH_SESSION_LABEL } from "../../src/runs/shared/rex-pane-host.ts";
 import type { RexSshMachineReference } from "../../src/shared/types.ts";
 
-// Live check against a real Mac over SSH: PI_SUBAGENTS_REX_SSH_SMOKE=<ssh target> (Rex running there, Pi and this pi-subagents
-// version installed there). It opens tabs only in that Mac's `subagents` session and removes the temp directory it makes there.
 const target = process.env.PI_SUBAGENTS_REX_SSH_SMOKE;
 const log = (line: string) => process.stdout.write(`[rex-ssh-smoke] ${line}\n`);
 const ssh = (script: string, args: string[] = []) => spawnSync("ssh", ["-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", target!, remoteShellCommand(script, args)], { encoding: "utf8", timeout: 30_000 });
@@ -57,7 +55,6 @@ describe("Rex SSH placement against a real Mac and a real Pi", { skip: !target ?
 			assert.equal(runtime.status, 1);
 			assert.equal(fs.existsSync(forwardDir), false);
 
-			// A finished (not aborted) child keeps its tab, like a Herdr pane; only the runtime directory goes.
 			const finished = await factory.create({ ...launch, runtime: { ...launch.runtime, runId: "rexsshsmoke2" } });
 			assert.ok(finished instanceof HerdrPiSession);
 			const kept = finished.identity;
@@ -72,7 +69,6 @@ describe("Rex SSH placement against a real Mac and a real Pi", { skip: !target ?
 			assert.equal(remoteRex(["block", "inspect", "-s", session, kept.paneId]).status, 3);
 		} finally {
 			await factory.dispose();
-			// The remote Pi keeps its session files in its agent dir, under a folder named for the temp project; remove that folder.
 			const removed = ssh('d="$HOME/.pi/agent/sessions/$1"; case "$1" in --*-tmp-rex-ssh-smoke.*--) test -d "$d" && rm -rf -- "$d" && echo "$d";; *) exit 64;; esac', [`--${project.slice(1).replaceAll("/", "-")}--`]);
 			log(`removed remote Pi session folder: ${removed.stdout.trim() || "none"}`);
 			assert.equal(ssh('case "$1" in /tmp/rex-ssh-smoke.*|/private/tmp/rex-ssh-smoke.*) rm -rf -- "$1";; *) exit 64;; esac', [project]).status, 0);

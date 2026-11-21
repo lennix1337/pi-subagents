@@ -937,7 +937,6 @@ describe("subagent extension RPC bridge", () => {
 				});
 				t.after(() => bridge.dispose());
 
-				// The paused result is absent, as after completion delivery; proof must still gate sealing.
 				const reply = await request(events, "stop-paused", "stop", { id: runId });
 				if (proof === "observed") {
 					assert.deepEqual(reply, {
@@ -1477,7 +1476,6 @@ describe("subagent extension RPC bridge", () => {
 					details: { mode: "single", results: [{ agent: "reviewer", runId: "run-a", usage: childUsage, sessionFile: "/sessions/child-a.jsonl" }] },
 				},
 			},
-			// The same child completing through bg_wait must not be counted twice.
 			{
 				type: "message",
 				message: {

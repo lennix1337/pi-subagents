@@ -35,7 +35,6 @@ function foregroundHistoryFile(resultsDir: string, runId: string): string {
 	return path.join(resultsDir, "foreground-history", `${encodeIndexSegment(runId)}.json`);
 }
 
-/** Writes a raw record as another Pi process, or an older version, would have left it. */
 function writeForegroundHistoryFile(resultsDir: string, run: { runId: string }): void {
 	fs.mkdirSync(path.join(resultsDir, "foreground-history"), { recursive: true });
 	fs.writeFileSync(foregroundHistoryFile(resultsDir, run.runId), JSON.stringify(run), "utf-8");
@@ -371,7 +370,6 @@ describe("native subagent fleet", () => {
 	});
 
 	it("shows live prompt summaries and opens Prompt Audit with the authored prompt visible", async (t) => {
-		// Frames are compared whole, and running rows show wall-clock elapsed time.
 		t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
 		const sentinel = "PROMPT_AUDIT_SENTINEL_1021";
 		const secondSentinel = "PROMPT_AUDIT_SECOND_CHILD";
@@ -569,8 +567,6 @@ describe("native subagent fleet", () => {
 				{ asyncDirRoot: root, resultsDir: path.join(root, "results"), refreshMs: 60_000, markdownTheme },
 			);
 			try {
-				// The provider-qualified label wraps across rows in the 61-column detail pane, so
-				// reassemble the detail column before asserting the model and thinking metadata.
 				const detail = component.render(100)
 					.map((line) => line.split("│")[2] ?? "")
 					.join(" ")
@@ -813,12 +809,9 @@ describe("native subagent fleet", () => {
 			writeAsyncRun(root, { id: "worker-a", startedAt: 100, lastUpdate: 500 });
 			const state = stateForTest();
 			const keys = () => collectFleetSnapshot(state, { asyncDirRoot: root, resultsDir: path.join(root, "results") }).items.map((item) => item.key);
-			// First refresh: the run created first stays on top, even though worker-b emitted most recently.
 			assert.deepEqual(keys(), ["async:worker-a:0", "async:worker-b:0"]);
-			// Later activity on worker-b must not reorder the roster.
 			writeAsyncRun(root, { id: "worker-b", startedAt: 200, lastUpdate: 1500 });
 			assert.deepEqual(keys(), ["async:worker-a:0", "async:worker-b:0"]);
-			// A run started later still lands after the earlier ones.
 			writeAsyncRun(root, { id: "worker-c", startedAt: 300, lastUpdate: 300 });
 			assert.deepEqual(keys(), ["async:worker-a:0", "async:worker-b:0", "async:worker-c:0"]);
 		} finally {
@@ -969,7 +962,6 @@ describe("native subagent fleet", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fleet-foreground-terminal-"));
 		try {
 			const resultsDir = path.join(root, "results");
-			// A running row without an owner pid cannot be judged, so it is never admitted.
 			writeForegroundHistoryFile(resultsDir, { runId: "stale-running", mode: "single", cwd: root, sessionId: "session-current", updatedAt: 300, children: [{ agent: "worker", index: 0, status: "running", currentTool: "bash" }] });
 			writeForegroundHistoryFile(resultsDir, { runId: "terminal", mode: "single", cwd: root, sessionId: "session-current", updatedAt: 200, children: [{ agent: "reviewer", index: 0, status: "completed", finalOutput: "done" }] });
 
@@ -1007,7 +999,6 @@ describe("native subagent fleet", () => {
 			});
 			persistForegroundRun(running("owner-dead", { pid: exited }), { resultsDir });
 			persistForegroundRun(running("owner-alive", { pid: process.pid, bootId: "boot-now" }), { resultsDir });
-			// This test process is alive, so only the boot id can say this owner is gone.
 			persistForegroundRun(running("owner-rebooted", { pid: process.pid, bootId: "boot-before" }), { resultsDir });
 			persistForegroundRun(running("owner-other-namespace", { pid: exited, pidNamespaceScope: "pid:[container]" }), { resultsDir });
 			assert.deepEqual([...savedForegroundRuns(resultsDir).values()].map((run) => [run.runId, run.children[0]?.status, run.owner !== undefined]).sort(), [
@@ -1039,8 +1030,6 @@ describe("native subagent fleet", () => {
 			const exited = spawnSync(process.execPath, ["-e", ""]).pid;
 			assert.ok(exited);
 			const run = (runId: string, ownerPid?: number): ForegroundResumeRun => ({ runId, mode: "single", cwd: root, sessionId: "session-current", updatedAt: 100, ...(ownerPid ? { owner: { pid: ownerPid } } : {}), children: [{ agent: "worker", index: 0, status: ownerPid ? "running" : "completed" }] });
-			// The two oldest files are running records: one whose owner is alive (its final save will
-			// replace it later) and one left by a Pi process that died.
 			for (const [index, [runId, ownerPid]] of ([["running-live", process.pid], ["running-dead", exited], ["final-1", undefined], ["final-2", undefined]] as const).entries()) {
 				persistForegroundRun(run(runId, ownerPid), { resultsDir });
 				fs.utimesSync(foregroundHistoryFile(resultsDir, runId), 1_000 + index, 1_000 + index);
@@ -1057,7 +1046,6 @@ describe("native subagent fleet", () => {
 		try {
 			const resultsDir = path.join(root, "results");
 			const run = (runId: string, extra: Partial<ForegroundResumeRun> = {}): ForegroundResumeRun => ({ runId, mode: "single", cwd: root, sessionId: "session-current", updatedAt: 100, children: [{ agent: "worker", index: 0, status: "completed" }], ...extra });
-			// Run A belongs to another Pi process: this process's state never held it.
 			persistForegroundRun(run("run-a", { owner: { pid: process.pid + 1 }, children: [{ agent: "worker", index: 0, status: "running" }] }), { resultsDir });
 			const fileA = foregroundHistoryFile(resultsDir, "run-a");
 			fs.utimesSync(fileA, 1_000, 1_000);
@@ -1176,7 +1164,6 @@ describe("native subagent fleet", () => {
 			}
 			for (const [index, run] of [...state.foregroundRuns!.values()].entries()) {
 				persistForegroundRun(run, { resultsDir, limit: 2 });
-				// Distinct mtimes in save order: the cap prunes the oldest file.
 				fs.utimesSync(foregroundHistoryFile(resultsDir, run.runId), 1_000 + index, 1_000 + index);
 			}
 			assert.deepEqual([...savedForegroundRuns(resultsDir).keys()].sort(), ["run-1", "run-2"]);
@@ -1239,7 +1226,6 @@ describe("native subagent fleet", () => {
 				const lines = component.render(100);
 				assert.ok(lines.some((line) => line.includes("FINAL ASYNC OUTPUT")));
 				assert.ok(lines.some((line) => line.includes("worker") && line.includes("[fork]")));
-				// The detail pane hard-wraps long paths at any character, so read it back as one string.
 				const detail = lines.map((line) => (line.replace(/\x1b\[[0-9;]*m/g, "").split("│")[2] ?? "").trimEnd()).join("");
 				assert.ok(detail.includes(path.join(asyncDir, "output-0.log")));
 				assert.ok(detail.includes(path.join(asyncDir, "worker.jsonl")));
@@ -1363,7 +1349,6 @@ describe("native subagent fleet", () => {
 				assert.equal(click(changes), undefined);
 				assert.match(component.render(100)[1]!, /agent-29/);
 			}
-			// Insert a row ahead of the rendered slice without rendering a replacement frame.
 			state.foregroundControls.set("inserted", { runId: "inserted", mode: "single", startedAt: 0.5, updatedAt: 1, currentAgent: "inserted", currentIndex: 0 });
 			component.handleInput("r");
 			assert.equal(click()?.handled, true);
@@ -1408,9 +1393,6 @@ describe("native subagent fleet", () => {
 					tui.renderNow();
 					const bottom = component.render(100);
 					if (fullscreen && tui instanceof TuiAltScreen) {
-						// The transcript starts following its bottom. Unhandled wheel input would fall back to
-						// transcript scrolling, which clamps silently at either bound; move the transcript away
-						// from both bounds first so fallback in either direction becomes observable.
 						const endOffset = tui.viewportTop;
 						tui.scrollBy(-10);
 						tui.renderNow();
@@ -2372,8 +2354,6 @@ describe("native subagent fleet", () => {
 				const auditFrame = component.render(100);
 				assert.ok(auditFrame.some((line) => line.includes("audit line 0")), "Prompt Audit opens at the top");
 				assert.ok(!auditFrame.some((line) => line.includes("audit line 59")));
-				// Scroll away from the top first: staying at the top would make the transition below
-				// indistinguishable from preserving the existing offset.
 				for (let i = 0; i < 20; i++) component.handleInput("J");
 				const scrolledAudit = component.render(100);
 				assert.ok(!scrolledAudit.some((line) => line.includes("audit line 0")), "scrolled away from the top before the view change");

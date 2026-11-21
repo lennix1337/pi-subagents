@@ -130,7 +130,6 @@ describe("public launch contract preflight", () => {
 		assert.equal(typeof agentDir, "string");
 		writeJson(path.join(agentDir!, "settings.json"), { subagents: { modelScope: { enforce: true, allow: ["anthropic/claude-opus-4-5"] } } });
 
-		// An enforced scope fails closed, for a model outside it and for a launch with none.
 		const outsideScope = await resolveSubagentLaunchContract({ agent: "cc", cwd, model: "opus" });
 		assert.equal(outsideScope.ok, false);
 		if (outsideScope.ok) return;
@@ -161,7 +160,6 @@ describe("public launch contract preflight", () => {
 		assert.equal(projectScope.code, "restricted_agent");
 		assert.match(projectScope.message, /agentScope: "project" requires project trust/u);
 
-		// Omitted trust keeps the project's settings, as before.
 		const trusted = await resolveSubagentLaunchContract({ agent: "probe", cwd, availableModels });
 		assert.equal(trusted.ok && trusted.contract.model, "openai/astra");
 	});
@@ -269,7 +267,6 @@ Project prompt.
 			assert.deepEqual(result.contract.skills.requested, ["project-skill"]);
 			assert.equal(result.contract.skills.resolved[0]?.name, "project-skill");
 			assert.deepEqual(result.contract.tools.effectiveAllowlist, ["read"]);
-			// The bridge adds contact_supervisor before the ceiling applies, exactly as execution does.
 			assert.deepEqual(result.contract.tools.capabilityAudit?.removedTools, ["write", "contact_supervisor"]);
 			assert.equal(result.contract.tools.capabilityAudit?.removedExtensionCount, 1);
 			assert.deepEqual(result.contract.intercomBridge, { mode: "always", active: true });
@@ -486,7 +483,6 @@ Worker.
 		const clearedOverridden = await contractFor({ agent: "cleared", thinking: "high" });
 		assert.equal(clearedOverridden.model, "test/worker:high");
 
-		// The launch yields to a :level suffix on the resolved model, including one from the agent definition.
 		const agentSuffix = await contractFor({ agent: "suffixed", thinking: "low" });
 		assert.equal(agentSuffix.model, "test/worker:high");
 		assert.equal(agentSuffix.thinking, "high");
@@ -1047,8 +1043,6 @@ Project prompt.
 		assert.ok(base.contract.tools.effectiveAllowlist.includes("contact_supervisor"));
 		assert.equal(base.contract.diagnostics.some((diagnostic) => /orchestratorTarget/.test(diagnostic.message)), false);
 
-		// The default template never names the parent session, so a host that
-		// supplies its real target gets the same digest as one that does not.
 		const withTarget = await resolveSubagentLaunchContract({ ...input, orchestratorTarget: "subagent-chat-1234" });
 		assert.equal(withTarget.ok, true);
 		if (!withTarget.ok) return;
@@ -1062,7 +1056,6 @@ Project prompt.
 		assert.notEqual(off.contract.launchContractDigest, base.contract.launchContractDigest);
 		assert.equal(off.contract.agent.definitionDigest, base.contract.agent.definitionDigest);
 
-		// Inactive fork-only for a fresh launch hashes exactly like off: activation, not the mode label, is bound.
 		const forkOnly = await resolveSubagentLaunchContract({ ...input, context: "fresh", intercomBridge: { mode: "fork-only" } });
 		assert.equal(forkOnly.ok, true);
 		if (!forkOnly.ok) return;
@@ -1109,8 +1102,6 @@ Project prompt.
 			assert.equal(result.ok, false);
 			if (!result.ok) assert.equal(result.code, "invalid_intercom_bridge");
 		}
-		// Execution never has an empty target, so accepting one would silently
-		// deactivate the bridge in preflight only.
 		for (const orchestratorTarget of ["", "   ", 7]) {
 			const result = await resolveSubagentLaunchContract({ agent: "worker", cwd, orchestratorTarget: orchestratorTarget as never });
 			assert.equal(result.ok, false);

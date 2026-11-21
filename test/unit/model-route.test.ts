@@ -8,7 +8,6 @@ const models = [
 	{ provider: "anthropic", id: "claude-sonnet-5-5", fullId: "anthropic/claude-sonnet-5-5" },
 ];
 
-/** A root account manager that says codex-account-2 is spent and Sonnet is its ready peer. */
 function spentCodexBus(answer: (model: { provider: string; id: string }) => unknown) {
 	const asked: unknown[] = [];
 	const uninstall = installModelRouteBus({

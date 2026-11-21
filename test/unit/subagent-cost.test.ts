@@ -80,7 +80,6 @@ describe("collectSubagentCost", () => {
 		];
 		const branch = [
 			...rounds.map(toolResult),
-			// The same round-2 result again, as a slash-result message replays it.
 			{ type: "custom_message", customType: SLASH_RESULT_TYPE, details: { requestId: "slash-1", result: { content: [], details: rounds[1] } } },
 			toolResult(rounds[2]),
 		];

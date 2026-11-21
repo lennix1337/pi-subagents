@@ -81,7 +81,6 @@ describe("live foreground ledger", () => {
 	it("prunes records a crashed run left behind", () => {
 		writeLiveForegroundRun(record({ runId: "old", index: 1 }));
 		const file = liveForegroundRecordPath("old", 1);
-		// A record whose heartbeat is older than the retention window belongs to a run that died.
 		writeFileSync(file, JSON.stringify({ ...record({ runId: "old", index: 1 }), updatedAt: 0 }));
 		pruneLiveForegroundRuns(Date.now() + 25 * 60 * 60 * 1000);
 		assert.equal(existsSync(file), false);
@@ -93,7 +92,6 @@ describe("live foreground ledger", () => {
 	});
 
 	it("prunes at most once per interval when children end", () => {
-		// A time far ahead of every other test makes any record written now look stale.
 		const base = Date.now() + 48 * 60 * 60 * 1000;
 		const staleFile = (runId: string) => {
 			writeLiveForegroundRun(record({ runId }));

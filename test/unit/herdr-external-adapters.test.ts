@@ -57,13 +57,11 @@ function workspaceIdentity() { return JSON.stringify({ realpath: cwd, device: 1,
 	it("overlaps startup process evidence with agent identity in each poll", async () => {
 		const launch = createHerdrExternalAdapterLaunch({ adapter: "cursor-agent", remoteRuntimeDir: "/tmp/runtimedir", cwd, nativeSessionId: session });
 		let now = 0, reads = 0, processReads = 0, prompts = 0, inFlight = 0, maxOverlap = 0;
-		// Each read takes real time; a sequential poll never has both reads pending at once.
 		const timed = async <T>(read: () => T): Promise<T> => {
 			inFlight++;
 			maxOverlap = Math.max(maxOverlap, inFlight);
 			try { await new Promise((resolve) => setTimeout(resolve, 10)); return read(); } finally { inFlight--; }
 		};
-		// SAFETY: the test double implements only the owner members this startup poll reads.
 		const owner = { machine: { id: "m", cwd }, agentName: "a", terminalId: "term", startedArgv: argvFor(launch), owned: { workspaceId: "w", tabId: "t", paneId: "p" }, snapshot: { connection: "connected" }, runRemote() { return { status: 0, stdout: workspaceIdentity(), stderr: "" }; }, connection: { client: { async call(method: string, params: { source?: unknown } = {}) {
 			if (method === "pane.read") { reads++; return { type: "pane_read", read: { pane_id: "p", source: params.source, text: params.source === "recent_unwrapped" ? "RESULT=41" : "Cursor Agent Ask" } }; }
 			if (method === "pane.process_info") return timed(() => { processReads++; return { type: "pane_process_info", process_info: { pane_id: "p", foreground_processes: [processFor(launch)] } }; });

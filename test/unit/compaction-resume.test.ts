@@ -146,7 +146,7 @@ describe("async compaction resume", () => {
 	});
 
 	it("restores widgets when the same run continues after automatic compaction", () => {
-		// Pi compacts between tool cycles of a running agent loop and emits no agent_start afterwards.
+		// external: Pi compacts between tool cycles of a running agent loop without another agent_start.
 		const script = String.raw`
 			import os from "node:os";
 			import path from "node:path";

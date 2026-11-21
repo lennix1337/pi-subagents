@@ -82,7 +82,6 @@ describe("async stale-run reconciliation", () => {
 			assert.equal(dead.status.state, "failed");
 			assert.equal(dead.status.workflow.stopCause, "owner-exited");
 			assert.equal(dead.status.workflow.scriptDigest, "digest");
-			// When the dead owner last updated it, not the repair time, and the stop cause in the result.
 			assert.equal(dead.status.workflow.ownerExitedAt, 1000);
 			assert.equal(dead.status.endedAt, 2000);
 			assert.deepEqual(JSON.parse(fs.readFileSync(path.join(resultsDir, "wf-dead.json"), "utf-8")).workflow, { stopCause: "owner-exited" });
@@ -112,13 +111,11 @@ describe("async stale-run reconciliation", () => {
 			assert.equal(single.status.workflow, undefined);
 			assert.equal(single.result.message, "Async runner process 4242 exited or disappeared before writing a result. Marked run failed by stale-run reconciliation.");
 
-			// An owning session's repair adopts its completion owner, so it can deliver the notice; only an owner-exited workflow does.
 			const deadPid = () => { throw errno("ESRCH"); };
 			const resultOwner = (runId: string) => JSON.parse(fs.readFileSync(path.join(resultsDir, `${runId}.json`), "utf-8")).completionOwnerId;
 			const adopted = reconcile("wf-adopted", workflowStatus("wf-adopted", { completionOwnerId: "dead-process" }), { kill: deadPid, adoptCompletionOwnerId: "this-process" });
 			assert.equal(adopted.status.completionOwnerId, "this-process");
 			assert.equal(resultOwner("wf-adopted"), "this-process");
-			// A repair where no owning session adopts it leaves its notice to whichever session owns the run.
 			const elsewhere = reconcile("wf-elsewhere", workflowStatus("wf-elsewhere", { completionOwnerId: "dead-process" }), { kill: deadPid });
 			assert.equal(elsewhere.status.completionOwnerId, "owning-session");
 			assert.equal(resultOwner("wf-elsewhere"), "owning-session");
@@ -243,7 +240,6 @@ describe("async stale-run reconciliation", () => {
 				deadlineAt: 61_000,
 				steps: [{ agent: "worker", status: "running", startedAt: 1000 }],
 			});
-			// A Windows system process answers EPERM for a recycled PID.
 			const kill = () => { throw errno("EPERM"); };
 			const withinGrace = reconcileAsyncRun(asyncDir, { resultsDir: path.join(root, "results"), kill, now: () => 61_000 + 60_000 });
 			assert.equal(withinGrace.repaired, false);
@@ -684,7 +680,6 @@ describe("async stale-run reconciliation", () => {
 			child("child-bad", "bad", "failed", 1600, { status: "failed", exitCode: 1, error: "child boom" });
 			child("child-halted", "halted", "stopped", undefined, { status: "stopped", exitCode: 1, error: "stopped by bg_stop" });
 			child("child-cut", "cut", "partial", 1700, { status: "partial", exitCode: 1, error: "turn budget exhausted" });
-			// Owned by another workflow: its outcome must not be borrowed.
 			child("child-foreign", "foreign", "complete", 1500, { status: "complete", exitCode: 0 }, "other-wf");
 			fs.mkdirSync(path.join(root, "child-corrupt"), { recursive: true });
 			fs.writeFileSync(path.join(root, "child-corrupt", "status.json"), "{not json", "utf-8");
@@ -704,15 +699,12 @@ describe("async stale-run reconciliation", () => {
 			assert.equal(steps[0]?.error, undefined);
 			assert.equal(steps[1]?.status, "failed");
 			assert.equal(steps[1]?.error, "child boom");
-			// Unsettled or unreadable children still inherit the owner failure.
 			assert.equal(steps[2]?.status, "failed");
 			assert.match(steps[2]?.error ?? "", /stale-run reconciliation/);
 			assert.equal(steps[3]?.status, "failed");
-			// A corrupt child status keeps the owner repair going and stays visible in the error.
 			assert.equal(result.repaired, true);
 			assert.equal(steps[4]?.status, "failed");
 			assert.match(steps[4]?.error ?? "", /child status unreadable/);
-			// Every terminal child state is kept, not only complete and failed.
 			assert.equal(steps[5]?.status, "stopped");
 			assert.equal(steps[5]?.stopped, true);
 			assert.equal(steps[5]?.error, "stopped by bg_stop");

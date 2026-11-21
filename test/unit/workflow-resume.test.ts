@@ -94,7 +94,6 @@ describe("prepareWorkflowResume", () => {
 
 	it("maps a held claim to its refusal", () => {
 		withRoot((root, writeRun) => {
-			// The test runner's parent process is alive, so its claim is held.
 			writeRun("held");
 			fs.writeFileSync(path.join(root, "held", "resumed-by.1.json"), JSON.stringify({ version: 1, pid: process.ppid, ...(currentBootId() ? { bootId: currentBootId() } : {}), claimedAt: 1, newRunId: "pending-run", trigger: "auto" }));
 			assert.deepEqual(prepare(root, "held"), { ok: false, code: "claim-busy", reason: `being resumed by pid ${process.ppid}`, byHand: "" });

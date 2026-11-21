@@ -5,12 +5,6 @@ import * as path from "node:path";
 import { after, beforeEach, describe, it } from "node:test";
 import type { McpServerDefinition } from "../../src/runs/shared/mcp-config-sources.ts";
 
-// The resolver captures the generic `~/.config/mcp/mcp.json` and import paths
-// from the home directory when its module loads, and it resolves servers and the
-// metadata cache through the Pi agent directory. Isolate the home environment
-// before importing it, so a direct `node --test` run without the repository test
-// preload neither reads a developer's real MCP config nor touches a real agent
-// directory.
 const managedEnv = ["HOME", "USERPROFILE", "PI_CODING_AGENT_DIR"] as const;
 const previousEnv: Record<string, string | undefined> = {};
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-resolution-"));
@@ -84,7 +78,6 @@ describe("MCP direct-tool resolution config sources", () => {
 	});
 
 	it("computes config hashes identical to pi-mcp-adapter 3.1.0 for stdio servers", () => {
-		// Values reproduced from pi-mcp-adapter 3.1.0's real cache; drift breaks stdio direct-tool resolution.
 		assert.equal(computeMcpServerHash(CURRENT_DEFINITION), "d2b80559f0b1c85ccc625a4c7f875f64e0defc60648f56d2a51cbe5dfa3d967e");
 		assert.equal(computeMcpServerHash({ ...CURRENT_DEFINITION, inheritEnv: false }), "345b359732aa3ece7fdf8b98b9927809243685846c2b375e98a312a80e89e333");
 	});

@@ -269,7 +269,6 @@ describe("chain append requests", () => {
 			"reviewer:pending",
 			"auditor:pending",
 		]);
-		// Appended steps must not carry raw task text into durable status.
 		assert.deepEqual(status.steps?.slice(1).map((step) => step.description), [
 			PROMPT_REDACTED,
 			PROMPT_REDACTED,

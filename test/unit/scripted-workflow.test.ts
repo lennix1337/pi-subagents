@@ -1101,7 +1101,6 @@ describe("scripted workflow runtime", () => {
 			`,
 			async launch(key, params) {
 				launched.push(key);
-				// The runtime bridges a passing json gate into structuredOutput; the workflow only sees the result.
 				return key === "pr.review"
 					? { key, ok: true, output: "", structuredOutput: { verdict: "blocked", action: "writer-fix" }, artifactPaths: [] }
 					: { key, ok: true, output: "done", artifactPaths: [] };
@@ -3221,10 +3220,6 @@ describe("scripted workflow runtime", () => {
 	});
 
 	it("keeps every child alive when a host trace callback throws", async () => {
-		// Regression: hosts persist a status journal from onTrace, and onTrace is called
-		// from inside the run-promise handlers. A failed status write used to reject the
-		// child promise, so one locked status.json marked a finished child failed and
-		// aborted its still-running siblings through Promise.all inside runs.all.
 		let thrown = 0;
 		const abortedWhileRunning: string[] = [];
 		const result = await runWorkflowScript({

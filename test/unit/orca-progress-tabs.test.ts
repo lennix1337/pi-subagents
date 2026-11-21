@@ -24,7 +24,7 @@ afterEach(() => {
 	const progressRoot = path.join(TEMP_ROOT_DIR, "orca-progress");
 	for (const dir of tempDirs.splice(0)) {
 		let scope = path.resolve(dir);
-		try { scope = fs.realpathSync(dir); } catch { /* use the lexical path */ }
+		try { scope = fs.realpathSync(dir); } catch {  }
 		const key = createHash("sha256").update(scope).digest("hex").slice(0, 20);
 		fs.rmSync(path.join(progressRoot, `counter-${key}`), { force: true });
 		fs.rmSync(path.join(progressRoot, `counter-${key}.lock`), { recursive: true, force: true });
@@ -46,8 +46,6 @@ function tempDir(): string {
 	return dir;
 }
 
-// Ready means written, not just created: every file awaited here gets its whole content in one
-// write after it is created, so a file that exists but is still empty is not ready to read.
 async function waitForFile(file: string, timeoutMs = 5_000): Promise<void> {
 	const deadline = Date.now() + timeoutMs;
 	while (!fs.statSync(file, { throwIfNoEntry: false })?.size) {
@@ -74,9 +72,6 @@ function captureCommand(command: string, cwd: string): Promise<string> {
 	});
 }
 
-// A writer creates its file before it writes it, so a reader can find the file empty in between.
-// The fake holds that state for five waitForFile polls: a test that reads the capture as soon as
-// it exists then fails on every run, not once in a while.
 const CAPTURE_WRITE_DELAY_MS = 100;
 
 function writeCaptureOrca(dir: string): string {
@@ -175,7 +170,7 @@ test("hung Orca terminal creation does not delay the owning process", { skip: pr
 		process.kill(fakePid, 0);
 	} finally {
 		if (fakePid !== undefined) {
-			try { process.kill(fakePid, "SIGKILL"); } catch { /* already stopped */ }
+			try { process.kill(fakePid, "SIGKILL"); } catch {  }
 		}
 		if (owner.exitCode === null) owner.kill("SIGKILL");
 	}
@@ -196,7 +191,6 @@ test("malformed optional observer metadata cannot break child execution", { skip
 	} as never);
 	assert.ok(tab);
 	await tab.finish("completed");
-	// Capture precedes the watchdog's final manifest/queue writes; wait for its close.
 	await tab.creationSettled;
 	const args = JSON.parse(fs.readFileSync(capture, "utf-8")) as string[];
 	assert.equal(args[args.indexOf("--title") + 1], "subagents · subagent · 1");
@@ -292,7 +286,6 @@ test("enabled tabs use a worktree sequence and successful Pi sessions get cleanu
 	assert.equal(resolvePiSessionId(sessionFile), sessionId);
 	assert.equal(resolvePiSessionId(path.join(dir, `missing_${sessionId}.jsonl`)), undefined);
 	await tab.finish("completed", sessionFile);
-	// Capture precedes the watchdog's final manifest/queue writes; wait for its close.
 	await tab.creationSettled;
 	const args = JSON.parse(fs.readFileSync(capture, "utf-8")) as string[];
 	assert.deepEqual(args.slice(0, 2), ["terminal", "create"]);
@@ -393,10 +386,6 @@ test("viewer one-liner survives shells that collapse backslashes inside single q
 	await waitForFile(capture);
 	const args = JSON.parse(fs.readFileSync(capture, "utf-8")) as string[];
 	const viewer = args[args.indexOf("--command") + 1]!;
-	// Orca runs --command through the user's login shell. fish collapses `\\`
-	// inside single quotes to `\`, so a backslash in the viewer one-liner reaches
-	// `node -e` as different source (unterminated string literal) and every progress
-	// tab opens on a SyntaxError instead of the mirror.
 	assert.equal(viewer.includes("\\"), false);
 	await tab.finish("failed");
 });

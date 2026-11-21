@@ -124,9 +124,6 @@ describe("dynamic fanout helpers", () => {
 	});
 
 	it("preserves runner-injected parent authority without admitting it in user-facing validation", () => {
-		// Regression: the async runner threads parentSessionId onto the dynamic parallel
-		// template for permission-system forwarding. It must pass runner-internal validation
-		// (allowRunnerFields) without leaking into the user-facing dynamic field whitelist.
 		const runnerStep = {
 			expand: { from: { output: "targets", path: "/items" }, maxItems: 4 },
 			parallel: { agent: "reviewer", task: "Review {item.path}", parentSessionId: "session-parent", requiredExtensions: [{ id: "provider", path: "/private/provider.mjs" }] },

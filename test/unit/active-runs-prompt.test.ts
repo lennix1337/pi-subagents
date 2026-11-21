@@ -9,7 +9,6 @@ import { SUBAGENT_CHILD_ENV } from "../../src/runs/shared/child-runtime-config.t
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
-// Registers the extension, then reads the active_subagents section around one run of this session and one of another.
 const script = String.raw`
 	import os from "node:os";
 	import path from "node:path";

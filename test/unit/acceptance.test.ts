@@ -467,29 +467,24 @@ describe("acceptance gates", () => {
 	});
 
 	it("tolerates empty-string entries in string-array fields by dropping them at parse time", () => {
-		// A model writing ["\"\""] for "no items" must not fail the whole report.
 		for (const field of ["changedFiles", "testsAddedOrUpdated", "validationOutput", "residualRisks", "reviewFindings"] as const) {
 			const parsed = parseAcceptanceReport(report({ [field]: [""] }));
 			assert.equal(parsed.error, undefined, `${field}: ["\"\""] should parse`);
 			assert.deepEqual(parsed.report?.[field], [], `${field}: empty-string entries dropped`);
 		}
 
-		// Mixed arrays keep only meaningful entries.
 		const mixed = parseAcceptanceReport(report({ reviewFindings: ["blocker: file.ts:12", ""] }));
 		assert.equal(mixed.error, undefined);
 		assert.deepEqual(mixed.report?.reviewFindings, ["blocker: file.ts:12"]);
 
-		// Whitespace-only entries are treated as empty.
 		const whitespace = parseAcceptanceReport(report({ validationOutput: ["  "] }));
 		assert.equal(whitespace.error, undefined);
 		assert.deepEqual(whitespace.report?.validationOutput, []);
 
-		// A single string is still coerced to a one-item array.
 		const coerced = parseAcceptanceReport(report({ changedFiles: "src/file.ts" }));
 		assert.equal(coerced.error, undefined);
 		assert.deepEqual(coerced.report?.changedFiles, ["src/file.ts"]);
 
-		// Structural garbage (non-string entries) is still rejected.
 		const invalid = parseAcceptanceReport(report({ reviewFindings: [{}] }));
 		assert.equal(invalid.report, undefined);
 		assert.match(invalid.error ?? "", /reviewFindings\[0\]: expected non-empty string; got object/);
@@ -1086,9 +1081,6 @@ describe("acceptance gates", () => {
 		const cwd = tempRepo();
 		const sharedPath = path.join(cwd, "context.md");
 		try {
-			// Sibling child B wrote the shared path last (issue #420); the disk
-			// content is B's. Child A's acceptance input comes from A's own
-			// successful write-tool call, so B's report must not be attributed to A.
 			fs.writeFileSync(sharedPath, report({ notes: "sibling B report" }), "utf-8");
 			const childAMessages: Message[] = [
 				{

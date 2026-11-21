@@ -11,8 +11,6 @@ import { PI_WEB_SESSION_LIVENESS_REGISTRY_KEY } from "../../src/integrations/pi-
 import { currentCompletionOwnerId } from "../../src/shared/completion-owner.ts";
 import { SUBAGENT_ASYNC_COMPLETE_EVENT } from "../../src/shared/types.ts";
 
-// One child that ends before its result is published, whose first completion
-// send is rejected, and whose accepted wake is started by the parent later.
 const terminalBeforePublicationScript = String.raw`
 	import assert from "node:assert/strict";
 	import * as fs from "node:fs";
@@ -275,7 +273,6 @@ describe("session liveness through result delivery", () => {
 		]);
 		let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
 		let reloaded = false;
-		// Hook errors after reload never reach onError, so record observations and assert after the prompt.
 		let observed: Record<string, unknown> | undefined;
 		const settingsManager = SettingsManager.inMemory({});
 		const errors: unknown[] = [];
@@ -308,19 +305,17 @@ describe("session liveness through result delivery", () => {
 			await resourceLoader.reload();
 			const modelRuntime = await ModelRuntime.create({ authPath: path.join(agentDir, "auth.json"), modelsPath: path.join(agentDir, "models.json"), allowModelNetwork: false });
 			({ session } = await createAgentSession({ cwd: root, agentDir, settingsManager, resourceLoader, modelRuntime, model: faux.getModel("local"), sessionManager, noTools: "builtin" }));
-			// With no bindings, SDK reload skips session_start. Bind an error listener
-			// to exercise the real reload lifecycle.
 			await session.bindExtensions({ onError: (error) => { errors.push(error); } });
 			await session.prompt("Yield with a completion pending.");
 			assert.equal(reloaded, true);
 			assert.deepEqual(errors, []);
 			assert.deepEqual(observed, {
 				activeBeforeReload: true,
-				registrations: 2, // reload actually bound the replacement producer
+				registrations: 2,
 				isIdle: true,
-				pendingMessageCount: 0, // Pi's deferred settled action is not counted as a pending message
-				noticeAppended: false, // the notice starts the run Pi deferred past agent_settled, so it is not in the session yet
-				activeAfterReload: true, // the retained wake owns liveness until that deferred run starts
+				pendingMessageCount: 0,
+				noticeAppended: false,
+				activeAfterReload: true,
 			});
 			assert.equal(provider?.isActive(), false, "the woken run releases the retained wake");
 			assert.equal(session.getLastAssistantText(), "Processed completion after reload.");

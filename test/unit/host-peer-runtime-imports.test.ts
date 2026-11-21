@@ -27,7 +27,6 @@ function matchingHostPeerPackage(specifier: string): string | undefined {
 	return hostPeerPackages.find((pkg) => specifier === pkg || specifier.startsWith(`${pkg}/`));
 }
 
-/** Extract specifiers from top-level static import/export-from statements, skipping type-only lines. */
 function extractStaticImportSpecifiers(source: string): string[] {
 	const specifiers: string[] = [];
 	const lines = source.split("\n");
@@ -38,8 +37,6 @@ function extractStaticImportSpecifiers(source: string): string[] {
 			i++;
 			continue;
 		}
-		// Multi-line statements (e.g. `import {\n\tFoo,\n} from "x";`) continue past this line: keep
-		// pulling lines into one logical statement until we see the `from "..."` clause or a `;`.
 		let statement = line;
 		while (!/from\s+["'][^"']+["']/.test(statement) && !statement.includes(";") && i + 1 < lines.length) {
 			i++;
@@ -65,7 +62,6 @@ function resolveRelativeImport(fromFile: string, specifier: string): string | un
 	return candidates.find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
 }
 
-/** Walk the static runtime import graph from an entry point and list host peer imports outside `aliased`. */
 function unaliasedHostPeerImports(entryPoint: string, aliased: ReadonlySet<string>): { violations: string[]; visited: number } {
 	const visited = new Set<string>([entryPoint]);
 	const queue: string[] = [entryPoint];
@@ -102,12 +98,10 @@ test("every host peer package the detached async runner imports is aliased to th
 	assert.ok(packageRoot, "expected the pi package (or its test shim) to be resolvable");
 	const resolved = resolveHostPeerAliases(packageRoot);
 	assert.deepEqual(resolved.missing, []);
-	// Optional subpaths the installed host does not export (pi-agent-core "./node" on Pi 1.2.0) resolve to no alias.
 	for (const specifier of aliased) if (specifier in resolved.aliases) assert.ok(fs.existsSync(resolved.aliases[specifier]!), `alias target for ${specifier} exists`);
 });
 
 test("the standalone inspector runner reaches no host peer package, because its jiti has no alias map", () => {
-	// inspector-runner.mjs runs `createJiti(import.meta.url)` from the installed package, where host peers are absent.
 	const { violations, visited } = unaliasedHostPeerImports(path.join(projectRoot, "src", "inspectors", "inspector-runner.ts"), new Set());
 	assert.equal(violations.length, 0, `inspector import graph reaches host peer package(s):\n${violations.join("\n")}`);
 	assert.ok(visited > 20, `expected a non-trivial reachable file set (a broken resolver could undercount it), got ${visited}`);
@@ -192,7 +186,6 @@ test("resolveCompileFromPackageRoot resolves typebox hoisted to an ancestor node
 });
 
 test("validateStructuredOutputValue finds typebox/compile through the running Pi when the extension tree has none (#2765)", () => {
-	// Installed layout: TypeBox lives only in Pi's tree, and the extension has just its own runtime dependencies.
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-running-pi-typebox-"));
 	try {
 		const extension = path.join(root, "extension");
@@ -268,16 +261,14 @@ test("chord is required only when the host declares it, and aliased host-first w
 		assert.deepEqual(preChord.missing, []);
 		assert.equal(preChord.aliases[chord], undefined);
 		assert.equal(preChord.aliases[`${chord}/context`], undefined);
-		// An extension-local copy must never satisfy a missing host chord export.
 		writePackage(path.join(extension, "node_modules", chord), chord, "0.85.1", { ".": "./index.mjs", "./context": "./context.mjs" });
-		// Pi 1.2.0+ no longer depends on chord: an undeclared, absent chord is not required.
+		// external: Pi 1.2.0+ no longer depends on chord.
 		for (const version of ["1.2.0", "2.0.0-test"]) {
 			writePackage(host, "@earendil-works/pi-coding-agent", version, hostExports, { dependencies: { "@earendil-works/pi-tui": "^1.2.0" } });
 			const result = resolveHostPeerAliases(host);
 			assert.deepEqual(result.missing, [], version);
 			assert.equal(result.aliases[chord], undefined, version);
 		}
-		// A host that declares chord (0.85 through 1.1) fails closed when it is missing.
 		for (const field of ["dependencies", "optionalDependencies"]) {
 			writePackage(host, "@earendil-works/pi-coding-agent", "1.1.0", hostExports, { [field]: { [chord]: "^1.1.0" } });
 			const result = resolveHostPeerAliases(host);

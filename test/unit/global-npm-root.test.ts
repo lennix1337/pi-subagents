@@ -17,7 +17,6 @@ function fixture(script: string) {
 	fs.mkdirSync(bin);
 	const npm = path.join(bin, process.platform === "win32" ? "npm.cmd" : "npm");
 	fs.writeFileSync(npm, process.platform === "win32" ? `@echo off\r\n${script}\r\n` : `#!/bin/sh\n${script}\n`, { mode: 0o755 });
-	// A real Windows APPDATA npm root would short-circuit the lookup before the fake npm runs.
 	return { dir, env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}`, APPDATA: path.join(dir, "missing-appdata") } };
 }
 
@@ -82,12 +81,10 @@ describe("resolveGlobalNpmRoot", () => {
 	});
 
 	it("terminates the owned npm process on timeout", async () => {
-		if (process.platform === "win32") return; // Windows npm.cmd needs a shell.
+		if (process.platform === "win32") return; // external: Windows npm.cmd needs a shell.
 		const { dir, env } = fixture("exit 1");
 		const pidFile = path.join(dir, "npm.pid");
 		const executable = path.join(dir, "bin", "npm");
-		// sh records its pid at once, where a Node fixture could still be booting when the timeout kills it;
-		// exec keeps that pid, so the check below still targets the owned process, not a wrapper.
 		fs.writeFileSync(executable, `#!/bin/sh\necho $$ > '${pidFile}'\nexec sleep 30\n`, { mode: 0o755 });
 		assert.equal(await resolveGlobalNpmRoot({ env, timeoutMs: 500 }), null);
 		const pid = Number(fs.readFileSync(pidFile, "utf8"));

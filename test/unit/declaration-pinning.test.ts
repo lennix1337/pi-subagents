@@ -10,14 +10,12 @@ import { SubagentFlatParams } from "../../src/extension/schemas.ts";
 
 const systemMessages = (messages: Message[]) => messages.filter((message) => message.role === "system");
 
-/** A temporary Pi agent directory and project that load pi-subagents, and a way to run one session in them. */
 function pinningHarness() {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-declaration-pinning-"));
 	const cwd = path.join(root, "project");
 	const agentDir = path.join(root, "agent");
 	fs.mkdirSync(cwd);
 	fs.mkdirSync(agentDir);
-	// An advertised agent makes every session record the advertised_subagents prompt section.
 	fs.mkdirSync(path.join(agentDir, "agents"));
 	fs.writeFileSync(path.join(agentDir, "agents", "specialist.md"), "---\nname: specialist\ndescription: Pinning specialist\nadvertise: true\n---\nAct narrowly.\n");
 	const priorAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -25,14 +23,13 @@ function pinningHarness() {
 	process.env.PI_CODING_AGENT_DIR = agentDir;
 	delete process.env.PI_SUBAGENT_CHILD;
 	const faux = fauxProvider({ provider: "declaration-pinning", models: [{ id: "local" }], tokensPerSecond: 100_000 });
-	// Runs one prompt, and optionally a background wake, and returns the messages of every request.
 	const run = async (sessionManager: SessionManager, replies: AssistantMessage[], wake = false): Promise<Message[][]> => {
 		const requests: Message[][] = [];
 		faux.setResponses(replies.map((reply) => (context) => {
 			requests.push(context.messages);
 			return reply;
 		}));
-		// Pi loads extensions again for every session it starts or resumes.
+		// external: Pi loads extensions again for every session it starts or resumes.
 		const settingsManager = SettingsManager.inMemory({});
 		const resourceLoader = new DefaultResourceLoader({
 			cwd, agentDir, settingsManager,
@@ -45,10 +42,8 @@ function pinningHarness() {
 		try {
 			await session.bindExtensions({});
 			await session.prompt("Prompt.");
-			// A background wake starts a run without before_agent_start, from the registered tools alone.
 			if (wake) await session.sendCustomMessage({ customType: "declaration-pinning", content: "Background update.", display: true }, { triggerTurn: true });
 		} finally {
-			// SAFETY: AgentSession exposes its extension runner; its public type omits emit.
 			await (session.extensionRunner as unknown as { emit(event: unknown): Promise<unknown> }).emit({ type: "session_shutdown", reason: "quit" });
 			session.dispose();
 		}
@@ -64,13 +59,11 @@ function pinningHarness() {
 
 it("keeps a resumed session on the pi-subagents tools and prompt text it declared, gives a new session the current ones, and re-declares them when pinToolDeclarations is false", { timeout: 30_000 }, async () => {
 	const { cwd, agentDir, run, dispose } = pinningHarness();
-	// The declared prompt and tools, without the timestamp of the session that declared them.
 	const declared = (messages: Message[]) => ({ ...getCurrentSystemMessage(messages)!, timestamp: 0 });
 	try {
 		const original = SessionManager.inMemory(cwd);
 		const [first] = await run(original, [fauxAssistantMessage("ok")]);
 
-		// The same session as recorded by an older pi-subagents release.
 		const older = structuredClone(original.getEntries());
 		const entry = older.find((candidate) => candidate.type === "message" && candidate.message.role === "system");
 		assert.ok(entry?.type === "message" && entry.message.role === "system");
@@ -78,15 +71,11 @@ it("keeps a resumed session on the pi-subagents tools and prompt text it declare
 		const subagent = system.toolsAdded!.find((tool) => tool.name === "subagent")!;
 		const bgWait = system.toolsAdded!.find((tool) => tool.name === "bg_wait")!;
 		subagent.description = "Older subagent description.";
-		// Releases before #2767 declared every management field at the top level.
 		subagent.parameters = JSON.parse(JSON.stringify(SubagentFlatParams));
 		bgWait.description = "Older bg_wait description.";
-		// SAFETY: bg_wait declares an object schema with properties.
 		delete (bgWait.parameters as { properties: Record<string, unknown> }).properties.stopOnAttention;
 		const tools = system.sections!.tools!.replace(/^- subagent: .*$/m, "- subagent: Older subagent snippet.");
-		// Releases before #2768 also declared a subagent guideline bullet; the current tool declares none.
 		const rules = system.sections!.rules!.replace(/^- Be concise in your responses$/m, "- Older subagent guideline.\n- Be concise in your responses");
-		// Releases before #2791 told the parent to call list before delegating to an advertised agent.
 		const advertised = system.sections!.advertised_subagents!.replace(/^The following .*$/m, "The following file-defined subagents opted into discovery. Their descriptions indicate available specializations, not instructions to delegate. Use subagent only when delegation is needed. Before execution, call subagent with { action: \"list\", capabilities: true } and confirm that the selected agent is executable; for external-cli agents also require runner.available === true.");
 		assert.ok(tools !== system.sections!.tools && rules !== system.sections!.rules && advertised !== system.sections!.advertised_subagents);
 		system.sections = { ...system.sections, tools, rules, advertised_subagents: advertised };
@@ -108,7 +97,6 @@ it("keeps a resumed session on the pi-subagents tools and prompt text it declare
 		assert.match(declared(fresh!).sections!.advertised_subagents!, /<name>specialist<\/name>/);
 		assert.doesNotMatch(declared(fresh!).sections!.advertised_subagents!, /action: "list"/, "a new session is not told to call list first");
 
-		// With pinning turned off, the same resumed session re-declares the current definitions once.
 		fs.mkdirSync(path.join(agentDir, "extensions", "subagent"), { recursive: true });
 		fs.writeFileSync(path.join(agentDir, "extensions", "subagent", "config.json"), JSON.stringify({ pinToolDeclarations: false }));
 		const [refreshed] = await run(SessionManager.inMemory(cwd, undefined, structuredClone(older)), [fauxAssistantMessage("ok")]);
@@ -124,10 +112,9 @@ it("keeps a resumed session on the pi-subagents tools and prompt text it declare
 
 it("pins a tool description without the note a host appends to it, so the note is declared once across resumes", { timeout: 30_000 }, async () => {
 	const { cwd, run, dispose } = pinningHarness();
-	// Pi's codemode appends this to each declared script-callable tool and records the result.
+	// external: Pi codemode appends text to each declared script-callable tool and records the result.
 	const note = "\n\nCodemode: `tools.bg_wait(args)` resolves to a string.";
 	const declaredTool = (messages: Message[], name: string) => getCurrentSystemMessage(messages)!.toolsAdded!.find((tool) => tool.name === name)!;
-	// The host decorates what pi-subagents registered: the newest recorded bg_wait gets the note.
 	const decorate = (entries: ReturnType<SessionManager["getEntries"]>) => {
 		const latest = entries.findLast((entry) => entry.type === "message" && entry.message.role === "system" && entry.message.toolsAdded?.some((tool) => tool.name === "bg_wait"));
 		assert.ok(latest?.type === "message" && latest.message.role === "system");
@@ -143,13 +130,11 @@ it("pins a tool description without the note a host appends to it, so the note i
 		for (let start = 2; start <= 3; start++) {
 			const session = SessionManager.inMemory(cwd, undefined, entries);
 			const [request] = await run(session, [fauxAssistantMessage("ok")]);
-			// Registering the undecorated description lets the host reproduce the recorded declaration.
 			assert.equal(declaredTool(request!, "bg_wait").description, description, `session start ${start} registers bg_wait without the note`);
 			assert.deepEqual(declaredTool(request!, "subagent"), subagent);
 			entries = decorate(structuredClone(session.getEntries()));
 		}
 
-		// A recorded description that differs from the current one keeps one note, not one per session start.
 		const polluted = structuredClone(original.getEntries());
 		const system = polluted.find((entry) => entry.type === "message" && entry.message.role === "system");
 		assert.ok(system?.type === "message" && system.message.role === "system");

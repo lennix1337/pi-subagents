@@ -8,7 +8,6 @@ import test from "node:test";
 import { executeAsyncChain, executeAsyncSingle } from "../../src/runs/background/async-execution.ts";
 import { makeAgent } from "../support/helpers.ts";
 
-// Spawn-boundary tests, not substitutes for the real official Linux loader gate.
 for (const [entry, missingBootstrap] of [
 	["/$bunfs/root/pi-native", false],
 	["/$bunfs/root/pi-native", true],

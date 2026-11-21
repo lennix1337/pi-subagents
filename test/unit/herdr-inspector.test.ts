@@ -16,9 +16,6 @@ import { consumeSteerRequests, consumeStopRequest } from "../../src/runs/backgro
 import { PI_SUBAGENT_PI_BINARY_ENV } from "../../src/runs/shared/pi-spawn.ts";
 import type { AsyncStatus, SubagentState } from "../../src/shared/types.ts";
 
-// `pane run` commands quote the whole --session-roots value (base64, so it has
-// no spaces/quotes of its own); pull it back out and decode it the same way
-// the inspector runner does, rather than pattern-matching on the raw text.
 const INSPECT_ALLOW_FLAGS = /--allow-steer['"]\s+['"]true['"]\s+['"]--allow-stop['"]\s+['"]true['"]/;
 
 function sessionRootsFromRunCommand(command: string): string[] {

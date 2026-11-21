@@ -32,10 +32,8 @@ describe("workflow resume claim", () => {
 			assert.equal(claim?.bootId, currentBootId());
 			assert.deepEqual({ version: claim?.version, claimedAt: claim?.claimedAt, newRunId: claim?.newRunId, trigger: claim?.trigger }, { version: 1, claimedAt: 5, newRunId: "new-run", trigger: "reuse" });
 			assert.deepEqual(files(), ["resumed-by.1.json"], "no temporary file is left");
-			// This process still holds it, so another claimant is refused.
 			assert.deepEqual(claimWorkflowResume(asyncDir, { newRunId: "other-run", trigger: "manual" }), { kind: "busy", pid: process.pid });
 			assert.deepEqual(workflowResumeClaimState(asyncDir), { kind: "busy", pid: process.pid, newRunId: "new-run" });
-			// The same new run claiming again (a resume that pre-claimed) still owns it.
 			assert.deepEqual(claimWorkflowResume(asyncDir, { newRunId: "new-run", trigger: "reuse" }), { kind: "owner" });
 			assert.deepEqual(files(), ["resumed-by.1.json"]);
 		});
@@ -60,7 +58,6 @@ describe("workflow resume claim", () => {
 		withRun((asyncDir, files) => {
 			writeClaim(asyncDir, 1, foreignClaim);
 			let inner: ReturnType<typeof claimWorkflowResume> | undefined;
-			// Taker B judges claim 1 dead; while it does, taker A supersedes it completely.
 			const outer = claimWorkflowResume(asyncDir, { newRunId: "taker-b", trigger: "manual", liveness: () => {
 				inner ??= claimWorkflowResume(asyncDir, { newRunId: "taker-a", trigger: "manual", liveness: () => "dead" });
 				return "dead";
@@ -84,7 +81,6 @@ describe("workflow resume claim", () => {
 
 	it("supersedes this process's claim that no runtime holds, and a corrupt claim", () => {
 		withRun((asyncDir) => {
-			// Written as claimWorkflowResume writes this process's claim: with its boot id and, on Linux, its pid namespace.
 			writeClaim(asyncDir, 1, { ...foreignClaim, pid: process.pid, ...(currentBootId() ? { bootId: currentBootId() } : {}), ...(currentPidNamespaceScope() ? { pidNamespaceScope: currentPidNamespaceScope() } : {}) });
 			assert.deepEqual(workflowResumeClaimState(asyncDir), { kind: "none" });
 			assert.deepEqual(claimWorkflowResume(asyncDir, { newRunId: "second-run", trigger: "auto" }), { kind: "owner" });
@@ -100,7 +96,6 @@ describe("workflow resume claim", () => {
 
 	it("fails closed when the current claim cannot be read", () => {
 		withRun((asyncDir, files) => {
-			// A directory in the claim's place: reading it fails with EISDIR, not ENOENT.
 			fs.mkdirSync(path.join(asyncDir, "resumed-by.1.json"));
 			assert.deepEqual(claimWorkflowResume(asyncDir, { newRunId: "second-run", trigger: "manual", liveness: () => "dead" }), { kind: "unreadable" });
 			assert.deepEqual(workflowResumeClaimState(asyncDir), { kind: "unreadable" });
@@ -129,7 +124,6 @@ describe("workflow resume claim", () => {
 			assert.equal(readWorkflowResumeClaim(asyncDir)?.newRunId, "new-run");
 			releaseWorkflowResumeClaim(asyncDir, "new-run");
 			assert.deepEqual(files().map((name) => name.replace(/released-.*/, "released-*")), ["resumed-by.1.json", "resumed-by.2.json.released-*"]);
-			// Claim 1 is below the released top, so it is not judged again even if its pid is now in use.
 			const probed: string[] = [];
 			const alive = (claim: { newRunId: string }) => { probed.push(claim.newRunId); return "alive" as const; };
 			assert.equal(readWorkflowResumeClaim(asyncDir), undefined);
@@ -150,16 +144,13 @@ describe("workflow resume claim", () => {
 			return line;
 		};
 		const refusal = { reason: "launch failed: no slot.", byHand };
-		// A refusal with no claim, or one recorded for the current claim's run.
 		assert.equal(describe((dir) => recordWorkflowResumeRefusal(dir, refusal)), `Not auto-resumed: launch failed: no slot. ${byHand}`);
 		assert.equal(describe((dir) => recordWorkflowResumeRefusal(dir, { reason: "it is not interrupted", byHand: "" })), "Not auto-resumed: it is not interrupted.");
 		assert.equal(describe((dir) => { writeClaim(dir, 1, { ...foreignClaim, newRunId: "failed-run" }); recordWorkflowResumeRefusal(dir, { ...refusal, newRunId: "failed-run" }); }), `Not auto-resumed: launch failed: no slot. ${byHand}`);
-		// A refusal from an earlier attempt does not hide a later claim.
 		assert.equal(describe((dir) => { recordWorkflowResumeRefusal(dir, { ...refusal, newRunId: "failed-run" }); writeClaim(dir, 2, { ...foreignClaim, newRunId: "later-run", trigger: "manual" }); }), "Resumed as later-run.");
 		assert.equal(describe((dir) => writeClaim(dir, 1, foreignClaim)), "Auto-resumed as first-run.");
 		assert.equal(describe((dir) => writeClaim(dir, 1, { ...foreignClaim, trigger: "manual" })), "Resumed as first-run.");
 		assert.equal(describe((dir) => writeClaim(dir, 1, { ...foreignClaim, trigger: "reuse" })), "Relaunched as first-run.");
-		// No claim (a released top is none): by hand, by id only when the saved launch can be resumed.
 		const script = { version: 1, source: "script", params: { workflowScript: "return 1;" }, scriptDigest: "digest" } as const;
 		assert.equal(describe((dir) => writeWorkflowLaunchRecord(dir, script)), byHand);
 		assert.equal(describe((dir) => { writeWorkflowLaunchRecord(dir, script); claimWorkflowResume(dir, { newRunId: "given-back", trigger: "auto" }); releaseWorkflowResumeClaim(dir, "given-back"); }), byHand);

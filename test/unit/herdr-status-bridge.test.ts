@@ -138,7 +138,6 @@ describe("Herdr status bridge", () => {
 	});
 
 	it("publishes foreground workflow child start and finish without the periodic refresh", async () => {
-		// Covers the bridge subscription only; the event is emitted by hand here.
 		const state = stateForTest();
 		state.asyncJobs.set("workflow-1", {
 			asyncId: "workflow-1", asyncDir: "/tmp/workflow-1", status: "running",
@@ -242,7 +241,6 @@ describe("Herdr status bridge", () => {
 		events.emit(SUBAGENT_ASYNC_STARTED_EVENT, { id: "workflow-1", mode: "workflow", agent: "workflow" });
 		await bridge.flush();
 
-		// The coordinator is active (busy stays raised) but contributes zero leaves.
 		assert.deepEqual(busyEvents, [{ active: true, label: "⏳ 0 subagents" }]);
 		assert.ok(commands[0]?.includes("summary=⏳ 0 subagents"));
 		assert.ok(!commands[0]?.join(" ").includes("workflow"));
@@ -435,8 +433,6 @@ describe("Herdr status bridge", () => {
 		await bridge.flush();
 		assert.ok(commands.at(-1)?.includes("summary=⏳ 1 subagent (worker)"));
 
-		// A new explicit control event is a new attention transition even if
-		// the tracker flag never dropped.
 		events.emit(SUBAGENT_CONTROL_EVENT, {
 			source: "async",
 			event: { type: "needs_attention", runId: "run-1" },
@@ -689,8 +685,6 @@ describe("Herdr status bridge", () => {
 		await bridge.flush();
 		assert.equal(intervals.pendingCount(), 1);
 
-		// Simulate the tracker reaching terminal state while the bridge misses
-		// the completion event. The refresh must clear instead of extending TTL.
 		authoritativeRuns = [];
 		intervals.fireAll();
 		await bridge.flush();
@@ -727,8 +721,6 @@ describe("Herdr status bridge", () => {
 		await Promise.resolve();
 		assert.equal(commands.length, 1);
 
-		// These snapshots all arrive while the first CLI call is blocked. Only
-		// the final clear matters once that call returns.
 		events.emit(SUBAGENT_ASYNC_STARTED_EVENT, { id: "run-2", agent: "reviewer" });
 		events.emit(SUBAGENT_ASYNC_COMPLETE_EVENT, { runId: "run-1" });
 		events.emit(SUBAGENT_ASYNC_COMPLETE_EVENT, { runId: "run-2" });
@@ -759,13 +751,11 @@ describe("Herdr status bridge", () => {
 			refreshMs: 0,
 		});
 
-		// Before any session_start, the pane owner is unknown.
 		events.emit(SUBAGENT_ASYNC_STARTED_EVENT, { id: "run-early", agent: "worker" });
 		await bridge.flush();
 		assert.deepEqual(commands, []);
 		assert.deepEqual(busyEvents, []);
 
-		// A headless parent (print/json mode, or a test harness) must never publish.
 		bridge.sessionStarted({ hasUI: false, runs: [{ id: "run-headless", agent: "worker" }] });
 		bridge.syncRuns();
 		events.emit(SUBAGENT_ASYNC_STARTED_EVENT, { id: "run-1", agent: "worker" });
@@ -774,7 +764,6 @@ describe("Herdr status bridge", () => {
 		assert.deepEqual(busyEvents, []);
 		assert.equal(getRunsCalls, 0);
 
-		// Only the root interactive session owns the pane.
 		bridge.sessionStarted({ hasUI: true, runs: [] });
 		events.emit(SUBAGENT_ASYNC_STARTED_EVENT, { id: "run-2", agent: "reviewer" });
 		await bridge.flush();

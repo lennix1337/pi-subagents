@@ -106,7 +106,6 @@ describe("ordinary extension failures next to required child extensions", () => 
 				? buildInProcessChildLaunch({ ...baseInput("ordinary-failure"), ...input })
 				: buildRunnerChildLaunch({ agent: "worker", task: "test", ...input }, { cwd, id: "run", flatIndex: 0, projectTrusted: true }, { sessionEnabled: false, watchdogStatus() {} });
 			let errors: string[] = [];
-			// SAFETY: real Pi resource loading stops at createAgentSession; no other SDK members are used.
 			const pi = {
 				ModelRuntime: { create: async () => ({}) }, SettingsManager, DefaultResourceLoader,
 				SessionManager: { inMemory: () => ({}) },
@@ -153,7 +152,6 @@ describe("aliased required child extension failures", () => {
 					? buildInProcessChildLaunch({ ...baseInput("failure"), ...input })
 					: buildRunnerChildLaunch({ agent: "worker", task: "test", ...input }, { cwd: dir, id: "run", flatIndex: 0 }, { sessionEnabled: false, watchdogStatus() {} });
 				let disposed = false;
-				// SAFETY: real Pi loading supplies errors/queues; only model registration and session binding are scripted.
 				const pi = {
 					ModelRuntime: { create: async () => ({ registerProvider() { throw new Error("bad provider"); }, registerNativeProvider() { throw new Error("bad provider"); }, registerVirtualModel() { throw new Error("bad provider"); }, refresh: async () => {} }) },
 					SettingsManager, DefaultResourceLoader, SessionManager: { inMemory: () => ({}) },
@@ -231,7 +229,6 @@ describe("required child extension loaded identities", () => {
 				const launch = host === "parent" ? buildInProcessChildLaunch({ ...baseInput("loaded"), ...input })
 					: buildRunnerChildLaunch({ agent: "worker", task: "test", ...input }, { cwd: dir, id: "run", flatIndex: 0 }, { sessionEnabled: false, watchdogStatus() {} });
 				let disposed = false;
-				// SAFETY: Pi supplies real loaded paths and queues; session binding only invokes its loaded startup handlers.
 				const pi = {
 					ModelRuntime: { create: async () => ({ registerProvider() { throw new Error("bad provider"); }, refresh: async () => {} }) },
 					SettingsManager, DefaultResourceLoader, SessionManager: { inMemory: () => ({}) },

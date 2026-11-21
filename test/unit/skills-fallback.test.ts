@@ -392,7 +392,6 @@ describe("skills filesystem fallback", () => {
 					...process.env,
 					HOME: fakeHome,
 					USERPROFILE: fakeHome,
-					// A real Windows APPDATA npm root would answer without invoking the fake npm.
 					APPDATA: path.join(fakeHome, "missing-appdata"),
 					PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
 					PI_DISCOVERY_MARKER: marker,
@@ -401,7 +400,6 @@ describe("skills filesystem fallback", () => {
 				stdio: "pipe",
 			},
 		);
-		// Skills and agents share one process-wide `npm root -g` answer, so the second lookup does not spawn npm again.
 		assert.deepEqual(fs.readFileSync(marker, "utf-8").trim().split(/\r?\n/), ["npm-root-called"]);
 	});
 
