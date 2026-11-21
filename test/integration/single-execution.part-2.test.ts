@@ -1,13 +1,3 @@
-/**
- * Integration tests for single (sync) agent execution.
- *
- * Uses the local createMockPi() helper to simulate the pi CLI.
- * Tests the full spawn→parse→result pipeline in runSync without a real LLM.
- *
- * These tests require pi packages to be importable (they run inside a pi
- * environment or with pi packages installed). If unavailable, tests skip
- * gracefully.
- */
 
 import { describe, it } from "node:test";
 import {
@@ -76,7 +66,6 @@ import { registerRequiredChildExtensions } from "../../src/api/required-child-ex
 import { createStructuredOutputRuntime } from "../../src/runs/shared/structured-output.ts";
 import { ensureSupervisorChannelDir, resolveSupervisorChannelDir } from "../../src/intercom/native-supervisor-channel.ts";
 
-/** Every saved foreground run: one file each under results/foreground-history. */
 function savedForegroundRuns<T>(): T[] {
 	const dir = path.join(DIRS.results, "foreground-history");
 	const names = fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith(".json")) : [];
@@ -145,7 +134,7 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 				const otherOwner = makeExecutor([makeAgent("worker")], { worktreeBaseDir: baseDir, worktreeSetupHook: hook });
 				setup = otherOwner.execute("lifecycle-B", { async: false, agent: "worker", task: "B", worktree: true, acceptance: false }, controller.signal, undefined, makeMinimalCtx(tempDir));
 				[socket] = await Promise.race([connection, setup.then((result) => { throw new Error(`Setup returned before hook ready: ${JSON.stringify(result)}`); })]) as [Socket];
-				await once(socket, "data"); // Real hook ready; the owner serviced I/O while setup remains held.
+				await once(socket, "data");
 				if (mode === "abort") {
 					controller.abort();
 					const result = await setup;
@@ -529,8 +518,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 			assert.deepEqual(readCall().runtime?.toolBudget, toolBudget);
 			assert.equal(mockPi.callCount(), 1);
 		} finally {
-			// bg_wait completes at the logical result, not the parent's process-close publication.
-			// Await that publication even on assertion failure, before reading proof or deleting artifacts.
 			if (asyncDir) {
 				const eventsPath = path.join(asyncDir, "events.jsonl");
 				const deadline = Date.now() + 10_000;
@@ -541,7 +528,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 					} catch (error) {
 						if (!["ENOENT", "EINTR", "EAGAIN", "EBUSY"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
 					}
-					// Ignore an in-flight final record and malformed diagnostics, not terminal proof.
 					const terminal = journal.split("\n").slice(0, -1).some((line) => {
 						try {
 							return JSON.parse(line)?.type === "subagent.run.process_terminal";
@@ -844,7 +830,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 			fs.mkdirSync(path.join(agentDir, "agents"), { recursive: true });
 			fs.writeFileSync(path.join(agentDir, "agents", "asker.md"), "---\nname: asker\ndescription: Asks its supervisor\n---\nIntercom orchestration channel: ask the supervisor before deciding.\n");
 			if (mode === "workflow") {
-				// Workflow children then run in the parent process, like the reported foreground child.
 				fs.mkdirSync(path.join(agentDir, "extensions", "subagent"), { recursive: true });
 				fs.writeFileSync(path.join(agentDir, "extensions", "subagent", "config.json"), JSON.stringify({ asyncByDefault: false }));
 			}
@@ -914,7 +899,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 			}
 			assert.ok(runId);
 
-			// The child's pending question to its supervisor, as contact_supervisor writes it.
 			const channelDir = resolveSupervisorChannelDir(runId, "asker", 0);
 			ensureSupervisorChannelDir(channelDir);
 			const requestFile = path.join(channelDir, "requests", "replace-question.json");
@@ -935,7 +919,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 				fs.writeFileSync(release, "release");
 				const child = mockPi.sessions[0];
 				assert.equal(child?.aborted, true, "the detached child was aborted");
-				// The aborted child's own result replaces the record after it settles; it must still say stopped.
 				const settleDeadline = Date.now() + 10_000;
 				while (!child?.settled && Date.now() < settleDeadline) await new Promise((resolve) => setTimeout(resolve, 20));
 				await new Promise((resolve) => setTimeout(resolve, 200));
@@ -1919,7 +1902,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 		assert.deepEqual(child.continuation.runIds, [writer.runId, challenge.runId, child.runId]);
 		assert.deepEqual(repeated.details.workflow!.receipt!.entries.repeated.continuation, child.continuation);
 
-		// A recorded but malformed receipt is not the same as an absent older receipt.
 		fs.writeFileSync(settled.workflowReceipt.path, "{broken");
 		const rejected = await executor.execute("lineage-malformed", {
 			async: false,
@@ -2191,9 +2173,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 		assert.equal(child.ok, true);
 		assert.match(child.output ?? "", /Recovered after workflow auto-resume/u);
 		assert.deepEqual(result.details.results[0]?.usage, { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, cost: 0.001, turns: 1 });
-		// The workflow-level setup recovery is a distinct launch, so its receipt
-		// retains both the failed source run and the resumed child run. The
-		// compaction planner no longer hides this source by resuming it first.
 		assert.equal(child.continuation?.runIds?.length, 2);
 		assert.notEqual(child.continuation?.runIds?.[0], child.runId);
 		assert.equal(child.continuation?.runIds?.at(-1), child.runId);
@@ -2233,7 +2212,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 
 		assert.equal(resumedResult.isError, undefined, resumedResult.content[0]?.text ?? "workflow failed");
 		const resumed = resumedResult.details.results[0];
-		// The resume keeps the recorded file-only contract but writes its own report, never over the first run's.
 		assert.ok(resumed?.savedOutputPath && resumed.savedOutputPath !== configuredOutput, resumed?.savedOutputPath);
 		assert.match(resumed?.finalOutput ?? "", new RegExp(`^Output saved to: ${escapeRegExp(resumed.savedOutputPath)} `));
 		assert.doesNotMatch(resumed?.finalOutput ?? "", /resumed report/, "file-only keeps the report out of the inline output");
@@ -2826,7 +2804,7 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 	});
 
 	it("records a parallel batch's mutating failure against the failed call's path", async () => {
-		// Pi's parallel tool execution: every start and end comes before the result messages.
+		// external: Pi emits every parallel tool start and end before result messages.
 		const result = (toolCallId: string, isError: boolean, text: string) => ({ type: "message_end", message: { role: "toolResult", toolCallId, toolName: "edit", isError, content: [{ type: "text", text }] } });
 		mockPi.onCall({
 			jsonl: [
@@ -2950,7 +2928,7 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 
 	it("handles long tasks via temp file (ENAMETOOLONG prevention)", async () => {
 		mockPi.onCall({ output: "Got it" });
-		const longTask = "Analyze ".repeat(2000); // ~16KB
+		const longTask = "Analyze ".repeat(2000);
 		const agents = makeAgentConfigs(["echo"]);
 
 		const result = await runSync(tempDir, agents, "echo", longTask, {});
@@ -2967,9 +2945,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 		const result = await runSync(tempDir, agents, "echo", "Task", {});
 
 		assert.equal(result.exitCode, 0);
-		// result.model is set from agent config via applyThinkingSuffix, then
-		// overwritten by the first message_end event only if result.model is unset.
-		// Since agent has model config, it stays as the configured value.
 		assert.equal(result.model, "anthropic/claude-sonnet-4");
 	});
 
@@ -2987,8 +2962,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 				},
 			}],
 		});
-		// No agent model is configured, so result.model starts unset and is taken
-		// from the first assistant message, which reports the model id alone.
 		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Task", { acceptance: false });
 
 		assert.equal(result.exitCode, 0);
@@ -3120,8 +3093,8 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 		const result = await runSync(tempDir, agents, "echo", "Task", {});
 
 		assert.equal(result.usage.turns, 1);
-		assert.equal(result.usage.input, 100); // from mock
-		assert.equal(result.usage.output, 50); // from mock
+		assert.equal(result.usage.input, 100);
+		assert.equal(result.usage.output, 50);
 	});
 
 	it("returns a provider failure after one foreground model launch", async () => {
@@ -4055,7 +4028,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 		assert.match(systemPrompt, /Output format \(`default-report\.md`\):/);
 		assert.doesNotMatch(systemPrompt, new RegExp(escapeRegExp(overridePath)));
 
-		// A later stage of the same agent with a new output path keeps the same system prompt, so its prompt cache survives.
 		mockPi.onCall({ output: "second report" });
 		const secondPath = path.join(tempDir, "second-report.md");
 		await executor.execute(
@@ -4233,7 +4205,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 		mockPi.onCall({ output: "agent over config" });
 		mockPi.onCall({ output: "invalid config ignored" });
 
-		// A global config.timeoutMs replaces the built-in 30-minute foreground backstop.
 		const configExecutor = makeExecutor([makeAgent("echo")], { timeoutMs: NINETY_MIN });
 		const configResult = await configExecutor.execute(
 			"config-timeout-default",
@@ -4244,7 +4215,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 		);
 		assert.equal(configResult.details?.timeoutMs, NINETY_MIN);
 
-		// An explicit call value still wins over the global config default.
 		const explicitResult = await configExecutor.execute(
 			"config-timeout-explicit",
 			{ agent: "echo", task: "Task", async: false, timeoutMs: 2_000 },
@@ -4254,7 +4224,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 		);
 		assert.equal(explicitResult.details?.timeoutMs, 2_000);
 
-		// An agent frontmatter default still wins over the global config default (single launches).
 		const agentResult = await makeExecutor([makeAgent("echo", { defaultTimeoutMs: 4_000 })], { timeoutMs: NINETY_MIN }).execute(
 			"config-timeout-agent-default",
 			{ agent: "echo", task: "Task", async: false },
@@ -4264,7 +4233,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 		);
 		assert.equal(agentResult.details?.timeoutMs, 4_000);
 
-		// An invalid config value is ignored -> falls back to the built-in 30-minute default.
 		const invalidResult = await makeExecutor([makeAgent("echo")], { timeoutMs: -1 }).execute(
 			"config-timeout-invalid",
 			{ agent: "echo", task: "Task", async: false },
@@ -4949,7 +4917,7 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 	});
 
 	it("handles abort signal (completes faster than delay)", async () => {
-		mockPi.onCall({ delay: 10000 }); // Long delay — process should be killed before this
+		mockPi.onCall({ delay: 10000 });
 		const agents = makeAgentConfigs(["slow"]);
 		const controller = new AbortController();
 
@@ -4961,10 +4929,7 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 		});
 		const elapsed = Date.now() - start;
 
-		// The key assertion: the run should complete much faster than the 10s delay,
-		// proving the abort signal terminated the process early.
 		assert.ok(elapsed < 5000, `should abort early, took ${elapsed}ms`);
-		// Exit code is platform-dependent (Windows: often 1 or 0, Linux: null/143)
 	});
 
 	it("marks foreground runs that exceed timeoutMs as timed out", async () => {
@@ -5580,10 +5545,6 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 			});
 			const agents = makeAgentConfigs(["echo"]);
 
-			// Emit the detach request the moment we observe the coordination tool start
-			// in a progress update — this is the signal the parent has set
-			// `intercomStarted=true`. Using a fixed delay here races the mock's
-			// cold spawn and flakes under load.
 			let detachEmitted = false;
 			const runPromise = runSync(tempDir, agents, "echo", "Task", {
 				runId: `${toolName}-detach`,

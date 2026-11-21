@@ -1,9 +1,3 @@
-/**
- * Foreground children run as in-process pi sessions. These tests drive
- * `runSync` against the scripted child session factory and check the seams
- * the in-process launch owns: hook config, steering, interrupt, timeout,
- * structured output capture, disposal, and detach.
- */
 
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
@@ -112,7 +106,6 @@ describe("in-process foreground child", () => {
 		const repo = path.join(tempDir, "repo"), file = path.join(repo, "input.md"); fs.mkdirSync(repo);
 		const git = (...args: string[]) => assert.equal(spawnSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd: repo }).status, 0);
 		fs.writeFileSync(file, "input\n"); git("init", "-q"); git("add", "."); git("commit", "-qm", "init");
-		// The remote paths match the local repo, as when both Macs keep code at the same home path; only 'local' may count its changes.
 		const machines: Record<string, PlacementMachineReference> = { local: { provider: "rex", id: "local", session: "session:s", cwd: repo }, rexSsh: { provider: "rex", id: "workmac", target: "100.82.67.118", cwd: repo }, herdr: { provider: "herdr", id: "h1", target: "100.82.67.118", cwd: repo } };
 		const changed: Record<string, string[] | undefined> = {};
 		for (const [name, machine] of Object.entries(machines)) {
@@ -191,7 +184,6 @@ describe("in-process foreground child", () => {
 			mockPi.onCall({
 				steps: [
 					{ jsonl: [events.assistantMessage("before continuation"), { type }] },
-					// Queued steering/follow-up work is allowed to outlive the old final-stop grace.
 					{ delay: 1400, jsonl: [events.assistantMessage("after continuation")] },
 				],
 			});
@@ -381,7 +373,6 @@ describe("in-process foreground child", () => {
 	});
 });
 
-/** A pi module stub whose loader reads `process.env` after an await, the way a real extension load does. */
 function stubPi(session: Record<string, unknown> = {}, onReload?: () => void): PiCodingAgentModule {
 	return {
 		ModelRuntime: { create: async () => ({}) },
@@ -473,7 +464,7 @@ describe("default child session factory", () => {
 			{ names: ["existing-child-hook"], ambient: true, paths: ["/provided.ts"] },
 			{ names: [], ambient: false, paths: [] },
 		]);
-		// The supported older SDK has no codemode export. Do not require it for ordinary children.
+		// external: The older supported Pi SDK has no codemode export.
 		await createDefaultChildSessionFactory({ loadPiCodingAgent: async () => stubPi() }).create({ ...stubLaunch, tools: ["read"] });
 	});
 
@@ -605,7 +596,6 @@ describe("default child session factory", () => {
 					constructor(options: ConstructorParameters<PiCodingAgentModule["DefaultResourceLoader"]>[0]) { super(options); loader = this; }
 				};
 				await createDefaultChildSessionFactory({ loadPiCodingAgent: async () => pi }).create({ ...stubLaunch, noSkills });
-				// The same call Pi's session makes with an extension's resources_discover skillPaths.
 				loader!.extendResources({ skillPaths: [{ path: skillDir, metadata: { source: "ext", scope: "temporary", origin: "top-level" } }] });
 				assert.deepEqual(loader!.getSkills().skills.map((skill) => skill.name), noSkills ? [] : ["ext-skill"]);
 			}
@@ -664,7 +654,6 @@ describe("default child session factory", () => {
 				manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "Done" }], api: "test", provider: "test", model: "test", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: Date.now() });
 				return JSON.parse(fs.readFileSync(manager.getSessionFile()!, "utf-8").split("\n")[0]!) as { parentSession?: string };
 			});
-			// Pi records a fork's parent as the parent's session file; a forked child keeps the parent its fork recorded.
 			assert.deepEqual(headers.map((header) => header.parentSession), [parentSessionFile, parentSessionFile, "/sessions/source.jsonl"]);
 		} finally {
 			removeTempDir(dir);
@@ -736,9 +725,6 @@ describe("default child session factory", () => {
 		await factory.dispose();
 	});
 
-	// A detached runner has nothing else keeping Node alive while a child's shutdown handler hangs.
-	// If the bound did not hold the event loop, the process would exit with the disposal still pending
-	// and the runner would never publish its result (#3051).
 	it("finishes a stuck session_shutdown disposal in a process with nothing else pending", { timeout: 20_000 }, () => {
 		const childSession = new URL("../../src/runs/shared/child-session.ts", import.meta.url).href;
 		const script = `
@@ -757,7 +743,6 @@ describe("default child session factory", () => {
 	});
 });
 
-/** MCP connects after session_start. Its tool_call hook waits for the connection, not a separate registration timer. */
 function builtinMcpPi(tools = [["mcp__srv__echo", "srv/echo"], ["mcp__srv__add", "srv/add"]], connect?: Promise<void>) {
 	type Tool = { name: string; label?: string; exposure: string; reachesTools?: () => string[] };
 	type Handler = (event: { toolName?: string }, ctx: { signal?: AbortSignal }) => unknown;
@@ -882,7 +867,7 @@ describe("selected built-in MCP tools in a child session", () => {
 		const mcp = builtinMcpPi();
 		type Api = { on(type: string, handler: unknown): void };
 		const create = (mcp.pi as unknown as { createMcpExtension: () => (api: Api) => unknown }).createMcpExtension;
-		// Pi 0.99.0 and 0.99.1 register no tool_call handler.
+		// external: Pi 0.99.0 and 0.99.1 register no tool_call handler.
 		Object.assign(mcp.pi, { createMcpExtension: () => (api: Api) => create()({ ...api, on: (type: string, handler: unknown) => { if (type !== "tool_call") api.on(type, handler); } }) });
 		await assert.rejects(createDefaultChildSessionFactory({ loadPiCodingAgent: async () => mcp.pi }).create(mcpLaunch), /mcp__srv__echo\) need Pi 0\.99\.2 or later/);
 		assert.deepEqual(mcp.lifecycle, ["session_shutdown", "dispose"]);

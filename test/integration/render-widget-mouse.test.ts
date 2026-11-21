@@ -27,7 +27,6 @@ it("toggles only the async header and retains live status without changing globa
 	const job = (asyncId: string, status: AsyncJobState["status"] = "running"): AsyncJobState => ({
 		asyncId, asyncDir: "/tmp/widget-mouse", status, mode: "single", agents: ["worker"], description: "Mouse test", startedAt: 1_000,
 	});
-	// SAFETY: the TUI path only reads hasUI, mode, and the supplied widget/expansion methods.
 	const render = (jobs: AsyncJobState[], initiallyCollapsed = false) => renderWidget(ctx as never, jobs, initiallyCollapsed);
 	const lines = (width = 120) => widget!.render(width);
 	const rows = Object.getOwnPropertyDescriptor(process.stdout, "rows");
@@ -59,7 +58,6 @@ it("toggles only the async header and retains live status without changing globa
 		assert.equal(registrations, 1, "progress updates retain the mounted widget");
 		for (const text of ["1/6 running", "1 failed", "1 queued", "1 paused", "1 partial", "1 rejected"]) assert.ok(lines()[0]!.includes(text));
 		assert.ok(visibleWidth(lines(15)[0]!) <= 15);
-		// SAFETY: coverage uses this UI object only as a WeakMap key and invokes its registered invalidator.
 		setInlineWorkflowCoverage(ctx.ui as never, new Map([["a", "changed"]]));
 		assert.equal(lines().length, 1);
 		widget!.handleMouse(click);

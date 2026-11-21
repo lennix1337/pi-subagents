@@ -19,7 +19,7 @@ import {
 
 function fileBarrier(file: string): Promise<void> {
 	return new Promise((resolve, reject) => {
-		// libuv on Windows compares long event paths against this watch path; expand TEMP's 8.3 aliases.
+		// external: libuv compares expanded Windows event paths against the watched directory.
 		const watcher = fs.watch(fs.realpathSync.native(path.dirname(file)), check);
 		const deadline = setTimeout(() => { watcher.close(); reject(new Error(`Missing barrier: ${file}`)); }, 15_000);
 		function check() {
@@ -65,7 +65,6 @@ describe("native runner result publication", { skip: !available ? "pi packages u
 		const notifier = registerSubagentNotify(pi, state, { batchConfig: { enabled: false } });
 		const watcher = createResultWatcher(pi, state, RESULTS_DIR, 60_000, {
 			platform: "darwin", coalesceDelayMs: 0, notifier,
-			// index.ts wiring: no foreground controls, scheduled observations or missions in this fixture.
 			hasDeliveryDemand: () => [...state.asyncJobs.values()].some((job) => job.status === "queued" || job.status === "running") || state.foregroundControls.size > 0,
 			timers: {
 				setTimeout, clearTimeout,
@@ -103,7 +102,6 @@ describe("native runner result publication", { skip: !available ? "pi packages u
 				shareEnabled: false, maxSubagentDepth: 2, acceptance: false,
 			});
 			assert.notEqual(receipt.isError, true);
-			// Capture only the real tracker's liveness callback; execute it at explicit filesystem boundaries.
 			const intervalMock = t.mock.method(globalThis, "setInterval", ((handler: () => void) => {
 				trackerTick = handler;
 				return { unref() {} } as ReturnType<typeof setInterval>;
@@ -121,7 +119,7 @@ describe("native runner result publication", { skip: !available ? "pi packages u
 			assert.equal(terminalRefreshes, 1);
 			assert.equal(state.cleanupTimers.has(id), false, "retain the early terminal publisher beyond display retention");
 			assert.ok(demandTick);
-			demandTick(); // Real Darwin scan-before-stop callback, not elapsed silence.
+			demandTick();
 			assert.equal(demandTick, undefined);
 			assert.equal(delivered, 0);
 			assert.equal(fs.existsSync(path.join(RESULTS_DIR, "result-index", "sessions", sessionId, `${id}.json`)), false);
@@ -136,7 +134,7 @@ describe("native runner result publication", { skip: !available ? "pi packages u
 			assert.equal(published.completionOwnerProcess.pid, process.pid, "records the launching Pi beside its owner id");
 			assert.equal(published.success, false);
 			assert.equal(mockPi.callCount(), 1, "dynamic failure occurs before reviewer children start");
-			trackerTick(); // Final failed-to-failed refresh through the actual tracker.
+			trackerTick();
 			assert.equal(state.asyncJobs.get(id)?.status, "failed");
 			assert.equal(terminalRefreshes, 2, "settled publication renews delivery exactly once");
 			await completion;
@@ -180,7 +178,6 @@ describe("native runner result publication", { skip: !available ? "pi packages u
 			try {
 				tracker.handleStarted({ id, asyncDir, sessionId: "session", completionOwnerId: "owner" });
 				interval.mock.restore();
-				// The result watcher has consumed the payload before status polling.
 				tracker.handleComplete({ id, sessionId: "session", state: terminal, success: false });
 				const cleanup = state.cleanupTimers.get(id);
 				assert.ok(cleanup);
@@ -373,7 +370,7 @@ describe("native runner result publication", { skip: !available ? "pi packages u
 				await fileBarrier(path.join(root, "blocked.json"));
 				const blocked = JSON.parse(fs.readFileSync(path.join(root, "blocked.json"), "utf8"));
 				assert.equal(blocked.statusDeferred, true, "exercise an older deferred status write too");
-				await fileBarrier(path.join(root, "polled")); // A real demand-interval tick while capacity is held.
+				await fileBarrier(path.join(root, "polled"));
 				assert.equal(blocked.state, "running", "terminal status must not precede indexed final result publication");
 				assert.equal(blocked.active, true, "older status retry must not remove the active index");
 				const events = fs.readFileSync(path.join(asyncDir, "events.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
@@ -387,7 +384,6 @@ describe("native runner result publication", { skip: !available ? "pi packages u
 				assert.equal(terminal.state, outcome === "recovered" ? "complete" : "failed");
 				if (outcome === "retry-error") assert.match(terminal.error, /injected non-capacity publication failure/);
 				const publishedPath = outcome === "recovered" ? resultPath : path.join(RESULTS_DIR, "result-pending", sessionId, `${id}.json`);
-				// An automatic tick may already have accepted and cleaned the indexed result.
 				assert.ok(fs.existsSync(publishedPath) || delivered === 1, "terminal result must be published or already delivered");
 				if (fs.existsSync(publishedPath)) assert.equal(JSON.parse(fs.readFileSync(publishedPath, "utf8")).completionOwnerId, owner);
 				await Promise.race([completion, new Promise((_, reject) => {

@@ -15,13 +15,9 @@ let available = true;
 try {
 	({ detectSubagentError } = await import("../../src/shared/utils.ts"));
 } catch {
-	// Skip in lean unit mode when runtime-only imports are unavailable.
 	available = false;
 }
 
-/**
- * Helper to create a tool result message (success or error).
- */
 function toolResult(toolName: string, text: string, isError = false): Record<string, unknown> {
 	return {
 		role: "toolResult",
@@ -42,7 +38,6 @@ function assistantMsg(text: string): Record<string, unknown> {
 	};
 }
 
-/** Assistant message with only a tool call, no text content */
 function assistantToolCall(toolName: string): Record<string, unknown> {
 	return {
 		role: "assistant",
@@ -54,7 +49,6 @@ function assistantToolCall(toolName: string): Record<string, unknown> {
 }
 
 describe("detectSubagentError", { skip: !available ? "utils not importable" : undefined }, () => {
-	// ---- Basic detection (must still work) ----
 
 	it("returns no error for empty messages", () => {
 		assert.equal(detectSubagentError([]).hasError, false);
@@ -105,7 +99,6 @@ describe("detectSubagentError", { skip: !available ? "utils not importable" : un
 		assert.equal(result.exitCode, 127);
 	});
 
-	// ---- Recovery: errors before the agent's final response are forgiven ----
 
 	it("ignores error when agent recovered and continued", () => {
 		const messages = [
@@ -121,8 +114,6 @@ describe("detectSubagentError", { skip: !available ? "utils not importable" : un
 	});
 
 	it("ignores error as final tool result when agent produced text response after", () => {
-		// The exact scenario from our review run: agent did all work, last tool
-		// call was read on directory → EISDIR, but agent produced 13.5KB review.
 		const messages = [
 			toolResult("read", "file contents of index.ts"),
 			toolResult("read", "file contents of utils.ts"),
@@ -146,7 +137,6 @@ describe("detectSubagentError", { skip: !available ? "utils not importable" : un
 			"fatal pattern before agent's text response = recovered");
 	});
 
-	// ---- Errors AFTER the last assistant text response are still caught ----
 
 	it("detects error after agent's last text response", () => {
 		const messages = [
@@ -170,7 +160,6 @@ describe("detectSubagentError", { skip: !available ? "utils not importable" : un
 		assert.equal(result.errorType, "write");
 	});
 
-	// ---- Edge cases ----
 
 	it("flags error when no assistant messages at all", () => {
 		const messages = [
@@ -183,10 +172,6 @@ describe("detectSubagentError", { skip: !available ? "utils not importable" : un
 	});
 
 	it("does not treat tool-call-only assistant message as recovery", () => {
-		// Assistant message that only contains a tool call, no text.
-		// The error at index 0 should still be detected because the tool-call-only
-		// assistant message doesn't count as recovery. The final tool result is
-		// successful to ensure this test actually distinguishes correct behavior.
 		const messages = [
 			toolResult("bash", "permission denied: /etc/shadow", true),
 			assistantToolCall("bash"),
@@ -216,7 +201,6 @@ describe("detectSubagentError", { skip: !available ? "utils not importable" : un
 	});
 
 	it("handles multiple errors with recovery between them", () => {
-		// Error → recovery → error → recovery
 		const messages = [
 			toolResult("read", "ENOENT: no such file", true),
 			assistantMsg("File not found, trying alternative..."),
@@ -229,10 +213,8 @@ describe("detectSubagentError", { skip: !available ? "utils not importable" : un
 			"all errors have recovery — agent completed successfully");
 	});
 
-	// ---- Real-world regression test ----
 
 	it("real-world: 19-read review run with trailing EISDIR", () => {
-		// Simulate the actual _impl-reviewer run that produced a false positive
 		const readResults = Array.from({ length: 18 }, (_, i) =>
 			toolResult("read", `contents of file ${i + 1}`),
 		);

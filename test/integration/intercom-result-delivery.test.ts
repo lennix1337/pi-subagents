@@ -364,7 +364,6 @@ describe("intercom result delivery cutover", { skip: !available ? "executor not 
 			assert.notEqual(revivedIds[1], revivedIds[0], "expected the latest revived run id from pass two");
 			assert.equal(value?.firstOutput, "Completed retained follow-up one");
 			assert.equal(value?.output, "Completed retained follow-up two");
-			// Awaiting may consume a pending result before the runner promotes its public file.
 			assert.equal(mockPi.callCount(), 2, "each retained follow-up must execute once without replay or extra children");
 		} finally {
 			fs.rmSync(sourceAsyncDir, { recursive: true, force: true });
@@ -1584,8 +1583,6 @@ describe("intercom result delivery cutover", { skip: !available ? "executor not 
 			);
 			assert.equal(blocked.isError, true);
 			assert.match(blocked.content[0]?.text ?? "", new RegExp(`already owned by run '${firstRevivedId}'`));
-			// The original and the first revival each spawn Pi asynchronously, so wait for both markers
-			// before asserting the contending revival added no third spawn.
 			await waitForCallCount(2);
 			assert.equal(mockPi.callCount(), 2, "contending foreground revival must not spawn Pi");
 

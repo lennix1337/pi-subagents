@@ -32,21 +32,16 @@ interface ChildLaunch {
 	childWatchdog: { model?: string } | undefined;
 }
 
-/** What each scripted child (foreground, background runner, workflow) was launched with, in launch order. */
 async function childLaunches(): Promise<ChildLaunch[]> {
 	const launches: ChildLaunch[] = [];
 	for (let index = 0; index < mockPi.callCount(); index++) {
 		const call = await waitForMockPiCall(mockPi, index);
 		const runtime = await waitForMockPiRuntime(mockPi, index);
-		// SAFETY: the mock runtime records the launch's childWatchdog object as written.
 		launches.push({ systemPrompt: call.systemPrompts.map((prompt) => prompt.text ?? "").join("\n"), childWatchdog: runtime.childWatchdog as ChildLaunch["childWatchdog"] });
 	}
 	return launches;
 }
 
-// Project-controlled files that reach a child's prompt or a launch decision: the refinement overlay, project
-// skills and project memory of a user-level agent, and the watchdog settings the launch resolves. A session that
-// declined trust ignores all of them; user-level skills and memory keep applying.
 describe("project trust reaches project-controlled child inputs", { skip: !available ? "pi packages not available" : undefined }, () => {
 	installAsyncExecutionHooks();
 	const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, PI_CODING_AGENT_DIR: process.env.PI_CODING_AGENT_DIR };
@@ -54,8 +49,6 @@ describe("project trust reaches project-controlled child inputs", { skip: !avail
 	let project = "";
 
 	beforeEach(() => {
-		// Offline: a child, watchdog, or probe that tried the network would fail here rather than leave the machine.
-		// SAFETY: the stub rejects every call, which is all a caller of fetch observes here.
 		globalThis.fetch = (() => Promise.reject(new Error("outbound network is rejected in this test"))) as typeof fetch;
 		const home = path.join(tempDir, "trust-home");
 		const agentDir = path.join(home, ".pi", "agent");
@@ -96,7 +89,6 @@ ${REFINEMENT_SENTINEL}
 
 	function makeExecutor() {
 		return createSubagentExecutor!({
-			// SAFETY: the executor only subscribes to events and reads the session name in these paths.
 			pi: { events: { on: () => () => {}, emit() {} }, getSessionName: () => undefined } as never,
 			state: { baseCwd: project, currentSessionId: null, asyncJobs: new Map(), foregroundControls: new Map(), lastForegroundControlId: null },
 			config: {},
@@ -116,7 +108,6 @@ ${REFINEMENT_SENTINEL}
 		const foreground = await executor.execute(`trust-fg-${trusted}`, { agent: "trust-probe", task: "Inspect", acceptance: false }, signal, undefined, ctx);
 		assert.equal(foreground.isError, undefined, foreground.content[0]?.text);
 		mockPi.onCall({ output: "background done" });
-		// SAFETY: an async launch returns its asyncId details, checked by readAsyncPayload below.
 		const background = await executor.execute(`trust-bg-${trusted}`, { agent: "trust-probe", task: "Inspect", async: true, acceptance: false }, signal, undefined, ctx) as AsyncExecutionResult;
 		assert.equal(background.isError, undefined, background.content[0]?.text);
 		await readAsyncPayload(background.details.asyncId!);
@@ -164,7 +155,6 @@ ${REFINEMENT_SENTINEL}
 		assert.equal(declined.isError, undefined, declined.content[0]?.text);
 
 		mockPi.onCall({ output: "background done" });
-		// SAFETY: an async launch returns its asyncId details, checked by readAsyncPayload below.
 		const background = await executor.execute("rules-declined-bg", { ...params, async: true }, signal, undefined, { ...makeMinimalCtx(project), isProjectTrusted: () => false }) as AsyncExecutionResult;
 		assert.equal(background.isError, undefined, background.content[0]?.text);
 		await readAsyncPayload(background.details.asyncId!);

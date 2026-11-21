@@ -5,7 +5,6 @@ import * as path from "node:path";
 import { it } from "node:test";
 import { createDefaultChildSessionFactory, loadHostPiCodingAgent, type ChildSessionLaunch, type PiCodingAgentModule } from "../../src/runs/shared/child-session.ts";
 
-// Opt-in, like nested-async-wait: the real host owns the MCP runtime and all peers.
 it("native built-in MCP startup follows the selected connection attempts", {
 	skip: !process.env.PI_SUBAGENTS_NATIVE_PI_ROOT && "Requires PI_SUBAGENTS_NATIVE_PI_ROOT and native-peer-loader.mjs",
 	timeout: 60_000,

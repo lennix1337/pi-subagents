@@ -172,13 +172,10 @@ describe("host workflow result publication", { skip: !available }, () => {
 			held = false;
 			if (outcome === "retry-error" || outcome === "replacement-error") {
 				await bounded(failed.promise);
-				// Allow the awaited failure callback to finish its existing cleanup.
 				await new Promise<void>((resolve) => setImmediate(resolve));
 				assert.equal(state.workflowControllers?.has(id), false);
 				assert.equal(state.asyncJobs.get(id)?.status, "running");
 				if (outcome === "retry-error") {
-					// A failed publication must wake its owner: without the terminal
-					// result file the watcher can never deliver the completion wake.
 					assert.equal(notifications, 1); assert.equal(refreshes, 1);
 					assert.match(notificationContent, /Failed to write async workflow result/);
 				} else {
@@ -202,7 +199,6 @@ describe("host workflow result publication", { skip: !available }, () => {
 			}
 			assert.ok(notificationContent.includes(`Retention-managed async directory: ${path.join(ASYNC_DIR, id)}`));
 			assert.equal(fs.existsSync(path.join(RESULTS_DIR, `${id}.json`)), false);
-			// The existing demand timer retires itself after terminal publication.
 			await bounded(retired.promise);
 			assert.equal(poll, undefined);
 		} finally {

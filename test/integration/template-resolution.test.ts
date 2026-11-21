@@ -1,10 +1,3 @@
-/**
- * Tests for chain template resolution and variable substitution.
- *
- * These test the pure logic of how {task}, {previous}, and {chain_dir}
- * variables get resolved in chain steps. Uses dynamic import since
- * settings.ts transitively depends on pi packages.
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -12,7 +5,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { createTempDir, removeTempDir, tryImport } from "../support/helpers.ts";
 
-// Top-level await
 const settings = await tryImport<any>("./src/shared/settings.ts");
 const skills = await tryImport<any>("./src/agents/skills.ts");
 const available = !!(settings && skills);
@@ -137,7 +129,6 @@ describe("normalizeSkillInput", { skip: !available ? "pi packages not available"
 
 describe("resolveStepBehavior", { skip: !available ? "pi packages not available" : undefined }, () => {
 	it("returns agent defaults when no overrides", () => {
-		// Uses agentConfig.output, .defaultReads, .defaultProgress
 		const config = { name: "test", output: "report.md", defaultProgress: true, defaultReads: ["input.md"] };
 		const behavior = resolveStepBehavior(config, {});
 		assert.equal(behavior.output, "report.md");

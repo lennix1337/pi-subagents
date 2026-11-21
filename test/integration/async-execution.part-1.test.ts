@@ -1,11 +1,3 @@
-/**
- * Integration tests for async (background) agent execution.
- *
- * Tests the async support utilities: jiti availability check,
- * status file reading/caching.
- *
- * Requires pi packages to be importable. Skips gracefully if unavailable.
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -66,7 +58,6 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		mockPi.onCall({ output: "Background review completed" });
 		try {
 			const pending = executor.executePublic("registered-background", { workflow: definition.name, async: true }, new AbortController().signal, undefined, ctx);
-			// executePublic has synchronously captured the expansion; no timing-based wait.
 			registration.dispose();
 			const missing = await executor.executePublic("disposed-background", { workflow: definition.name, async: true }, new AbortController().signal, undefined, ctx);
 			assert.equal(missing.isError, true);
@@ -540,7 +531,6 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 	it("persists terminal status with the result artifact", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
 		mockPi.onCall({ output: "completed output" });
 		const id = `async-terminal-status-${Date.now().toString(36)}`;
-		// A value no OS reader returns: the runner's status can only carry it if it came through the runner config.
 		primeBootId("boot-id-from-parent-pi");
 		try {
 			launchProtocolTest(id);
@@ -683,7 +673,6 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		try {
 			const discovered = discoverAgents(tempDir).agents.find((agent) => agent.name === agentName);
 			assert.ok(discovered, "expected temporary agent definition to be discovered");
-			// runSync and executeAsyncSingle sit below the executor step that applies the bridge.
 			const preflight = await resolveSubagentLaunchContract({ agent: agentName, cwd: tempDir, task, runId: "contract-preflight", intercomBridge: { mode: "off" } });
 			assert.equal(preflight.ok, true);
 			assert.ok(preflight.contract.tools.extensionArgs.some((entry) => entry.endsWith(path.join("pi-permission-system", "src", "index.ts"))));
@@ -814,8 +803,6 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.ok(launch.details.asyncId);
 		assert.equal(launch.details.launchContractDigest, preflight.contract.launchContractDigest);
 
-		// launchContractDigest embeds the definition digest, so equality here also
-		// proves the async path hashed the parsed definition, not the bridged copy.
 		const payload = await readAsyncPayload(launch.details.asyncId);
 		assert.equal(payload.launchContractDigest, preflight.contract.launchContractDigest);
 		assert.equal(payload.results[0]?.launchContractDigest, preflight.contract.launchContractDigest);
@@ -868,9 +855,6 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.deepEqual(status.runtimeAcknowledgedExtensions, runtimeAck);
 		assert.deepEqual(status.steps?.[0]?.runtimeAcknowledgedExtensions, runtimeAck);
 		assert.ok(!JSON.stringify(launch.details.launchResolvedExtensions).includes(tempDir), "projection should not expose raw extension paths");
-		// Stale supervisor-bridge pair: the --tools allowlist passes both names
-		// through, but PI_SUBAGENT_REQUIRED_TOOLS excludes them so the 0.50 child
-		// runtime cannot fail the run over the removed native intercom (#1207).
 		const recoveryCallArgs = readMockPiArgs(mockPi, 0);
 		assert.equal(recoveryCallArgs[recoveryCallArgs.indexOf("--tools") + 1], "read,intercom,contact_supervisor");
 		assert.deepEqual(readMockPiRequiredTools(mockPi, 0), ["read"]);
@@ -1355,7 +1339,6 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 						} catch (error) {
 							if (!["ENOENT", "EINTR", "EAGAIN", "EBUSY"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
 						}
-						// Only complete records for this run establish the final status/journal boundary.
 						const terminal = journal.split("\n").slice(0, -1).some((line) => {
 							try {
 								const event = JSON.parse(line);
@@ -1395,7 +1378,6 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			assert.deepEqual(metadata.capabilityAudit?.removedTools, ["write", "contact_supervisor"]);
 		} finally {
 			try {
-				// Result/read/assertion failures must not skip an established owned-run wait.
 				await waitForOwnedRun?.();
 			} finally {
 				handle.dispose();
@@ -1405,7 +1387,6 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 
 	it("applies a ceiling registered by session id to async launches from a saved session", { skip: !isAsyncAvailable() || !createSubagentExecutor ? "jiti or executor not available" : undefined }, async () => {
 		const ctx = makeMinimalCtx(tempDir);
-		// A saved session's file path differs from its session id, which is the documented registration key.
 		ctx.sessionManager.getSessionFile = () => path.join(tempDir, "parent.jsonl");
 		const handle = registerSubagentCapabilityCeiling({ sessionId: ctx.sessionManager.getSessionId(), source: "plan-mode", ceiling: { allowedAgents: ["reviewer"] } });
 		try {

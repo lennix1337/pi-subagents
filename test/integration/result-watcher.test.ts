@@ -588,7 +588,6 @@ describe("result watcher", () => {
 			});
 			assert.ok(binding);
 			writeMissionAsyncBinding(asyncDir, binding);
-			// Same session, but written by a runtime that no longer exists.
 			const write = (runId: string) => writeAsyncResultFile(path.join(resultsDir, `${runId}.json`), {
 				id: runId, runId, sessionId: "session-current", completionOwnerId: "earlier-runtime", asyncDir, mode: "single", state: "complete", success: true, summary: "done",
 			});
@@ -751,7 +750,6 @@ describe("result watcher", () => {
 			const resultPath = path.join(resultsDir, `${runId}.json`);
 			writeIndexedResult(resultPath, { id: runId, runId, sessionId: "session-current", asyncDir, mode: "single", state: "complete", success: true, summary: "done" });
 
-			// The runner's lease, held from just before the acknowledgement until the notification is delivered.
 			const leasePath = path.join(fs.realpathSync.native(resultsDir), "result-leases", `${createHash("sha256").update(runId).digest("hex")}.write-lock`);
 			fs.mkdirSync(path.dirname(leasePath), { recursive: true });
 			let releaseLease: (() => void) | undefined;
@@ -1006,7 +1004,6 @@ describe("result watcher", () => {
 		const resultsDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-result-watcher-replaced-"));
 		try {
 			const resultPath = path.join(resultsDir, "replaced-run.json");
-			// The runner's paused result has no tool-call id and its final result adds one; state and timestamp can match.
 			const common = { id: "replaced-run", sessionId: "session-current", completionOwnerId: COMPLETION_OWNER_ID, state: "paused", timestamp: 1_000 };
 			writePendingAsyncResultFile(resultPath, { ...common, runId: "replaced-run", summary: "paused result" });
 			const delivered: string[] = [];
@@ -1800,7 +1797,6 @@ describe("result watcher", () => {
 				state.currentSessionId = "session-1";
 				let emitWatcherError: ((error: NodeJS.ErrnoException) => void) | undefined;
 				const armedTimers: string[] = [];
-				// SAFETY: the watcher only needs on/close/unref, the members createResultWatcher calls on it.
 				const fakeWatcher = {
 					on(event: string, handler: (error: NodeJS.ErrnoException) => void) {
 						if (event === "error") emitWatcherError = handler;
@@ -1814,13 +1810,11 @@ describe("result watcher", () => {
 					timers: {
 						setTimeout() {
 							armedTimers.push("timeout");
-							// SAFETY: createResultWatcher only calls unref() on a timer handle.
 							return { unref() {} } as NodeJS.Timeout;
 						},
 						clearTimeout() {},
 						setInterval() {
 							armedTimers.push("interval");
-							// SAFETY: createResultWatcher only calls unref() on a timer handle.
 							return { unref() {} } as NodeJS.Timeout;
 						},
 						clearInterval() {},
@@ -2856,7 +2850,7 @@ describe("result watcher", () => {
 	describe("resultScanLogging", () => {
 		const slowScan = () => {
 			const deadline = Date.now() + 700;
-			while (Date.now() < deadline) { /* busy-wait: force elapsed past 500ms threshold */ }
+			while (Date.now() < deadline) {  }
 			return new Set<string>();
 		};
 

@@ -1,11 +1,3 @@
-/**
- * Integration tests for async (background) agent execution.
- *
- * Tests the async support utilities: jiti availability check,
- * status file reading/caching.
- *
- * Requires pi packages to be importable. Skips gracefully if unavailable.
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -334,7 +326,6 @@ syncBuiltinESMExports();
 					assert.ok(transcript);
 					assert.match(fs.readFileSync(transcript, "utf-8"), /Blocked by policy/);
 				}
-				// A structured child that never calls structured_output gets one follow-up prompt.
 				assert.equal(mockPi.callCount(), diagnostic === "structured" && !interrupted ? 2 : 1);
 			});
 		}
@@ -549,8 +540,6 @@ syncBuiltinESMExports();
 	it("marks async parallel runs that exceed timeoutMs as timed out", { skip: !isAsyncAvailable() ? "jiti not available" : process.platform === "win32" ? "timeout signal delivery intermittent on Windows CI" : undefined }, async () => {
 		mockPi.onCall({ delay: 5_000, output: "one done" });
 		mockPi.onCall({ delay: 5_000, output: "two done" });
-		// This fixture owns real parallel deadline enforcement; dirty recovery is
-		// covered below with mutation ordered before an explicit timeout request.
 		const repo = createRepo("pi-subagents-parallel-timeout-");
 		try {
 			const id = `async-timeout-parallel-${Date.now().toString(36)}`;
@@ -657,9 +646,6 @@ syncBuiltinESMExports();
 				maxSubagentDepth: 2,
 			});
 
-			// The child writes after its mutation baseline, then stays blocked.
-			// Observe that write before requesting timeout so recovery cannot
-			// collect evidence before the mutation, regardless of startup speed.
 			await waitForAsyncState(id, (candidate) =>
 				candidate.steps?.[0]?.status === "running"
 				&& fs.readFileSync(changedPath, "utf-8") === partialChange);
@@ -697,13 +683,10 @@ syncBuiltinESMExports();
 	});
 
 	it("kills a wedged tool at the per-tool timeout with a tool-specific error before the run-level timeout", { skip: !isAsyncAvailable() ? "jiti not available" : process.platform === "win32" ? "timeout signal delivery intermittent on Windows CI" : undefined }, async () => {
-		// Wedge: tool_execution_start fires, then the mock holds (long delay) so
-		// tool_execution_end never arrives — output would keep flowing in a real
-		// wedge, which is exactly why a run-level stall detector can't see it.
 		mockPi.onCall({
 			steps: [
 				{ jsonl: [events.toolStart("bash")] },
-				{ delay: 30_000 }, // hold far past the per-tool budget; no tool_execution_end
+				{ delay: 30_000 },
 			],
 		});
 		const id = `async-tool-timeout-${Date.now().toString(36)}`;
@@ -723,7 +706,7 @@ syncBuiltinESMExports();
 				},
 				shareEnabled: false,
 				maxSubagentDepth: 2,
-				timeoutMs: 8_000, // run-level budget is longer; the per-tool timer must fire first
+				timeoutMs: 8_000,
 			});
 
 			const payload = await readAsyncPayload(id);
@@ -879,8 +862,6 @@ syncBuiltinESMExports();
 	});
 
 	it("does not apply the per-tool timeout to supervisor tools (contact_supervisor/intercom)", { skip: !isAsyncAvailable() ? "jiti not available" : process.platform === "win32" ? "timeout signal delivery intermittent on Windows CI" : undefined }, async () => {
-		// contact_supervisor holds ~1.5s — longer than the 1s per-tool budget — but
-		// is allowlisted, so the per-tool timer must not fire.
 		mockPi.onCall({
 			steps: [
 				{

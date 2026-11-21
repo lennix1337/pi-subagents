@@ -95,8 +95,6 @@ async function runFixture(host: Host, response: MockPiResponse, withStructuredOu
 	};
 }
 
-// These cases use only the installed scripted ChildSessionFactory. They do not
-// load a provider, credential, ambient extension, or real child agent.
 describe("recovered assistant errors", { skip: !available ? "pi packages not available" : undefined }, () => {
 	installAsyncExecutionHooks();
 

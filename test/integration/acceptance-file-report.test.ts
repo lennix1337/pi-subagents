@@ -1,10 +1,3 @@
-/**
- * Acceptance report sourcing through the real execution drivers: the report the
- * child wrote to its configured output file (recovered from its write tool
- * calls) versus the assistant text, ordered by outputMode, including parallel
- * children with the distinct configured paths required after #420. Runs the
- * full launch, event, and acceptance pipeline against the scripted child session.
- */
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { ChildProcess, execFileSync } from "node:child_process";
@@ -130,8 +123,6 @@ async function waitForAsyncResult(id: string, timeoutMs = 15_000): Promise<Async
 	return payload;
 }
 
-// Diagnostic only: retaining ChildProcess objects may perturb observer lifetime.
-// Neither callbacks nor these projections authorize cleanup.
 const ownedRunners = new Map<string, ReturnType<typeof observeRunner>>();
 function observeRunner(id: string, bodyStartedAt: number, disableCompileCache: boolean) {
 	const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -177,7 +168,6 @@ function observeRunner(id: string, bodyStartedAt: number, disableCompileCache: b
 			return { at, state: "unavailable", reason: "correlation" };
 		}
 		try {
-			// CommandLineToArgvW avoids substring/quoting guesses. Only fixed projections leave PowerShell.
 			const script = `
 $ErrorActionPreference = 'Stop'
 try {
@@ -285,7 +275,6 @@ public static class AcceptanceIdentity {
 					for (const line of lines.filter(Boolean)) {
 						if (kind === "phases") {
 							if (matched.length !== 1) continue;
-							// Native Environment::Exit follows AtExit, precedes shutdown, and has no timestamp.
 							const trace = /^\(node:(\d{1,16})\) WARNING: Exited the environment with code (-?\d{1,10})\r?$/.exec(line);
 							if (trace && Number(trace[1]) === pid) {
 								entries.push({ phase: "native-trace-exit", pid, code: Number(trace[2]) });
@@ -327,7 +316,6 @@ public static class AcceptanceIdentity {
 				candidate: read(path.join(asyncDir, "process-terminal-candidate.json")), proof: read(path.join(asyncDir, "process-terminal.json")),
 				phases: read(path.join(asyncDir, "runner.stderr.log"), "phases"), journal: read(path.join(asyncDir, "events.jsonl"), "journal"),
 			};
-			// One failure-only query, after the original evidence snapshot. Never cleanup authority.
 			identity ??= queryIdentity(matched.length === 1 ? matched[0]!.proc : undefined);
 			return { ...snapshot, identity };
 		},
@@ -359,7 +347,6 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 		const deadline = Date.now() + 10_000;
 		let proof;
 		do {
-			// The reader validates identity/shape and treats absent or partial I/O as unproven.
 			proof = readProcessTerminal(asyncDir, { runId: id });
 			if (proof?.state === "observed") {
 				diagnostic.measureControl(proof);
@@ -394,8 +381,6 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 	});
 
 	afterEach(async () => {
-		// Result publication precedes runner close. Also drain on assertion/result-wait failure.
-		// Cache a failed barrier so later hooks cannot retry cleanup or reset shared state.
 		terminalBarrier ??= Promise.all([...ownedRunners.keys()].map(waitForOwnedRunner)).then(() => { ownedRunners.clear(); });
 		await terminalBarrier;
 		fs.rmSync(tempDir, { recursive: true, force: true });
@@ -745,7 +730,6 @@ export default function() {
 }
 `);
 			const diagnostic = observeRunner(id, bodyStartedAt, disableCompileCache);
-			// Register before launch so even a throwing launch cannot escape teardown ownership.
 			ownedRunners.set(id, diagnostic);
 			try {
 				setChildSessionFactoryModule(factoryPath);
@@ -763,7 +747,6 @@ export default function() {
 					acceptance: { level: "checked", criteria: ["Report the findings"] },
 				}));
 			} finally {
-				// Launch captures the module path synchronously; restoring it does not release owned fixtures.
 				setChildSessionFactoryModule(originalFactoryModule);
 			}
 		}
@@ -772,7 +755,6 @@ export default function() {
 			const outputPath = path.join(tempDir, "async-report.md");
 			conflictingReportsCall(outputPath, "satisfied", "not-satisfied");
 			const id = `acceptance-file-report-${Date.now().toString(36)}`;
-			// One-variable control: only this launch disables Node's compile cache, not Jiti's transform cache.
 			runAsyncSingle(id, outputPath, "file-only", DISABLED_ARTIFACTS, true);
 
 			const payload = await waitForAsyncResult(id);

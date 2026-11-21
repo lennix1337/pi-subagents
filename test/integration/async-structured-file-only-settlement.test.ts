@@ -1,5 +1,3 @@
-// Background settlement of required file-only output: valid structured output is published even when the
-// final text is only an acceptance-report fence, and a required write that fails fails the run.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -85,7 +83,6 @@ describe("async file-only structured-output settlement", { skip: !available || !
 		assert.deepEqual(payload.results[0]?.structuredOutput, { ok: true });
 		assert.equal(payload.results[0]?.savedOutputPath, outputPath);
 		assert.match(payload.results[0]?.output ?? "", /Output saved to:/);
-		// Canonical JSON publication, not a sidecar or stripped-text fallback.
 		assert.equal(fs.readFileSync(outputPath, "utf-8"), JSON.stringify({ ok: true }, null, 2));
 		assert.equal(mockPi.callCount(), 1);
 	});
@@ -102,7 +99,6 @@ describe("async file-only structured-output settlement", { skip: !available || !
 		assert.equal(payload.results[0]?.structuredOutput, null);
 	});
 
-	/** A cross-platform blocked report path where the parent is an existing regular file, deterministically failing mkdir/write on all OSes without chmod. */
 	function withBlockedReportPath(run: (outputPath: string) => Promise<void>): Promise<void> {
 		const blockerFile = path.join(tempDir, `blocked-report-parent-${Date.now().toString(36)}`);
 		fs.writeFileSync(blockerFile, "regular file collision", "utf-8");
@@ -115,7 +111,6 @@ describe("async file-only structured-output settlement", { skip: !available || !
 	it("fails settlement when required file-only publication into a blocked report path fails (schema-only result)", async () => {
 		await withBlockedReportPath(async (outputPath) => {
 			const id = `async-structured-file-only-blocked-${Date.now().toString(36)}`;
-			// Schema-validated structured output counts as savable content, so the write failure is what settles the run.
 			mockPi.onCall({ output: fenceOnlyFinalText(), structuredOutput: { ok: true } });
 			launchReviewerSingle(id, outputPath, { schema: OK_SCHEMA });
 
