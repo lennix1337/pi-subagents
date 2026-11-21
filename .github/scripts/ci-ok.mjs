@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// The required check fails closed: a needed job that never got a runner did not pass.
 import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
