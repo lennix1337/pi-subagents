@@ -76,7 +76,6 @@ export function createRetainedNestedRouteTracker(
 				watcher.unref?.();
 				watchers.set(rootRunId, watcher);
 			} catch {
-				// The bounded safety poll below covers unsupported or failed watchers.
 			}
 		}
 		scheduleRefresh(rootRunId);

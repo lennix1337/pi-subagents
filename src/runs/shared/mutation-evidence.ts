@@ -10,7 +10,6 @@ const MAX_HASH_BYTES = 1024 * 1024;
 const MAX_TIMEOUT_FILES = 20;
 
 function gitArguments(args: string[]): string[] {
-	// Mutation evidence must not block child startup on a stale fsmonitor daemon.
 	return ["-c", "core.fsmonitor=false", ...args];
 }
 

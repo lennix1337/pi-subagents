@@ -1,4 +1,3 @@
-/** A reopened or reloaded session relaunches its own interrupted async workflows once, off session start. */
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -23,13 +22,11 @@ type Tool = { execute(id: string, params: unknown, signal: AbortSignal, onUpdate
 type SentMessage = { message: { customType?: string; content?: unknown; display?: boolean }; options?: { triggerTurn?: boolean } };
 
 const terminalStates = ["complete", "failed", "partial", "paused", "stopped", "rejected"];
-/** The completion owner a Pi process that has since exited wrote into its runs; never this process's. */
 const DEAD_PI_COMPLETION_OWNER = "completion-owner-of-an-exited-pi";
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 const deadPid = () => { const pid = spawnSync(process.execPath, ["-e", ""]).pid; assert.ok(pid); return pid; };
 const readStatusFile = (runId: string) => {
 	try {
-		// SAFETY: the executor and the reconciler write these status.json files from AsyncStatus values.
 		return JSON.parse(fs.readFileSync(path.join(DIRS.async, runId, "status.json"), "utf-8")) as AsyncStatus;
 	} catch {
 		return undefined;
@@ -44,15 +41,12 @@ const waitUntil = async <T>(label: string, read: () => T | undefined | false, ti
 		await new Promise((resolve) => setTimeout(resolve, 25));
 	}
 };
-/** Runs that resumed `sourceRunId`. */
 const resumedRuns = (sourceRunId: string) => fs.readdirSync(DIRS.async)
 	.filter((entry) => readStatusFile(entry)?.workflow?.resumeOrigin?.sourceRunId === sourceRunId);
 const claimFiles = (runId: string) => fs.readdirSync(path.join(DIRS.async, runId)).filter((name) => name.startsWith("resumed-by.")).sort();
-/** The completion notices delivered for `runId`. */
 const noticesFor = (sent: SentMessage[], runId: string) => sent
 	.filter((entry) => entry.message.customType === "subagent-notify" && typeof entry.message.content === "string" && entry.message.content.split("\n").includes(`Workflow run: ${runId}`))
 	.map((entry) => entry.message.content as string);
-/** Every line of a notice that says how the run continues or tells the reader what to do with it. */
 const nextSteps = (notice: string) => notice.split("\n").filter((line) => /Auto-resumed as |Resumed as |Relaunched as |Not auto-resumed: |Resume by hand|Relaunch|reuseFrom/.test(line));
 const oneNotice = async (sent: SentMessage[], runId: string) => {
 	const [notice, ...more] = await waitUntil(`the notice of ${runId}`, () => noticesFor(sent, runId).length > 0 && noticesFor(sent, runId));
@@ -78,10 +72,6 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 	const finished = (runId: string, label = "the resumed run to finish") => waitUntil(label, () => { const status = readStatusFile(runId); return status && terminalStates.includes(status.state) ? status : undefined; }, 15_000);
 	type StartedRuntime = { shutDownNow: (reason: string) => Promise<unknown> };
 
-	/**
-	 * One extension runtime. The session_start handlers are called together and `atSessionStart` runs
-	 * right after they return synchronously, before any launch they started could have run.
-	 */
 	const startRuntime = async (reason: string, sessionId: string, options: { previousSessionFile?: string; atSessionStart?: (runtime: StartedRuntime) => void; ui?: boolean } = {}) => {
 		const handlers = new Map<string, Handler[]>();
 		const sent: SentMessage[] = [];
@@ -94,7 +84,7 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 			on(event: string, handler: Handler) { handlers.set(event, [...(handlers.get(event) ?? []), handler]); },
 			registerTool(definition: Tool & { name: string }) { if (definition.name === "subagent") tool = definition; },
 			sendMessage(message: SentMessage["message"], sendOptions?: SentMessage["options"]) {
-				// Pi makes a runtime's pi stale once its session shuts down.
+				// external: Pi makes a runtime API stale once its session shuts down.
 				if (stale) { staleSends.push({ message, options: sendOptions }); throw new Error("This extension ctx is stale after session replacement or reload."); }
 				sent.push({ message, options: sendOptions });
 			},
@@ -103,7 +93,6 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 		const ctx = {
 			...makeMinimalCtx(tempDir),
 			isIdle: () => true,
-			// A session with a UI (interactive or RPC) that records its notices, unless `ui: false` (a print run); any other UI call does nothing.
 			hasUI: options.ui !== false,
 			ui: new Proxy({ notify: (text: string, level: string) => { notifications.push({ text, level }); } }, { get: (target, prop) => prop in target ? target[prop as keyof typeof target] : () => undefined }),
 			sessionManager: { getSessionId: () => sessionId, getSessionFile: () => sessionFileFor(sessionId), getEntries: () => [], getBranch: () => [] },
@@ -116,8 +105,7 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 			if (previousChildEnv !== undefined) process.env[SUBAGENT_CHILD_ENV] = previousChildEnv;
 		}
 		const started = (handlers.get("session_start") ?? []).map((handler) => handler({ reason, ...(options.previousSessionFile ? { previousSessionFile: options.previousSessionFile } : {}) }, ctx));
-		// Pi's reload runs session_shutdown, whose cleanup is synchronous; calling every handler at once
-		// keeps that cleanup inside the caller's synchronous step.
+		// external: Pi reload runs session_shutdown synchronously.
 		const shutDownNow = (shutdownReason: string) => { stale = true; return Promise.all((handlers.get("session_shutdown") ?? []).map((handler) => handler({ reason: shutdownReason }, ctx))); };
 		options.atSessionStart?.({ shutDownNow });
 		await Promise.all(started);
@@ -126,7 +114,6 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 		return { tool, ctx, sent, notifications, staleSends: () => staleSends, autoResumeMessages, shutDown: async (shutdownReason: string) => { stale = true; for (const handler of handlers.get("session_shutdown") ?? []) await handler({ reason: shutdownReason }, ctx); } };
 	};
 
-	/** What a killed Pi leaves behind: a running status under a dead pid, its saved launch, and the active-run marker. */
 	const writeCrashedRun = (sessionId: string, launch: WorkflowLaunchRecord, lastUpdate: number, options: { pid?: number; cwd?: string } = {}) => {
 		const runId = `crashed-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`;
 		const asyncDir = path.join(DIRS.async, runId);
@@ -172,11 +159,9 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 		assert.equal(done.steps?.find((step) => step.workflowKey === "stage2")?.runId, stage2RunId);
 		assert.equal(mockPi.callCount(), 3, "only stage3 launched after the reload");
 		assert.deepEqual(second.autoResumeMessages(), []);
-		// The stopped run's notice says once that it continues, and gives no other instruction.
 		assert.deepEqual(noticesFor(first.sent, sourceId), [], "the replaced runtime delivers nothing");
 		assert.deepEqual(nextSteps(await oneNotice(second.sent, sourceId)), [`Auto-resumed as ${resumedId}.`]);
 
-		// Another reload finds the run already resumed and claims nothing.
 		const claimsBefore = claimFiles(sourceId);
 		await second.shutDown("reload");
 		const third = await startRuntime("reload", sessionId);
@@ -209,7 +194,6 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 		const done = await finished(resumedId);
 		assert.equal(done.state, "complete", done.error);
 
-		// Its Pi exited; the reopened session delivers its notice once: what happened, then that it continues.
 		const notice = await oneNotice(runtime.sent, recentId);
 		assert.match(notice, new RegExp(`that ran workflow ${recentId} exited before the workflow finished\\. Marked run failed by stale-run reconciliation\\. Its finished children are kept\\.`));
 		assert.deepEqual(nextSteps(notice), [`Auto-resumed as ${resumedId}.`]);
@@ -238,13 +222,11 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 		const off = await startRuntime("startup", offSession);
 		assert.equal(readStatusFile(offId)?.workflow?.stopCause, "owner-exited");
 		assert.deepEqual(claimFiles(offId), []);
-		// Its Pi exited; the session that owns it delivers its notice once, with the way to resume it by hand.
 		const offNotice = await oneNotice(off.sent, offId);
 		assert.match(offNotice, new RegExp(`that ran workflow ${offId} exited before the workflow finished`));
 		assert.deepEqual(nextSteps(offNotice), [`Resume by hand: subagent({ action: "resume", id: "${offId}" })`]);
 		assert.equal(noticesFor(off.sent, offId).length, 1, "still one notice");
 		await off.shutDown("quit");
-		// The same runs are resumed once their own session reopens with the setting on.
 		writeConfig({});
 		const reopenedOff = await startRuntime("startup", offSession);
 		await waitUntil("the run of the reopened session", () => resumedRuns(offId)[0]);
@@ -261,7 +243,6 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 		mockPi.onCall({ matchArgIncludes: `Only ${nonce}`, output: "only done" });
 		const sourceId = writeCrashedRun(sessionId, scriptLaunch(script), Date.now() - 60_000);
 
-		// A one-shot print run (`pi -c -p`) has no UI; it would wait on the resumed workflow at turn settle.
 		const headless = await startRuntime("startup", sessionId, { ui: false });
 		assert.equal(readStatusFile(sourceId)?.workflow?.stopCause, "owner-exited");
 		assert.deepEqual(nextSteps(await oneNotice(headless.sent, sourceId)), [`Resume by hand: subagent({ action: "resume", id: "${sourceId}" })`]);
@@ -283,7 +264,6 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 		const script = `return "${nonce}";`;
 		const sourceId = writeCrashedRun(ownerSession, scriptLaunch(script), Date.now() - 60_000);
 
-		// Another session relaunches it through options.reuseFrom, which repairs it there.
 		const other = await startRuntime("startup", `session-${nonce}-other`);
 		fs.writeFileSync(path.join(tempDir, `${nonce}.js`), script);
 		const launched = await other.tool.execute("repaired-elsewhere", { workflow: `./${nonce}.js`, async: true, mission: false, reuseFrom: sourceId }, new AbortController().signal, undefined, other.ctx);
@@ -319,7 +299,6 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 		const first = await startRuntime("startup", sessionId, {
 			atSessionStart: ({ shutDownNow }) => {
 				firstClaim = readWorkflowResumeClaim(sourceDir)?.newRunId;
-				// The reload happens before the first runtime's launch step runs.
 				oldShutdown = shutDownNow("reload");
 				reloaded = startRuntime("reload", sessionId, { atSessionStart: () => { secondClaim = readWorkflowResumeClaim(sourceDir)?.newRunId; } });
 			},
@@ -346,10 +325,8 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 		const sessionId = `session-${nonce}`;
 		const resourceName = "test.cleaned-during-launch";
 		const script = `const only = await runs.run("only", { agent: "echo", task: "Only ${nonce}" }); return only.output;`;
-		// Long enough to outlast the test's checks, short enough that a run nothing aborts still ends.
 		mockPi.onCall({ matchArgIncludes: `Only ${nonce}`, delay: 10_000, output: "late" });
 		const sourceId = writeCrashedRun(sessionId, { version: 1, source: "resource", params: { workflow: resourceName, cwd: tempDir, async: true, mission: false }, scriptDigest: sha256(script) }, Date.now() - 60_000);
-		// The launch resolves the resource after its last check; cleaning the runtime there is "cleaned while launching".
 		let cleanUpDuringLaunch: (() => void) | undefined;
 		const registration = registerWorkflowResource({ sessionId, definition: { name: resourceName, version: 1, resolve: () => { cleanUpDuringLaunch?.(); return { script }; } } });
 		try {
@@ -377,7 +354,6 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 			return runId;
 		};
 		try {
-			// A reload whose auto-resume is refused says why in the notice, with the way to continue by hand.
 			const sessionId = `session-${nonce}-reload`;
 			const before = await startRuntime("startup", sessionId);
 			const refusedId = await launchHeld(before);
@@ -399,14 +375,12 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 		const sessionId = `session-${nonce}`;
 		const resourceName = "test.gone-during-launch";
 		const sourceId = writeCrashedRun(sessionId, { version: 1, source: "resource", params: { workflow: resourceName, cwd: tempDir, async: true, mission: false }, scriptDigest: sha256("return 1;") }, Date.now() - 60_000);
-		// The launch resolves the resource after its last check: a reload there, then the resource is gone.
 		let reloadDuringLaunch: (() => void) | undefined;
 		const registration = registerWorkflowResource({ sessionId, definition: { name: resourceName, version: 1, resolve: () => { reloadDuringLaunch?.(); throw new Error("the resource is gone"); } } });
 		try {
 			const runtime = await startRuntime("startup", sessionId, {
 				atSessionStart: ({ shutDownNow }) => { reloadDuringLaunch = () => { reloadDuringLaunch = undefined; void shutDownNow("reload"); }; },
 			});
-			// Written by the launch itself; its follow-up runs before this poll sees the file.
 			const refusal = await waitUntil("the refusal", () => { try { return JSON.parse(fs.readFileSync(path.join(DIRS.async, sourceId, "resume-refused.json"), "utf-8")) as { reason: string; byHand: string }; } catch { return undefined; } });
 			const resolved = resolveWorkflowResource(resourceName, undefined, sessionId);
 			assert.equal(resolved.ok, false);
@@ -428,7 +402,6 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 			fs.mkdirSync(historyDir, { recursive: true });
 			fs.writeFileSync(path.join(historyDir, `${runId}.json`), JSON.stringify({ runId, mode: "single", cwd: tempDir, sessionId: sessionFileFor(sessionId), updatedAt: now - 60_000, owner: { pid: deadPid() }, children: [{ agent: "echo", index: 0, status: "running" }] }));
 		};
-		// A session id is its file path; a saved session file starts with the header that names its id.
 		const headerIds = new Map<string, string>();
 		const session = (name: string, file: "header" | "no-header" | "none" = "header") => {
 			const id = `session-${nonce}-${name}`;
@@ -437,17 +410,13 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 			return id;
 		};
 
-		// Two runs (an async workflow and a foreground run; the same run seen from both sources counts once).
 		const foreign = session("foreign");
 		const foreignRun = writeCrashedRun(foreign, scriptLaunch(script), now - 60_000);
 		writeForegroundRecord(foreign, `fg-${nonce}`);
 		writeForegroundRecord(foreign, foreignRun);
-		// One run each, in sessions whose paths a shell would quote or expand.
 		const spaced = session("with space");
 		const dollar = session("with $demo");
 		const foreignRuns = [foreignRun, writeCrashedRun(spaced, scriptLaunch(script), now - 60_000), writeCrashedRun(dollar, scriptLaunch(script), now - 60_000)];
-		// Not pointed to: a live owner, another folder, older than a day, a session that cannot be reopened (no file, or no
-		// header id), an inherited session.
 		foreignRuns.push(
 			writeCrashedRun(session("alive"), scriptLaunch(script), now - 60_000, { pid: process.pid }),
 			writeCrashedRun(session("elsewhere"), scriptLaunch(script), now - 60_000, { cwd: path.join(tempDir, "other") }),
@@ -460,7 +429,6 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 		const current = session("current");
 		const headless = session("headless");
 
-		// Every file of the other sessions' runs, their active-run markers, the foreground history, and the session files.
 		const filesUnder = (root: string) => fs.existsSync(root) ? (fs.readdirSync(root, { recursive: true }) as string[]).map((name) => path.join(root, name)) : [];
 		const snapshot = () => Object.fromEntries([
 			...foreignRuns.flatMap((runId) => [...filesUnder(path.join(DIRS.async, runId)), path.join(DIRS.async, ".active-runs", runId)]),
@@ -472,7 +440,6 @@ describe("auto-resuming interrupted workflows at session start", { skip: !availa
 		const elsewhere = (runtime: { notifications: Array<{ text: string; level: string }> }) => runtime.notifications.filter((notice) => notice.text.includes("in another session"));
 
 		const withUi = await startRuntime("new", current, { previousSessionFile: sessionFileFor(inherited) });
-		// Each line names the session by its header id, the same on every platform whatever its path.
 		const byText = (left: { text: string }, right: { text: string }) => left.text.localeCompare(right.text);
 		assert.deepEqual(elsewhere(withUi).sort(byText), [
 			{ text: `2 subagent runs were interrupted in another session. Reopen it to resume them: \`pi --session ${headerIds.get(foreign)}\``, level: "info" },

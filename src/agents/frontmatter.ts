@@ -1,14 +1,7 @@
-/**
- * Escape regex special characters for use in a RegExp constructor.
- */
 function escapeRegex(s: string): string {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/**
- * Fold a YAML folded block scalar while preserving more-indented lines and
- * every blank-line separator. Trailing whitespace is trimmed.
- */
 function foldBlock(block: string): string {
 	let folded = "";
 	let hasContent = false;
@@ -39,12 +32,7 @@ function foldBlock(block: string): string {
 	return folded.trim();
 }
 
-/**
- * Normalize a simple-scalar frontmatter list from comma-separated or block-list syntax.
- * Only the standard `- item` marker is removed; ordinary hyphenated values stay intact.
- * A trailing ` #...` comment is dropped from unquoted `- item` lines. Single-line values are left
- * alone because parseFrontmatter has already removed their quotes, so `"notes #1.md"` must survive.
- */
+/** Parse comma-separated or block-list frontmatter values. */
 export function parseFrontmatterList(raw: string | undefined): string[] | undefined {
 	if (raw === undefined) return undefined;
 	return raw
@@ -101,23 +89,17 @@ export function parseFrontmatter(content: string): { frontmatter: Record<string,
 	let currentLiteral = false;
 
 	for (const line of lines) {
-		const indent = line.search(/\S|$/); // position of first non-whitespace char
+		const indent = line.search(/\S|$/);
 		const trimmed = line.trim();
 
-		// Comment lines are content only inside a | or > block scalar. Elsewhere they must
-		// neither end a pending list block nor become part of its value.
+		// external: YAML block scalars retain lines starting with #.
 		if (trimmed.startsWith("#") && !currentFolded && !currentLiteral) continue;
 
-		// Exactly-empty lines are content of any pending block, whatever indicator
-		// opened it; whitespace-only lines already have indent > 0 and are collected
-		// by the indent test below.
 		if (currentKey !== null && currentBlockLines !== null && (indent > (currentIndent ?? 0) || trimmed === "")) {
-			// This line is part of the current block value
 			currentBlockLines.push(line);
 			continue;
 		}
 
-		// Flush any pending block value
 		if (currentKey !== null && currentBlockLines !== null) {
 			frontmatter[currentKey] = flushBlockLines(currentBlockLines, currentFolded, currentLiteral);
 			currentKey = null;
@@ -134,7 +116,6 @@ export function parseFrontmatter(content: string): { frontmatter: Record<string,
 			const rawValue = rawValueValue.trim();
 			const quote = rawValue[0];
 			const nameList = key === "tools" || key === "excludeTools" || key === "mutationTools" || key === "extensions" || key === "subagentOnlyExtensions";
-			// `"read", "bash"` starts and ends with a quote, but it is a list. Keep those item quotes for the splitter.
 			const quotedList = nameList && (quote === '"' || quote === "'") && (rawValue.includes(`${quote},`) || rawValue.includes(`, ${quote}`));
 			const isQuoted = !quotedList && ((rawValue.startsWith('"') && rawValue.endsWith('"')) || (rawValue.startsWith("'") && rawValue.endsWith("'")));
 			const value = isQuoted ? rawValue.slice(1, -1) : rawValue;
@@ -142,22 +123,17 @@ export function parseFrontmatter(content: string): { frontmatter: Record<string,
 			const isLiteral = !isQuoted && (rawValue === "|" || rawValue === "|-");
 
 			if (value === "" || isFolded || isLiteral) {
-				// Key with empty value or block scalar indicator — defer storing until we see indent
 				currentKey = key;
 				currentBlockLines = [];
 				currentIndent = indent;
 				currentFolded = isFolded;
 				currentLiteral = isLiteral;
 			} else {
-				// Simple key: value
 				frontmatter[key] = value;
 			}
 		}
-		// Lines that don't match a key pattern (e.g., comments) are ignored; empty
-		// lines are block content while a block is pending (collected above)
 	}
 
-	// Flush final block value
 	if (currentKey !== null && currentBlockLines !== null) {
 		frontmatter[currentKey] = flushBlockLines(currentBlockLines, currentFolded, currentLiteral);
 	}
@@ -166,8 +142,6 @@ export function parseFrontmatter(content: string): { frontmatter: Record<string,
 }
 
 function flushBlockLines(blockLines: string[], folded: boolean, literal: boolean): string {
-	// Strip the common leading whitespace from the block so the
-	// serializer can add its own indentation level.
 	const lines = folded || literal ? blockLines : trimEdgeEmptyLines(blockLines);
 	const rawBlock = lines.join("\n");
 	const leadingSpaces = rawBlock.match(/^[ \t]+(?=\S)/m);
@@ -178,16 +152,6 @@ function flushBlockLines(blockLines: string[], folded: boolean, literal: boolean
 	return folded ? foldBlock(stripped) : stripped;
 }
 
-/**
- * Drop exactly-empty lines at the start and end of a nested-block value.
- * After the last content line, whitespace-only lines are kept only up to the
- * first exactly-empty line, where the old parser ended the block.
- * Only empty-indicator (nested) blocks are trimmed: the old parser never
- * collected them, so keeping them would append a stray trailing newline (or a
- * leading one the single ^\n replace misses) to previously-clean values.
- * Literal |/|- and folded >/>- blocks keep their trailing-newline behavior
- * byte-identical to the pre-blank-line-fix parser.
- */
 function trimEdgeEmptyLines(lines: string[]): string[] {
 	let last = lines.length;
 	while (last > 0 && lines[last - 1]!.trim() === "") last--;

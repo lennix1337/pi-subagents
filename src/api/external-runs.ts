@@ -108,7 +108,7 @@ function inputObject(value: unknown, field: string, allowed: Set<string>): Recor
 function identity(value: unknown, field: string, maxLength: number = EXTERNAL_RUN_LIMITS.maxIdentityLength): string {
 	if (typeof value !== "string" || value.length === 0 || value.trim() !== value || value.includes("\0")) throw new Error(`${field} must be a non-empty trimmed string without NUL characters.`);
 	if (value.length > maxLength) throw new Error(`${field} must be at most ${maxLength} characters.`);
-	// Identities are often session-file paths, so Unicode spaces such as U+00A0 are valid; only terminal controls and line breaks are not.
+	// external: filesystem paths may contain Unicode spaces.
 	if (/[\t\n\p{Zl}\p{Zp}]/u.test(value) || safeTerminalText(value) !== value) throw new Error(`${field} must contain only display-safe text.`);
 	return value;
 }
@@ -260,7 +260,6 @@ export function snapshotExternalRuns(sessionId: string, options: ExternalRunSnap
 			const run = trustedRecordValue(value, trusted.get(cacheKey)) ?? normalizeCachedRecord(current, cacheKey, value);
 			if (run.sessionId === safeSessionId) runs.push(run);
 		} catch (error) {
-			// The cache key joins session and run id with NUL, and a malformed record's id is unvalidated.
 			const message = `Malformed cached external run '${previewDisplayText(cacheKey.slice(sessionPrefix.length), EXTERNAL_RUN_LIMITS.maxIdentityLength)}': ${getErrorMessage(error)}`;
 			if (!options.ignoreMalformed) throw new Error(message, { cause: error instanceof Error ? error : undefined });
 			current.runs.delete(cacheKey);

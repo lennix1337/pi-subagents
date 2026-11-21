@@ -41,7 +41,6 @@ try {
   assert.equal(settle({ outcome: 'aborted' }), undefined, 'never override abort');
   assert.equal(settle({ outcome: 'error' }), undefined, 'never retry provider errors');
   assert.equal(settle({ context: { canContinue: true, pendingMessages: [{}] } }), undefined, 'queued wake gets its turn first');
-  // Only silent/hidden output earns a continuation.
   messages.push({ role: "assistant", content: [{ type: "thinking", thinking: "hidden" }, { type: "text", text: "   " }] });
   const reminder = settle();
   assert.equal(reminder.continue, true);
@@ -113,7 +112,7 @@ const pi = {
     if (failSend) throw Error('send failed');
     sent.push({ message, options });
     messages.push({ ...message, role: 'custom' });
-    return true; // Idle path appends notice without message_start.
+    return true;
   },
 };
 const state = { currentSessionId: 'session', completionOwnerId: 'owner' };

@@ -5,8 +5,6 @@ import type { PiLaunchToolPlan } from "../runs/shared/child-tool-plan.ts";
 import type { ExtensionBindings } from "../runs/shared/extension-bindings.ts";
 
 export const AGENT_DEFINITION_PROJECTION_VERSION = 2 as const;
-// v2: the Intercom bridge prompt and tools are part of the binding on every
-// path, and the bridge text no longer names the parent session.
 export const LAUNCH_BINDING_PROJECTION_VERSION = 2 as const;
 
 function stableJson(value: unknown): string {

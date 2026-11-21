@@ -404,7 +404,6 @@ describe("fork context execution wiring", { skip: !available ? "subagent executo
 				clarify: false,
 			}, new AbortController().signal, undefined, makeCtx(manager));
 			assert.doesNotMatch(result.content[0]?.text ?? "", /does not allow agent/);
-			// The allowed step's fork was prepared, so preflight got past the zero-item template.
 			assert.notDeepEqual(openedPaths, []);
 		} finally {
 			handle.dispose();

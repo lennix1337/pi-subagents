@@ -150,7 +150,6 @@ describe("workflow preflight metadata", () => {
 		assert.deepEqual(workflowPreflightWarnings(lanes, generatedStageTrace, { settled: true }), []);
 		assert.equal(annotateWorkflowPreflightTrace(generatedStageTrace, lanes).some((entry) => entry.warning), false);
 
-		// Direct runs.run keys intentionally use the same lane.stage convention without provenance.
 		const directStageTrace = [
 			{ operation: "run", key: "audit.shadow", state: "started" as const },
 			{ operation: "run", key: "audit-other.writer", state: "started" as const },

@@ -215,7 +215,6 @@ describe("inspect-rpc reply content", () => {
 		assert.deepEqual(buildInspectReply({ requestId: "m1", asyncId: "run-model" }, makeDeps(root, single.resultsDir)).resolvedModel, resolvedModel);
 		const historical = makeRun(root, { runId: "run-model-old", steps: [{ agent: "worker", status: "complete", model: "llama-swap/qwen3.5:9b" }] });
 		assert.equal(buildInspectReply({ requestId: "m4", asyncId: "run-model-old" }, makeDeps(root, historical.resultsDir)).resolvedModel, undefined);
-		// A background workflow child records its reply in its own run's status; the workflow's step only names that run.
 		const workflow = makeRun(root, { runId: "run-model-wf", mode: "workflow", steps: [{ agent: "planner", status: "complete", workflowKey: "step-a", runId: "run-model-wf-child" }] });
 		const writeChild = (runId: string, extra: Record<string, unknown>) => {
 			const child = makeRun(root, { runId, steps: [{ agent: "planner", status: "complete", resolvedModel }] });
@@ -227,7 +226,6 @@ describe("inspect-rpc reply content", () => {
 		assert.equal(buildInspectReply({ requestId: "m2", asyncId: "run-model-wf" }, wfDeps).resolvedModel, undefined);
 		assert.deepEqual(buildInspectReply({ requestId: "m3", asyncId: "run-model-wf", childId: "step-a" }, wfDeps).resolvedModel, resolvedModel);
 		assert.deepEqual(buildInspectReply({ requestId: "m3b", asyncId: "run-model-wf", childId: "run-model-wf-child" }, wfDeps).resolvedModel, resolvedModel);
-		// A named run that is not this workflow's child, or belongs to another session, is not attributed.
 		makeRun(root, { runId: "run-model-wf2", mode: "workflow", steps: [{ agent: "planner", status: "complete", workflowKey: "step-b", runId: "run-model-other" }, { agent: "planner", status: "complete", workflowKey: "step-c", runId: "run-model-foreign" }] });
 		writeChild("run-model-other", { parentWorkflowRunId: "run-model-wf" });
 		writeChild("run-model-foreign", { parentWorkflowRunId: "run-model-wf2", sessionId: "session-other" });
@@ -482,7 +480,6 @@ describe("inspect-rpc reply content", () => {
 				{ agent: "second", artifactPaths: { outputPath: secondOutputPath } },
 			],
 		}, Date.now(), 60_000, { resultsDir, sessionId: SESSION_ID });
-		// Downgrade the archive to the pre-resultIndex legacy shape.
 		const archivePath = completionArchivePath(resultsDir, "run-replay-legacy");
 		const archive = JSON.parse(fs.readFileSync(archivePath, "utf-8"));
 		for (const entry of archive.entries) delete entry.resultIndex;
@@ -557,8 +554,6 @@ describe("inspect-rpc reply content", () => {
 			sessionId: SESSION_ID,
 			results: [{ output: "finished output" }],
 		}, Date.now(), 60_000, { resultsDir, sessionId: SESSION_ID });
-		// Corrupt the record's archivePath so validation rejects it while the
-		// record still parses and names this run and session.
 		const replayFile = completionReplayPath(resultsDir, runId);
 		const record = JSON.parse(fs.readFileSync(replayFile, "utf-8"));
 		record.archivePath = path.join(root, "elsewhere.json");
@@ -639,7 +634,6 @@ describe("inspect-rpc bounds", () => {
 		const reply = buildInspectReply({ requestId: "r12", asyncId: "run-lines" }, makeDeps(root, resultsDir));
 		assert.equal(reply.task, "line one\nline two");
 		assert.equal(reply.finalOutput, "first\nsecond");
-		// The wire line itself must stay single-line for prefix parsing.
 		assert.equal(encodeInspectReply(reply)[0]?.includes("\n"), false);
 	});
 });

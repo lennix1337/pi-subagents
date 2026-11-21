@@ -42,11 +42,6 @@ function readJournal(runId: string): JournalRecord[] {
 
 const terminal = (status: AsyncStatus) => status.state === "complete" || status.state === "failed";
 
-/**
- * Runs a three-stage workflow in a separate host process and SIGKILLs the host once stage1's result
- * is journaled and stage2's background runner is live. `finish` releases stage2 and waits for its
- * runner, which outlives the host by design, so no process is left behind.
- */
 function startKilledWorkflow(nonce: string, sessionId: string) {
 	const release = path.join(tempDir, `${nonce}.release`);
 	const script = `const first = await runs.run("stage1", { agent: "echo", task: "Stage one ${nonce}" }); const second = await runs.run("stage2", { agent: "bg", task: "Stage two ${nonce}" }); const third = await runs.run("stage3", { agent: "echo", task: "Stage three ${nonce}" }); return { first: first.output, firstReused: first.reused === true, second: second.output, secondReused: second.reused === true, third: third.output };`;
@@ -55,8 +50,6 @@ function startKilledWorkflow(nonce: string, sessionId: string) {
 	mockPi.onCall({ matchArgIncludes: `Stage two ${nonce}`, waitForPath: release, output: "stage two done" });
 	const callsBefore = mockPi.callCount();
 	const hostOutput = path.join(tempDir, `${nonce}-host.json`);
-	// The host inherits the test env: the same temp root and DIRS, the mock queue, and
-	// PI_SUBAGENTS_TEST_PARENT_PID naming this test process, so its detached runner exits with the test.
 	const host: ChildProcess = spawn(process.execPath, ["--experimental-strip-types", "--import", pathToFileURL(path.join(repo, "test/support/register-loader.mjs")).href, path.join(repo, "test/support/killable-workflow-host.mjs"), tempDir, sessionId, JSON.stringify({ workflowScript: script, args, async: true, mission: false }), hostOutput], { cwd: repo, env: process.env, stdio: ["ignore", "ignore", "pipe"] });
 	let hostStderr = "";
 	host.stderr?.on("data", (chunk) => { hostStderr += String(chunk); });
@@ -89,7 +82,6 @@ function startKilledWorkflow(nonce: string, sessionId: string) {
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 
-/** Opens the session again in this process through the extension's session start, as `pi --session <file>` does. */
 async function reopenSession(sessionFile: string, agentDir: string) {
 	const handlers = new Map<string, Handler[]>();
 	const sent: Array<{ customType?: string; content?: unknown }> = [];
@@ -102,7 +94,6 @@ async function reopenSession(sessionFile: string, agentDir: string) {
 	const ctx = {
 		...makeMinimalCtx(tempDir),
 		isIdle: () => true,
-		// Reopened with a UI, as `pi -c` does; a print run does not auto-resume. Every UI call does nothing.
 		hasUI: true,
 		ui: new Proxy({}, { get: () => () => undefined }),
 		sessionManager: { getSessionId: () => path.basename(sessionFile), getSessionFile: () => sessionFile, getEntries: () => [], getBranch: () => [] },

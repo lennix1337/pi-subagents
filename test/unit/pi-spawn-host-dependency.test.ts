@@ -46,12 +46,10 @@ function fixture(t: TestContext, layout: "npm" | "pnpm" = "npm") {
 	writePackage(pi);
 	let entry = path.join(host, "dist", "sessiond.mjs");
 	if (layout === "pnpm") {
-		// pnpm's scoped sibling dependency and the launcher's host junction both need realpath semantics.
 		link(pi, path.join(path.dirname(path.dirname(host)), PI_CODING_AGENT_PACKAGE));
 		const launcherHost = path.join(tmp, "global", "node_modules", "@jmfederico", "pi-web");
 		link(host, launcherHost);
 		entry = path.join(launcherHost, "dist", "sessiond.mjs");
-		// The launcher's logical tree must not win over the canonical host's own dependency.
 		writePackage(path.join(tmp, "global", "node_modules", PI_CODING_AGENT_PACKAGE), PI_CODING_AGENT_PACKAGE, "launcher-decoy");
 	}
 	process.argv[1] = entry;
@@ -126,7 +124,6 @@ for (const layout of ["npm", "pnpm"] as const) {
 		assert.equal(options.env.PI_PACKAGE_DIR, pi);
 		const aliases = JSON.parse(options.env.JITI_ALIAS);
 		assert.equal(aliases[PI_CODING_AGENT_PACKAGE], path.join(pi, "index.mjs"));
-		// Execute only the peer preload in an isolated process, not a real agent or daemon.
 		const loaded = childProcess.spawnSync(process.execPath, [
 			"--import", new URL("../../runner-peer-preload.mjs", import.meta.url).href,
 			"--input-type=module", "-e", `import { owner } from '${PI_CODING_AGENT_PACKAGE}'; console.log(owner);`,

@@ -34,7 +34,6 @@ function scriptFromReply(content: AssistantMessage["content"]): ReplyWorkflowScr
 	const text = content.flatMap((block) => block.type === "text" && typeof block.text === "string" ? [block.text] : []).join("\n");
 	const { tagged, plain, unclosed } = workflowBlocks(text);
 	if (unclosed) return { error: "The script's fenced block in this reply is not closed." };
-	// Models often drop the workflow tag, so a lone plain js block is unambiguous enough to run.
 	const blocks = tagged.length > 0 ? tagged : plain.length === 1 ? plain : [];
 	if (blocks.length !== 1) {
 		const untagged = tagged.length === 0 && plain.length > 1 ? ` This reply has ${plain.length} untagged js blocks; open the script's block with the line "\`\`\`js workflow".` : "";
@@ -45,7 +44,6 @@ function scriptFromReply(content: AssistantMessage["content"]): ReplyWorkflowScr
 	return { script };
 }
 
-/** Collects tagged (```js workflow) and plain (```js) fenced blocks, skipping the bodies of other fences. */
 function workflowBlocks(text: string): { tagged: string[]; plain: string[]; unclosed: boolean } {
 	const lines = text.split("\n");
 	const tagged: string[] = [];

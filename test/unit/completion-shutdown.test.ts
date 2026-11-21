@@ -7,9 +7,6 @@ import registerNotify, { PENDING_NOTICE_ENTRY, unreplayedPendingNotices } from "
 
 type Entry = { type: string; customType?: string; content?: unknown; data?: unknown };
 
-// One session file shared by successive Pi processes. `appended` false is a busy parent:
-// Pi queues the notice as a steer, which it drops if the process ends before starting it.
-// `abandoned` holds entries on another branch of the session tree: in the file, but not on the active branch.
 function session() {
 	const id = randomUUID();
 	const entries: Entry[] = [];
@@ -17,7 +14,6 @@ function session() {
 	return { entries, abandoned, manager: () => ({ getSessionId: () => id, getEntries: () => [...entries, ...abandoned], getBranch: () => entries }) };
 }
 
-// A reload keeps Pi's session manager object; a new process creates a new one.
 function processOn(file: ReturnType<typeof session>, appended = false, manager = file.manager()) {
 	const sent: Array<{ message: any; options: any }> = [];
 	const notifier = registerNotify({

@@ -166,7 +166,6 @@ export function parseSubagentDelegationRequest(data: unknown): SubagentDelegatio
 		ok: true,
 		request: {
 			...value,
-			// The validated copy replaces the caller's object so the request never aliases untrusted input.
 			...(intercomBridge ? { intercomBridge } : {}),
 			result: structuredSchema
 				? { kind: "structured", schema: structuredSchema }

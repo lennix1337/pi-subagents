@@ -145,7 +145,6 @@ function overlayStatus(asyncDir: string, proof: ProcessTerminal, candidate?: Pro
 		}
 		writeAtomicJson(statusPath, status);
 	} catch {
-		// The proof sidecar remains authoritative when terminal status is unavailable.
 	}
 }
 
@@ -158,7 +157,6 @@ export function finalizeProcessTerminal(
 	if (existing && fs.existsSync(processTerminalPath(asyncDir))) {
 		if (existing.state === "observed" && existing.runId === runId && existing.runnerProcessInstanceId === runnerClose.processInstanceId) return existing;
 		if (existing.state === "unknown") {
-			// A sticky runner-published unknown proof keeps its reason; only add the observed exit. Unreadable or mismatched sidecars read back as proof-write-failed and stay untouched.
 			if (existing.instances?.length || existing.reason === "proof-write-failed") return existing;
 			const withExit: ProcessTerminal = { ...existing, instances: [{ kind: "runner", ...runnerClose }] };
 			try {
@@ -215,7 +213,6 @@ export function finalizeProcessTerminal(
 	} catch (error) {
 		proof = unknownProof(runId, runnerClose.processInstanceId, "proof-write-failed", errorMessage(error));
 	}
-	// An unverified process tree still has a directly observed runner exit; keep it for failure reports.
 	if (proof.state === "unknown") proof = { ...proof, instances: [{ kind: "runner", ...runnerClose }] };
 	let durable = false;
 	try {
@@ -225,7 +222,6 @@ export function finalizeProcessTerminal(
 		overlayStatus(asyncDir, proof, candidateForOverlay);
 		fs.appendFileSync(path.join(asyncDir, "events.jsonl"), `${JSON.stringify({ type: "subagent.run.process_terminal", lifecycleArtifactVersion: SUBAGENT_LIFECYCLE_ARTIFACT_VERSION, ts: Date.now(), runId, processTerminal: proof })}\n`, "utf-8");
 	} catch {
-		// Do not emit a process-terminal event when the proof sidecar was not durable.
 	}
 	return durable ? proof : unknownProof(runId, runnerClose.processInstanceId, "proof-write-failed", "Failed to persist process-terminal proof.");
 }

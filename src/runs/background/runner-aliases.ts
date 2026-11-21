@@ -1,14 +1,3 @@
-/**
- * Module aliases for the detached async runner.
- *
- * The runner is a plain Node process started through jiti. The child hooks it
- * loads import pi's host packages (`@earendil-works/pi-coding-agent`,
- * `pi-agent-core`, `pi-ai`, `pi-tui`, `typebox`), which are peer packages of
- * this extension and are not installed next to it. pi's own extension loader
- * aliases those specifiers to the copies shipped inside the installed pi
- * package; the parent computes the same map and hands it to the runner
- * through `JITI_ALIAS`, so child sessions and hooks retain host API identity.
- */
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -18,7 +7,6 @@ export const JITI_ALIAS_ENV = "JITI_ALIAS";
 export const HOST_PEER_ALIASES: ReadonlyArray<{ specifier: string; pkg: string; subpath: string; optional?: boolean }> = [
 	{ specifier: "@earendil-works/pi-coding-agent", pkg: "@earendil-works/pi-coding-agent", subpath: "." },
 	{ specifier: "@earendil-works/pi-agent-core", pkg: "@earendil-works/pi-agent-core", subpath: "." },
-	// Optional: hosts whose pi-agent-core declares no "./node" export cannot import it, so no alias is needed.
 	{ specifier: "@earendil-works/pi-agent-core/node", pkg: "@earendil-works/pi-agent-core", subpath: "./node", optional: true },
 	{ specifier: "@earendil-works/pi-tui", pkg: "@earendil-works/pi-tui", subpath: "." },
 	{ specifier: "@earendil-works/pi-ai", pkg: "@earendil-works/pi-ai", subpath: "./compat" },
@@ -30,7 +18,7 @@ export const HOST_PEER_ALIASES: ReadonlyArray<{ specifier: string; pkg: string; 
 	{ specifier: "typebox/value", pkg: "typebox", subpath: "./value" },
 ];
 
-/** Pi manifests declare chord from 0.85.0 through 1.1.x; earlier hosts and 1.2.0+ do not ship it. */
+// external: Pi manifests declare chord from 0.85.0 through 1.1.x; earlier hosts and 1.2.0+ do not ship it.
 const CHORD_PACKAGE = "@earendil-works/chord";
 const CHORD_PEER_ALIASES: typeof HOST_PEER_ALIASES = [
 	{ specifier: "@earendil-works/chord", pkg: "@earendil-works/chord", subpath: "." },
@@ -56,7 +44,6 @@ function readManifest(packageDir: string): PackageManifest | undefined {
 
 const BLOCKED_EXPORT = Symbol("blocked export");
 
-/** Pick the import target of one exports entry (string, conditions object, or array of those). */
 function exportTarget(entry: unknown): string | typeof BLOCKED_EXPORT | undefined {
 	if (typeof entry === "string") return entry;
 	if (entry === null) return BLOCKED_EXPORT;
@@ -144,16 +131,11 @@ export function resolveHostPeerAliases(piPackageRoot: string): { aliases: Record
 	const aliases: Record<string, string> = {};
 	const missing: string[] = [];
 	const hostManifest = readManifest(piPackageRoot);
-	// Chord is aliased whenever the host provides it, but required only when the host
-	// manifest declares it (Pi 0.85 through 1.1), so a declared-but-missing chord still
-	// fails closed. An unreadable host manifest keeps it required rather than hiding a broken install.
 	const chordRequired = !hostManifest || declaresDependency(hostManifest, CHORD_PACKAGE);
 	for (const { specifier, pkg, subpath, optional } of [...HOST_PEER_ALIASES, ...CHORD_PEER_ALIASES]) {
 		const packageDir = findPeerPackageDir(piPackageRoot, pkg, hostManifest?.name);
 		const target = packageDir ? resolvePackageSubpath(packageDir, subpath) : undefined;
-		// An optional subpath the package does not declare is unreachable, so skip it; a declared but missing file still fails.
 		if (optional && packageDir && target === undefined) continue;
-		// Native loaders short-circuit resolution, so aliases must retain the real package's dependency scope.
 		if (target && fs.existsSync(target)) aliases[specifier] = fs.realpathSync(target);
 		else if (pkg !== CHORD_PACKAGE || chordRequired) missing.push(specifier);
 	}

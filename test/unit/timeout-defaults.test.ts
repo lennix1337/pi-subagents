@@ -139,8 +139,7 @@ describe("resolveConfigDefaultTimeoutMs", () => {
 	});
 
 	it("accepts the maximum schedulable timer delay but ignores anything larger", () => {
-		// 2_147_483_647 is the largest delay a Node.js timer can honor; above it
-		// setTimeout overflows to ~1ms and the run would expire almost immediately.
+		// external: Node.js timers overflow delays above 2_147_483_647 ms to approximately 1 ms.
 		assert.equal(resolveConfigDefaultTimeoutMs(2_147_483_647), 2_147_483_647);
 		assert.equal(resolveConfigDefaultTimeoutMs(2_147_483_648), undefined);
 		assert.equal(resolveConfigDefaultTimeoutMs(Number.MAX_SAFE_INTEGER), undefined);

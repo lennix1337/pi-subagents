@@ -274,8 +274,6 @@ async function runWatchdogAttempt(ctx: ExtensionContext, request: WatchdogReview
 	const baseStreamFn: StreamFn = options.streamFn ?? ((model, context, streamOptions) => ctx.modelRegistry.streamSimple(model, context, streamOptions));
 	const sessionId = ctx.sessionManager.getSessionId();
 	const streamFn: StreamFn = (model, context, streamOptions) => {
-		// Agent may enter one final loop iteration after an aborted mixed tool batch.
-		// Never send that iteration to the provider after an intentional yield.
 		if (clarification) throw new Error("Watchdog review yielded for clarification.");
 		return baseStreamFn(model, context, {
 			...streamOptions,
@@ -310,7 +308,7 @@ async function runWatchdogAttempt(ctx: ExtensionContext, request: WatchdogReview
 			if (warned || clarification || ctx.signal?.aborted || request.signal?.aborted) throw new Error("Clarification unavailable after warning, yield, or cancellation.");
 			if (!params.question.trim() || !params.evidence.trim()) throw new Error("A focused question and concrete evidence are required.");
 			clarification = { question: boundWatchdogReviewText(params.question.trim(), 1_000), evidence: boundWatchdogReviewText(params.evidence.trim(), 2_000) };
-			agent.abort(); // Intentional yield also stops mixed tool batches; terminate alone does not.
+			agent.abort();
 			return { content: [{ type: "text", text: "Review yielded for clarification." }], details: {} };
 		},
 	});
@@ -334,7 +332,6 @@ async function runWatchdogAttempt(ctx: ExtensionContext, request: WatchdogReview
 			: { block: true, reason: `Watchdog reviews are read-only; tool '${toolCall.name}' is not allowed.` },
 		toolExecution: "sequential",
 	});
-	// Include rejected/invalid calls as well as read-only work and findings.
 	agent.subscribe((event) => { if (event.type === "tool_execution_start") toolCount++; });
 	const abort = () => agent.abort();
 	ctx.signal?.addEventListener("abort", abort, { once: true });

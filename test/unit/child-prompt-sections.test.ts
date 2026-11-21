@@ -53,7 +53,6 @@ describe("child provider system prompt", () => {
 		toggle(path.join(agentDir, "skills", "pi-subagents"), orchestrationSkill, () => writeSkill("pi-subagents"));
 	}
 
-	/** Runs a real SDK child, one run per prompt, and returns the system prompt of every provider request. */
 	async function providerPrompts(run: Run): Promise<string[]> {
 		setFixture(run.fixture ?? {});
 		const faux = fauxProvider({ provider: "probe", models: [{ id: "local" }], tokensPerSecond: 100_000 });
@@ -79,7 +78,6 @@ describe("child provider system prompt", () => {
 			...(run.fanout ? { allowNestedSubagents: true } : {}),
 			...(run.structured ? { structuredOutput: createStructuredOutputRuntime({ type: "object" }, repo) } : {}),
 		});
-		// Unset flags make the prompt runtime leave the prompt alone, so the same launch yields Pi's original render.
 		if (run.unsetFlags) Object.assign(config, { inheritProjectContext: undefined, inheritGlobalContext: undefined, inheritSkills: undefined });
 		const factory = createDefaultChildSessionFactory({ loadPiCodingAgent: () => import("@earendil-works/pi-coding-agent") });
 		const hooks = [(pi: ExtensionAPI) => pi.registerProvider(faux.provider as never), ...run.hooks ?? []];
@@ -200,7 +198,6 @@ console.log(buildEffectiveSystemPrompt({ agent: { name: 'worker', systemPrompt: 
 		["structured output", { flags: noGlobal, structured: true }, { globalContext: false }],
 	] as Array<[string, Run, Fixture]>) {
 		it(`sends a child without other extensions Pi's render of the launch without the removed resources, plus the boundary (${label})`, async () => {
-			// The launch without the removed resources leaves rewriteSubagentPrompt nothing to strip, so it only appends the boundary.
 			const [render] = await providerPrompts({ ...run, fixture: { ...run.fixture, ...absent }, unsetFlags: true });
 			const [actual] = await providerPrompts(run);
 			assert.equal(actual, rewriteSubagentPrompt(render!, { ...run.flags, structuredOutput: run.structured }));
@@ -211,7 +208,6 @@ console.log(buildEffectiveSystemPrompt({ agent: { name: 'worker', systemPrompt: 
 		const flags = inheritAll;
 		const seen: string[] = [];
 		const [rewritten] = await providerPrompts({ flags, fanout: true, hooks: [(pi) => pi.on("before_agent_start", (event) => { seen.push(event.systemPrompt); })] });
-		// With everything inherited the filter removes nothing, so the prompt seen mid-chain is Pi's original render.
 		assert.equal(rewritten, rewriteSubagentPrompt(seen[0]!, { ...flags, fanoutChild: true }));
 		assert.ok(rewritten!.endsWith(`\n\n${CHILD_FANOUT_BOUNDARY_INSTRUCTIONS}`));
 	});

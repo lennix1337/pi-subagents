@@ -1,4 +1,3 @@
-// Child-runner-only fault injection. Barriers are filesystem events, not elapsed waits.
 import fs from "node:fs";
 import path from "node:path";
 import { syncBuiltinESMExports } from "node:module";
@@ -51,7 +50,6 @@ if (root) {
 	fs.renameSync = function (source, target) {
 		const result = rename.call(this, source, target);
 		if (!earlyTerminal && path.basename(String(target)) === "steer-inbox-closed.json") {
-			// A request queued just before inbox closure is consumed during finalization.
 			const dir = path.join(path.dirname(String(target)), "steer-requests");
 			fs.mkdirSync(dir, { recursive: true });
 			write(path.join(dir, "publication-steer.json"), JSON.stringify({ type: "steer", id: "publication-steer", ts: 1, message: "Late queued request", targetIndex: 0 }));

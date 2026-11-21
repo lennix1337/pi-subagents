@@ -7,14 +7,12 @@ import test from "node:test";
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const extensionEntry = path.join(projectRoot, "src", "extension", "index.ts");
 
-/** Modules only needed once a user runs the command or RPC method that uses them. */
 const deferredUntilFirstUse = [
 	"src/slash/subagents-admin.ts",
 	"src/slash/subagent-cost.ts",
 	"src/runs/background/inspect-rpc.ts",
 ];
 
-/** Top-level `import`/`export ... from` specifiers, skipping type-only statements. */
 function staticRuntimeSpecifiers(source: string): string[] {
 	const specifiers: string[] = [];
 	const lines = source.split("\n");

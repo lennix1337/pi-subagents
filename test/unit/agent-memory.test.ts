@@ -60,7 +60,6 @@ function withTempHome<T>(fn: (home: string) => T): T {
 	}
 }
 
-// Create a temp project root that findNearestProjectRoot will recognise (.pi dir present).
 function mkProject(): string {
 	const dir = mkdtemp("pi-subagents-mem-project-");
 	fs.mkdirSync(path.join(dir, ".pi", "agents"), { recursive: true });
@@ -193,7 +192,6 @@ describe("resolveMemoryDir", () => {
 		try {
 			fs.symlinkSync(outside, linkPath);
 		} catch {
-			// Symlinks may be unavailable (e.g. Windows without dev mode); skip portably.
 			return;
 		}
 		const resolved = resolveMemoryDir(root, "leak");
@@ -210,7 +208,6 @@ describe("readMemoryFile", () => {
 	it("skips a FIFO with no writer without blocking", { skip: process.platform === "win32" }, () => {
 		const dir = mkdtemp("pi-subagents-mem-fifo-");
 		execFileSync("mkfifo", [path.join(dir, AGENT_MEMORY_FILE)]);
-		// Isolate the synchronous read so a regression cannot hang the test runner.
 		const moduleUrl = new URL("../../src/agents/agent-memory.ts", import.meta.url).href;
 		const source = `import { readMemoryFile } from ${JSON.stringify(moduleUrl)};
 console.log(readMemoryFile(process.argv[1]));`;
@@ -255,7 +252,7 @@ console.log(readMemoryFile(process.argv[1]));`;
 		try {
 			fs.symlinkSync(outsideFile, path.join(dir, AGENT_MEMORY_FILE));
 		} catch {
-			return; // Symlinks unsupported here; skip portably.
+			return;
 		}
 		assert.equal(readMemoryFile(dir), "unsafe");
 	});
@@ -454,14 +451,12 @@ describe("buildAgentMemoryInjection", () => {
 			const memoryFile = path.join(memoryDir, AGENT_MEMORY_FILE);
 			assert.match(injection, new RegExp(`Memory file: ${escapeRegex(memoryFile)}`));
 			assert.match(injection, /Release gotcha: tag before gh release\./);
-			// Must not collide with the owner's ~/.pi/agent/memory/{project}/ layout.
 			assert.doesNotMatch(injection, /agent\/memory\/[^/]+\/release-agent/);
 		});
 	});
 
 	it("returns empty for project scope when no project root is found", () => {
 		const nowhere = mkdtemp("pi-subagents-mem-noroot-");
-		// Skip deterministically if an ancestor happens to register as a project root.
 		if (findNearestProjectRoot(nowhere) !== null) return;
 		const agent = makeAgent({ memory: { scope: "project", path: "x" }, tools: ["read"] });
 		assert.equal(buildAgentMemoryInjection(agent, nowhere), "");
@@ -482,7 +477,7 @@ describe("buildAgentMemoryInjection", () => {
 		try {
 			fs.symlinkSync(outsideFile, path.join(memoryDir, AGENT_MEMORY_FILE));
 		} catch {
-			return; // Symlinks unsupported here; skip portably.
+			return;
 		}
 		const agent = makeAgent({ memory: { scope: "project", path: "leak" }, tools: ["read", "edit"] });
 		assert.equal(buildAgentMemoryInjection(agent, project), "");

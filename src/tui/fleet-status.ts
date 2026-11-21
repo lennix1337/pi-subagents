@@ -15,7 +15,6 @@ import { formatWorkflowChecklistBottleneck, formatWorkflowChecklistPhase, format
 
 export const FLEET_STATUS_WIDGET_KEY = "subagent-fleet-status";
 
-// Six rows fit the accepted collapsed hierarchy: one owner, four visible descendants, and overflow.
 const MAX_AGENT_ROWS = 6;
 const REFRESH_MS = 500;
 
@@ -77,7 +76,6 @@ type FleetNestedRow = {
 	agentIdentity?: string;
 	state: NestedRunSummary["state"] | NestedStepSummary["status"];
 	modelThinking?: string;
-	/** Thinking level of the child this row stands for; it colors the running glyph. */
 	thinking?: ThinkingLevel;
 	activity?: string;
 	startedAt?: number;
@@ -649,15 +647,12 @@ export class SubagentFleetStatus {
 				attachedByParent.set(entry.parentKey, attached);
 			}
 			for (const job of this.state.asyncJobs.values()) {
-				// Fleet does not expand attached workflow wrappers or step descendants.
-				// Unknown/unsupported coverage deliberately retains the async tree.
 				if (job.mode !== "workflow" || !isActiveState(job.status) || job.parentWorkflowRunId
 					|| job.nestedChildren?.length || job.steps?.some((step) => step.children?.length)) continue;
 				const key = `async:${job.asyncId}`;
 				const children = childrenByParent.get(job.asyncId) ?? [];
 				const attached = attachedByParent.get(key) ?? [];
 				if (children.length && job.status !== "running") continue;
-				// Even without workflow rows, these children plus their owner cannot fit.
 				if (attached.length >= this.maxAgentRows) continue;
 				const rowKeys = new Set<string>();
 				let unsupported = false;
@@ -694,8 +689,6 @@ export class SubagentFleetStatus {
 
 		const renderKey = this.getRenderKey();
 		if (!this.active) this.clearWorkflowCoverage();
-		// The async widget paints above the roster, so recompute coverage (structure and row fit) now.
-		// Clearing it instead would flash the full workflow tree on every live-stat tick.
 		else if (renderKey !== this.lastRenderKey && this.lastPaint) {
 			const { width, theme } = this.lastPaint;
 			this.prepaint = { key: renderKey, width, theme, lines: this.render(width, theme) };
@@ -732,8 +725,6 @@ export class SubagentFleetStatus {
 			return;
 		}
 		if (renderKey === this.lastRenderKey) {
-			// Repaint anyway while anything is running so the wall-clock
-			// spinner animates between state changes (500ms tick).
 			if (this.entries.some((entry) => entry.state === "running")) this.tui?.requestRender();
 			return;
 		}
@@ -811,8 +802,6 @@ export class SubagentFleetStatus {
 			this.clearWorkflowCoverage();
 			const workEntries = this.entries.filter((entry) => !entry.surface);
 			const projectEntries = this.entries.filter((entry) => entry.surface === "project-pane");
-			// Workflow totals can overlap child usage and omit live lanes. Do not
-			// present either wrapper totals or an active-only sum as workflow spend.
 			const hasWorkflow = workEntries.some((entry) => entry.workflowWrapper);
 			const nativeEntries = workEntries.filter((entry) => !entry.external && !entry.workflowWrapper && !entry.parentKey);
 			const tokens = nativeEntries.reduce((total, entry) => total + entry.tokens, 0);
@@ -1011,8 +1000,8 @@ export class SubagentFleetStatus {
 	}
 
 	private editorHasFocus(): boolean {
-		// pi-tui exposes focus mutation but no focus getter, so inspect the focused
-		// component structurally. instanceof is unreliable across jiti module boundaries.
+		// external: pi-tui exposes focus mutation but no focus getter.
+		// external: instanceof is unreliable across jiti module boundaries.
 		const focused = (this.tui as unknown as { focusedComponent?: unknown } | undefined)?.focusedComponent;
 		if (!focused || typeof focused !== "object") return false;
 		const candidate = focused as Partial<EditorComponent>;

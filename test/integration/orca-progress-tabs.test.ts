@@ -13,7 +13,7 @@ afterEach(() => {
 	const progressDir = path.join(TEMP_ROOT_DIR, "orca-progress");
 	for (const dir of tempDirs.splice(0)) {
 		let scope = path.resolve(dir);
-		try { scope = fs.realpathSync(dir); } catch { /* use the lexical path */ }
+		try { scope = fs.realpathSync(dir); } catch {  }
 		const key = createHash("sha256").update(scope).digest("hex").slice(0, 20);
 		fs.rmSync(path.join(progressDir, `counter-${key}`), { force: true });
 		fs.rmSync(path.join(progressDir, `counter-${key}.lock`), { recursive: true, force: true });
@@ -33,7 +33,6 @@ afterEach(() => {
 
 const RUNNER_CHILD_SESSION_FACTORY = path.resolve(import.meta.dirname, "../support/runner-child-session-factory.ts");
 
-/** Queue one scripted response every child session the runner creates replays. */
 function scriptChildSessions(dir: string, response: object): string {
 	const queueDir = path.join(dir, "child-sessions");
 	fs.mkdirSync(queueDir, { recursive: true });

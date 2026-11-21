@@ -52,7 +52,6 @@ function createHarness(review: WatchdogReviewFunction) {
 		displayClarification: () => {},
 		review,
 	});
-	// SAFETY: registerMainWatchdog only calls the seven ExtensionAPI methods stubbed above.
 	registerMainWatchdog(api as never, { runtime });
 	const ctx = { cwd: process.cwd() };
 	const emit = async (name: string, event: any = {}) => {

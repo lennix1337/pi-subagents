@@ -8,7 +8,6 @@ import { localMachineAccess } from "../../src/runs/shared/local-machine-access.t
 import { rexPaneHost, RexPlacedRunOwner } from "../../src/runs/shared/rex-pane-host.ts";
 import type { RexSshMachineReference } from "../../src/shared/types.ts";
 
-// A fake remote `rex`: it logs its argv, lists sessions.json, makes `new` publish after-new.json, and confirms any session unless `gone` exists.
 const FAKE_REX = `#!/bin/sh
 d="$FAKE_REX_DIR"; printf '%s\\n' "$*" >> "$d/calls"
 case "$*" in
@@ -71,7 +70,6 @@ describe("Rex SSH session", { skip: process.platform === "win32" }, () => {
 	let dir: string, machine: RexSshMachineReference;
 	const sessions = (file: string, ...entries: Array<[string, string]>) => fs.writeFileSync(path.join(dir, file), JSON.stringify({ sessions: entries.map(([id, label]) => ({ session_id: id, label })) }));
 	const calls = () => fs.readFileSync(path.join(dir, "calls"), "utf8").trim().split("\n");
-	// The remote machine is this one: the access runs the same scripts SSH would send, and finds the fake rex through REX_BIN_DIR.
 	const create = () => RexPlacedRunOwner.create(machine, "run_session_test", { sshAccess: localMachineAccess({ env: { PATH: "/usr/bin:/bin", HOME: dir, REX_BIN_DIR: dir, FAKE_REX_DIR: dir } }) });
 	beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), "rex-ssh-session-")); fs.writeFileSync(path.join(dir, "rex"), FAKE_REX, { mode: 0o755 }); machine = { provider: "rex", id: "workmac", target: "workmac.example", cwd: dir }; });
 	afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));

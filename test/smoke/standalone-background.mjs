@@ -1,5 +1,3 @@
-// Linux real-binary smoke from xz-dev's PR #2049. No filesystem core SDK or execution network.
-// node test/smoke/standalone-background.mjs /absolute/pi-binary [fresh-artifacts] [mode] [/absolute/prebuilt.tgz]
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -32,7 +30,6 @@ function run(name, command, args) {
 	assert.ifError(result.error);
 	return result;
 }
-// The matrix packs once and passes the tarball so every mode stages the same candidate.
 const prebuilt = process.argv[5];
 let tarball;
 if (prebuilt) {
@@ -47,7 +44,6 @@ if (prebuilt) {
 	tarball = JSON.parse(packed.stdout)[0];
 }
 assert.equal(run("extract", "tar", ["-xf", path.join(root, tarball.filename), "-C", root]).status, 0);
-// Copy rather than symlink: ancestor resolution must not escape into the checkout's dev SDK/shim.
 fs.cpSync(path.join(source, "node_modules"), path.join(root, "package/node_modules"), {
 	recursive: true,
 	filter: (entry) => !coreSdk.test(path.relative(source, entry).split(path.sep).join("/")),
@@ -68,7 +64,7 @@ fs.mkdirSync(path.join(root, "agent/extensions"), { recursive: true });
 fs.writeFileSync(path.join(root, "agent/extensions/ambient-sentinel.ts"), 'import fs from "node:fs"; export default function () { fs.writeFileSync("/stage/ambient-loaded", String(process.pid)); }\n');
 const sandbox = ["--die-with-parent", "--unshare-net", "--unshare-pid", "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin"];
 for (const lib of ["/lib", "/lib64"]) if (fs.existsSync(lib)) sandbox.push("--ro-bind", lib, lib);
-// glibc may dlopen libgcc_s when a workflow worker exits; expose only the loader cache.
+// external: glibc may dlopen libgcc_s when a workflow worker exits.
 if (fs.existsSync("/etc/ld.so.cache")) sandbox.push("--ro-bind", "/etc/ld.so.cache", "/etc/ld.so.cache");
 sandbox.push("--proc", "/proc", "--dev", "/dev", "--bind", root, "/stage", "--bind", path.join(root, "tmp"), "/tmp", "--chdir", "/stage/work", "--clearenv");
 for (const [key, value] of Object.entries({ PATH: "/usr/bin:/bin", HOME: "/stage/home", PI_CODING_AGENT_DIR: "/stage/agent", XDG_CACHE_HOME: "/stage/cache", BUN_INSTALL_CACHE_DIR: "/stage/bun-cache", JITI_FS_CACHE: "false", PI_OFFLINE: "1", TERM: "dumb", PI_STANDALONE_SMOKE_MODE: mode })) sandbox.push("--setenv", key, value);

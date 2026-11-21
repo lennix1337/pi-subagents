@@ -403,8 +403,6 @@ export function readAsyncRecoveryDescriptor(asyncDir: string | undefined): Steer
 	}
 	if (parsed.absoluteDeadlineAt !== undefined && (!Number.isFinite(parsed.absoluteDeadlineAt) || (parsed.absoluteDeadlineAt as number) <= 0)) throw new Error(`Invalid async recovery descriptor '${descriptorPath}': absoluteDeadlineAt must be a positive timestamp.`);
 	if (parsed.initialTurnBudget !== undefined) {
-		// Older descriptors may contain the removed turn-budget setting. Accept it
-		// for recovery compatibility, but do not restore or enforce it.
 		delete parsed.initialTurnBudget;
 	}
 	if (parsed.initialToolBudget !== undefined) {
@@ -644,7 +642,6 @@ export function applySteeringRecoveryAgentConfig(agentConfig: AgentConfig, descr
 		output: descriptor.outputPath,
 		toolBudget: descriptor.initialToolBudget,
 		maxSubagentDepth: descriptor.maxSubagentDepth,
-		// The recorded launcher wins over the current agent file, including recorded absence.
 		launcher: descriptor.launcher,
 	};
 }

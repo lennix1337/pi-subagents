@@ -13,7 +13,6 @@ const launch = { session: {
 	runtime: { fanoutChild: false, fast: false, depth: 1, waitTool: { enabled: false } },
 } } as InProcessChildLaunch;
 
-// Without the abort backstop this run never settles, so bound the test instead of hanging the suite.
 it("settles a timed-out run whose session creation never returns, and contains late disposal rejection", { timeout: 10_000 }, async () => {
 	let releaseCreate!: (session: ChildSession) => void;
 	const createBlocked = new Promise<ChildSession>((resolve) => { releaseCreate = resolve; });
@@ -188,7 +187,6 @@ it("verifies a virtual-model child against its selection and keeps the dispatche
 	assert.equal(result.model, "openai-codex/gpt-6.1-sol");
 });
 
-// Unfinished streamed text recovered on timeout or a thrown session error.
 type PartialScenario = "timeout" | "child error" | "completed reply" | "provider error" | "recovered tool call";
 
 async function runPartialScenario(mode: "foreground" | "background", scenario: PartialScenario) {
@@ -215,7 +213,6 @@ async function runPartialScenario(mode: "foreground" | "background", scenario: P
 				throw new Error("overloaded");
 			}
 			if (scenario === "recovered tool call") {
-				// A retried provider error whose recovered reply only calls a tool, which then outlives the timeout.
 				const failed = { ...fauxAssistantMessage("stale failed attempt"), stopReason: "error", errorMessage: "overloaded" };
 				const toolOnly = { role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "bash", arguments: { command: "sleep 100" } }], stopReason: "toolUse" };
 				messages.push(failed, toolOnly);

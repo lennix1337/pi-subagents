@@ -1,13 +1,3 @@
-/**
- * Integration tests for single (sync) agent execution.
- *
- * Uses the local createMockPi() helper to simulate the pi CLI.
- * Tests the full spawn→parse→result pipeline in runSync without a real LLM.
- *
- * These tests require pi packages to be importable (they run inside a pi
- * environment or with pi packages installed). If unavailable, tests skip
- * gracefully.
- */
 
 import { describe, it } from "node:test";
 import {
@@ -179,8 +169,6 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		{ name: "async", asyncByDefault: true, id: "workflow-sibling-stop", reason: /^Workflow child stopped: \*\*a\*\*\n[\s\S]*\nError: Workflow stopped before async child completed\.\nStatus: workflow finished\n\nParent action: Read the saved results above/ },
 	]) {
 		it(`reports ${name} workflow siblings stopped by a failed script as stopped`, { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
-			// hangUntilAbort still emits agent_settled first, which lets the 1s final-drain grace finish the sibling as failed before the stop lands.
-			// A release path that never appears keeps it mid-run, and its polling keeps a detached runner process alive, until the stop aborts it.
 			mockPi.onCall({ matchArgIncludes: "Slow sibling", waitForPath: path.join(tempDir, "never-released") });
 			mockPi.onCall({ matchArgIncludes: "Fails at launch", createError: "launch failed" });
 			const sent: Array<{ customType?: string; content?: string }> = [];
@@ -274,7 +262,6 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			} else {
 				assert.equal(record.index, 0);
 			}
-			// The authoritative receipt resolves before the completion observer cleans up.
 			await new Promise<void>((resolve) => setImmediate(resolve));
 			assert.equal(fs.existsSync(liveForegroundRecordPath(record.runId, record.index)), false);
 		});
@@ -440,16 +427,14 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({
 			steps: [
 				{ jsonl: [
-					// Pi's sequence for a call blocked by a tool_call handler: start, end with isError, then the toolResult message.
+					// external: Pi emits tool start, error end, then toolResult for calls blocked by a tool_call handler.
 					{ type: "tool_execution_start", toolCallId: "bash-1", toolName: "bash", args: { command: "cat canary" } },
-					// A later overlapping call must not be attributed as the blocked tool.
 					{ type: "tool_execution_start", toolCallId: "read-1", toolName: "read", args: { path: "notes.md" } },
 					{ type: "tool_execution_end", toolCallId: "bash-1", toolName: "bash", isError: true },
 					{ type: "message_start", message: { role: "toolResult", toolCallId: "bash-1", toolName: "bash", isError: true, content: [{ type: "text", text: blockedMessage }] } },
 					{ type: "message_end", message: { role: "toolResult", toolCallId: "bash-1", toolName: "bash", isError: true, content: [{ type: "text", text: blockedMessage }] } },
 					{ type: "tool_execution_end", toolCallId: "read-1", toolName: "read", isError: false },
 					{ type: "message_end", message: { role: "toolResult", toolCallId: "read-1", toolName: "read", isError: false, content: [{ type: "text", text: "ordinary notes" }] } },
-					// A call that starts after the block keeps the recorded block in the budget state.
 					{ type: "tool_execution_start", toolCallId: "ls-1", toolName: "ls", args: {} },
 					{ type: "tool_execution_end", toolCallId: "ls-1", toolName: "ls", isError: false },
 					{ type: "message_end", message: { role: "toolResult", toolCallId: "ls-1", toolName: "ls", isError: false, content: [{ type: "text", text: "notes.md" }] } },
@@ -724,7 +709,6 @@ When the task asks for a structured result, keep field names exactly as requeste
 			skill: false,
 			output: false,
 			artifacts: false,
-			// runSync sits below the executor step that applies the bridge.
 			intercomBridge: { mode: "off" as const },
 		};
 		const preflight = await resolveSubagentLaunchContract(launchInput);
@@ -761,8 +745,6 @@ When the task asks for a structured result, keep field names exactly as requeste
 			].map((entry) => JSON.stringify(entry)).join("\n") + "\n",
 			structuredOutputCapture: { ok: true },
 		};
-		// Both shapes matter: the bridge rewrites the prompt for every agent and
-		// widens the tool list only when the agent declares one.
 		for (const declaredTools of ["", "\n  - read"]) {
 			const agentName = `bridge-digest-${declaredTools ? "tools" : "prompt"}-${Date.now().toString(36)}`;
 			const agentPath = path.join(tempDir, ".pi", "agents", `${agentName}.md`);
@@ -883,7 +865,6 @@ Answer only from the supplied synthetic text.
 		const instructionFile = path.join(tempDir, "custom-bridge.md");
 		fs.writeFileSync(instructionFile, "Custom bridge for {orchestratorTarget}\nUse ask then send.\n", "utf-8");
 		const intercomBridge = { mode: "always" as const, instructionFile };
-		// The executor derives this from the parent session; a host reproduces it with the public helper.
 		const ctx = makeMinimalCtx(tempDir);
 		const orchestratorTarget = resolveIntercomSessionTarget(undefined, ctx.sessionManager.getSessionId());
 
@@ -1358,7 +1339,6 @@ Answer only from the supplied synthetic text.
 
 	it("executes a registered mixed foreground workflow without widening session or child authority", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
 		const ctx = makeMinimalCtx(tempDir);
-		// A persistent session's file path is not its SDK session ID.
 		ctx.sessionManager.getSessionFile = () => path.join(tempDir, "parent.jsonl");
 		const marker = path.join(tempDir, "registered-marker");
 		fs.writeFileSync(path.join(tempDir, "registered-check.cjs"), `require("node:fs").writeFileSync("registered-marker", "ran"); console.log("finite check passed");`);
@@ -1727,7 +1707,6 @@ Answer only from the supplied synthetic text.
 		assert.equal(empty.isError, true);
 		assert.match(empty.content[0]?.text ?? "", /Workflow script file .*empty\.js.* is empty/);
 
-		// Seen live: a model put the script itself in the workflow string.
 		const scriptText = await executor.executePublic("script-text", { workflow: "return 1", async: false }, new AbortController().signal, undefined, makeMinimalCtx(tempDir));
 		assert.equal(scriptText.isError, true);
 		assert.match(scriptText.content[0]?.text ?? "", /write it in one ```js workflow block in the same reply and call subagent\(\{ workflow: true \}\)/);
@@ -2076,7 +2055,6 @@ Answer only from the supplied synthetic text.
 			const script = "return args;";
 			const cwd = path.join(tempDir, "sub");
 			fs.mkdirSync(cwd);
-			// An interrupted run of the same script to reuse, so reuseFrom is accepted.
 			const sourceId = `launch-source-${Date.now().toString(36)}`;
 			fs.mkdirSync(path.join(DIRS.async, sourceId), { recursive: true });
 			fs.writeFileSync(path.join(DIRS.async, sourceId, "status.json"), JSON.stringify({
@@ -2143,7 +2121,6 @@ Answer only from the supplied synthetic text.
 			}
 			assert.equal(failed.isError, true);
 			assert.match(failed.content[0]?.text ?? "", /^Failed to create async workflow storage: no space left/);
-			// The only slot was released, so the next launch is admitted.
 			await launchAndSettle(executor, "launch-after-unsaved", { workflowScript: "return 2;" }, ctx);
 		});
 
@@ -2174,14 +2151,12 @@ Answer only from the supplied synthetic text.
 			assert.equal(failed.isError, true);
 			assert.match(failed.content[0]?.text ?? "", /^Failed to create async workflow storage: no space left/);
 			assert.deepEqual(fs.readdirSync(path.join(DIRS.async, sourceId)), ["status.json"], "no claim is left");
-			// The only slot was released, so the next launch is admitted.
 			await launchAndSettle(executor, "launch-after-unclaimed", { workflowScript: "return 4;" }, ctx);
 		});
 	});
 
 	describe("relaunching a runtime-replaced workflow", () => {
 		const terminalStates = ["complete", "failed", "partial", "paused", "stopped", "rejected"];
-		// SAFETY: the executor and runner write these status.json files from AsyncStatus values.
 		const readStatusFile = (runId: string) => JSON.parse(fs.readFileSync(path.join(DIRS.async, runId, "status.json"), "utf-8")) as AsyncStatus;
 		const setup = (config: Record<string, unknown> = {}) => {
 			const workflowControllers = new Map<string, AbortController>();
@@ -2218,8 +2193,6 @@ Answer only from the supplied synthetic text.
 			return { start, launch, waitFor, settled, stopWhenStage2Starts, stopAction };
 		};
 		const resultFileText = (runId: string) => fs.readFileSync(path.join(DIRS.results, `${runId}.json`), "utf-8");
-		// What a killed Pi leaves behind for a live run: status still `running` under a pid that is gone,
-		// the child journal as written so far, and the active-run marker. The copy belongs to `sessionId`.
 		const crashedCopy = (sourceRunId: string, sessionId: string) => {
 			const runId = `crashed-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`;
 			const asyncDir = path.join(DIRS.async, runId);
@@ -2233,7 +2206,6 @@ Answer only from the supplied synthetic text.
 			updateActiveRunIndex(asyncDir, "running");
 			return runId;
 		};
-		// Session start for the reopened session reconciles its active runs (restoreActiveJobs → listAsyncRuns).
 		const reopenSession = (sessionId: string) => listAsyncRuns(DIRS.async, { states: ["queued", "running"], sessionId, resultsDir: DIRS.results });
 		const stage2Started = (status: AsyncStatus) => status.workflow?.trace.some((entry) => entry.key === "stage2" && entry.state === "started") ?? false;
 
@@ -2252,7 +2224,6 @@ Answer only from the supplied synthetic text.
 			await stopWhenStage2Starts(donorId, new Error("Stopped by user."));
 			const callsAfterFirstCrash = mockPi.callCount();
 
-			// From another session, and without reopening the crashed one: reuseFrom reconciles the run itself.
 			mockPi.onCall({ matchArgIncludes: `Stage two ${nonce}`, hangUntilAbort: true });
 			const firstRelaunchId = await launch({ workflowScript: script, args, reuseFrom: firstCrashId }, donorSession);
 			const firstRelaunch = await waitFor(firstRelaunchId, stage2Started);
@@ -2431,7 +2402,6 @@ Answer only from the supplied synthetic text.
 			const firstId = await launch({ workflowScript: script, args }, sessionId);
 			await stopWhenStage2Starts(firstId, runtimeReplacedAbortReason(), awaitedStage2Ready);
 
-			// The same-session relaunch re-attaches the running stage2 and holds the claim while it runs.
 			const relaunchId = await launch({ workflowScript: script, args }, sessionId);
 			const claim = JSON.parse(fs.readFileSync(path.join(DIRS.async, firstId, "resumed-by.1.json"), "utf-8")) as Record<string, unknown>;
 			assert.deepEqual({ newRunId: claim.newRunId, trigger: claim.trigger, pid: claim.pid }, { newRunId: relaunchId, trigger: "reuse", pid: process.pid });
@@ -2489,7 +2459,6 @@ Answer only from the supplied synthetic text.
 			assert.deepEqual(named.workflow?.value, { first: "stage one done", reused: true });
 			assert.equal(mockPi.callCount(), callsAfterStop + 3, "different args still reuse a child whose launch params match");
 
-			// A stopped run is continued once, so the changed-params case needs a second stopped run.
 			mockPi.onCall({ matchArgIncludes: `Stage one ${nonce}`, output: "stage one done" });
 			mockPi.onCall({ matchArgIncludes: `Stage two ${nonce}`, hangUntilAbort: true });
 			const secondSourceId = await launch({ workflowScript: script, args: { variant: "a" } }, "session-second-source");
@@ -2546,7 +2515,6 @@ Answer only from the supplied synthetic text.
 			const nonce = `reuse-chain-${Date.now()}`;
 			const release = path.join(tempDir, `${nonce}.release`);
 			const longKeys = ["long1", "long2", "long3"];
-			// "quick" queues behind long1 when there is one slot.
 			const keys = ["long1", "quick", "long2", "long3"];
 			const script = `const children = await Promise.all(${JSON.stringify(keys)}.map((key) => runs.run(key, key === "quick" ? { agent: "echo", task: "Quick ${nonce}" } : { agent: "bg", task: "Long " + key + " ${nonce}" }))); return children.map((child) => child.output);`;
 			const args = { nonce };
@@ -2555,7 +2523,6 @@ Answer only from the supplied synthetic text.
 			for (const key of longKeys) mockPi.onCall({ matchArgIncludes: `Long ${key} ${nonce}`, waitForPath: release, output: `${key} finished` });
 			const callsBefore = mockPi.callCount();
 
-			// A: finishes quick, then is replaced while all three long children run.
 			const firstId = await launch({ workflowScript: script, args });
 			const firstReady = (status: AsyncStatus) => status.steps?.find((step) => step.workflowKey === "quick")?.status === "completed"
 				&& longKeys.every((key) => Boolean(status.steps?.find((step) => step.workflowKey === key && step.async === true)?.runId));
@@ -2565,7 +2532,6 @@ Answer only from the supplied synthetic text.
 			for (const deadline = Date.now() + 15_000; mockPi.callCount() < callsBefore + 4 && Date.now() < deadline;) await new Promise((resolve) => setTimeout(resolve, 50));
 			assert.equal(mockPi.callCount(), callsBefore + 4);
 
-			// B: one slot, so long1 re-attaches and holds it while quick, long2 and long3 stay queued.
 			const secondId = await launch({ workflowScript: script, args, globalConcurrencyLimit: 1 });
 			const secondJournal = path.join(DIRS.async, secondId, "workflow-children.jsonl");
 			const journalLines = () => fs.existsSync(secondJournal) ? fs.readFileSync(secondJournal, "utf-8").split("\n").filter(Boolean) : [];
@@ -2573,7 +2539,6 @@ Answer only from the supplied synthetic text.
 			assert.equal(second.workflow?.stopCause, "runtime-replaced");
 			assert.deepEqual(journalLines().map((line) => { const { type, key, runId } = JSON.parse(line) as { type: string; key: string; runId?: string }; return { type, key, runId }; }), [{ type: "start", key: "long1", runId: firstLongRunIds[0] }]);
 
-			// C: relaunched from B, it finds every key through B and A and launches nothing.
 			const thirdId = await launch({ workflowScript: script, args, reuseFrom: secondId }, "session-chain-successor");
 			await waitFor(thirdId, (status) => longKeys.every((key) => status.steps?.some((step) => step.workflowKey === key && step.runId)));
 			fs.writeFileSync(release, "go");
@@ -2612,7 +2577,6 @@ Answer only from the supplied synthetic text.
 			const { launch, stopWhenStage2Starts } = setup();
 			mockPi.onCall({ matchArgIncludes: `Stage one ${nonce}`, output: "stage one done" });
 			mockPi.onCall({ matchArgIncludes: `Stage two ${nonce}`, waitForPath: path.join(tempDir, `${nonce}.never`), output: "never" });
-			// A runs in the default session; its stage2 child keeps running after A is replaced.
 			const firstId = await launch({ workflowScript: script, args });
 			const stage2RunId = (await stopWhenStage2Starts(firstId, runtimeReplacedAbortReason(), awaitedStage2Ready)).steps?.find((step) => step.workflowKey === "stage2")?.runId;
 			assert.ok(stage2RunId);
@@ -2620,12 +2584,10 @@ Answer only from the supplied synthetic text.
 				const journalPath = path.join(DIRS.async, runId, "workflow-children.jsonl");
 				return fs.existsSync(journalPath) && fs.readFileSync(journalPath, "utf-8").includes(`"runId":"${stage2RunId}"`);
 			};
-			// B, in another session, re-attaches A's child through reuseFrom and is replaced too.
 			const secondId = await launch({ workflowScript: script, args, reuseFrom: firstId }, successor);
 			await stopWhenStage2Starts(secondId, runtimeReplacedAbortReason(), reattached(secondId));
 			assert.equal(readStatusFile(stage2RunId).state, "running");
 
-			// C relaunches in B's session without reuseFrom; the user stops it.
 			const thirdId = await launch({ workflowScript: script, args }, successor);
 			const third = await stopWhenStage2Starts(thirdId, new Error("Stopped by user."), reattached(thirdId));
 			assert.equal(third.workflow?.reusedFrom, secondId);
@@ -2889,7 +2851,6 @@ Answer only from the supplied synthetic text.
 		assert.equal(status.steps?.find((step) => step.workflowKey === "work")?.phase, "Review");
 
 		fs.writeFileSync(releasePath, "go", "utf-8");
-		// Await persisted top-level logical completion, not a child process-terminal event.
 		status = JSON.parse(await waitForFileContent(statusPath, '\n  "state": "complete"'));
 		assert.equal(status.state, "complete");
 		assert.equal(status.steps?.find((step) => step.workflowKey === "work")?.phase, "Review");
@@ -3181,8 +3142,6 @@ Answer only from the supplied synthetic text.
 
 	it("notifies the parent when an async workflow child needs attention", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async (t) => {
 		const releasePath = path.join(mockPi.dir, "attention-observed");
-		// Keep the child idle until the parent has observed both status and delivery.
-		// Also unblock it on assertion failure, rather than leaking a waiting runner.
 		t.after(() => fs.writeFileSync(releasePath, "release"));
 		mockPi.onCall({
 			steps: [
@@ -4975,7 +4934,6 @@ Answer only from the supplied synthetic text.
 		assert.ok(savedPath, text.slice(0, 500));
 		assert.ok(!savedPath.includes(`${path.sep}outputs${path.sep}`), `full result must not share the child outputs tree: ${savedPath}`);
 		assert.ok(fs.readFileSync(savedPath, "utf-8").includes(`Return:\n${"x".repeat(210000)}`));
-		// Age-based artifact retention must remove the saved full result like other run artifacts.
 		const old = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
 		fs.utimesSync(savedPath, old, old);
 		fs.rmSync(path.join(TEMP_ARTIFACTS_DIR, ".last-cleanup"), { force: true });

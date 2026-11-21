@@ -39,7 +39,6 @@ import { capSummaryOutputs } from "../shared/single-output.ts";
 import { ownsRun } from "../shared/run-ownership.ts";
 import { foregroundChildStateLabel } from "../foreground/foreground-history.ts";
 
-/** A step whose structured output has a path line needs only a short inline preview. */
 const STRUCTURED_PREVIEW_WITH_PATH_CHARS = 500;
 
 interface RunStatusParams {
@@ -133,7 +132,6 @@ function hasExistingSessionFile(value: unknown): value is string {
 
 function formatResumeGuidance(runId: string | undefined, children: Array<{ agent?: unknown; sessionFile?: unknown; runId?: unknown; workflowKey?: unknown; status?: unknown; activityState?: unknown }>, fallbackSessionFile?: unknown, options: { stopped?: boolean; otherSession?: boolean } = {}): string {
 	if (options.stopped) return "Resume: unavailable; stopped runs are not resumable. Start a new run instead.";
-	// Resume refuses a run whose sessionId is not the active session's.
 	if (options.otherSession) return "Resume: unavailable; only the session that launched this run can resume it.";
 	const knownChildren = children
 		.map((child, index) => ({ child, index }))
@@ -206,7 +204,6 @@ function rememberedForegroundChildOutput(child: ForegroundResumeRun["children"][
 			const artifactOutput = fs.readFileSync(outputPath, "utf-8").trim();
 			if (artifactOutput) return artifactOutput;
 		} catch {
-			// Fall back to the remembered snapshot below.
 		}
 	}
 	return child.finalOutput ?? "";
@@ -255,7 +252,6 @@ function formatRememberedForegroundStatus(run: ForegroundResumeRun): string {
 	return lines.join("\n");
 }
 
-/** Request-only snapshot of the same artifact used by Fleet; no session or output fallback. */
 function formatLiveForegroundTranscript(control: ForegroundRunControl, state: SubagentState, options: { index?: number; lines?: number }): string {
 	if (!state.currentSessionId || control.sessionId !== state.currentSessionId) {
 		throw new Error(`Foreground run '${control.runId}' is not owned by the current session.`);
@@ -290,7 +286,6 @@ function formatLiveForegroundTranscript(control: ForegroundRunControl, state: Su
 	const maxOutputBytes = 32 * 1024;
 	const bytes = Buffer.from(body);
 	if (bytes.length > maxOutputBytes) {
-		// Skip UTF-8 continuation bytes at the beginning of the bounded tail.
 		let start = bytes.length - maxOutputBytes;
 		while ((bytes[start]! & 0xc0) === 0x80) start++;
 		body = bytes.subarray(start).toString("utf-8");

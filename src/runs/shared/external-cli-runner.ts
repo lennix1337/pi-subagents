@@ -90,7 +90,6 @@ function narrowLimit(value: number | undefined, ceiling: number, label: string):
 }
 
 function externalEnvironment(allowlist: readonly string[] | undefined, values: Readonly<Record<string, string>> | undefined): NodeJS.ProcessEnv {
-	// An adapter allowlist is a deliberate choice, so only the inherited default is filtered.
 	if (!allowlist) return omitGitRoutingEnv(omitExtensionBindingsEnv(process.env));
 	const allowed = new Set(allowlist);
 	const env: NodeJS.ProcessEnv = {};

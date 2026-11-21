@@ -29,11 +29,8 @@ import { nestedResultsPath } from "../runs/shared/nested-events.ts";
 import { normalizeExtensionBindings, type ExtensionBindings } from "../runs/shared/extension-bindings.ts";
 import { assertRequiredChildExtensionsAdmitted, resolveRequiredChildExtensions } from "../shared/required-child-extensions.ts";
 
-// v3: the contract reports the resolved Intercom bridge state and binds its
-// prompt and tools into launchContractDigest, matching execution (#2127).
 export const SUBAGENT_LAUNCH_CONTRACT_VERSION = 3 as const;
 
-/** Stands in for the parent session target when the host does not supply one; only custom templates that name the session read it. */
 const PREFLIGHT_ORCHESTRATOR_TARGET = "preflight";
 
 export type SubagentLaunchContractReasonCode =
@@ -209,11 +206,6 @@ export type SubagentLaunchContractResult =
 	| { ok: true; contract: SubagentLaunchContract }
 	| { ok: false; code: SubagentLaunchContractReasonCode; message: string; diagnostics: SubagentLaunchContractDiagnostic[] };
 
-/**
- * Classify a Claude Code override failure for the launch contract. The messages
- * are owned by the adapter and the scope check, so this maps them explicitly
- * instead of defaulting every rejection to the ceiling.
- */
 function claudeCodeFailureCode(message: string): SubagentLaunchContractReasonCode {
 	if (message.includes("subagent model scope")) return "model_scope";
 	if (message.startsWith("Thinking level '")) return "thinking_ceiling";
@@ -304,8 +296,6 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 	if (bridgeOverride && !bridgeOverride.ok) {
 		return { ok: false, code: "invalid_intercom_bridge", message: bridgeOverride.error, diagnostics };
 	}
-	// Execution always derives a non-empty target, so an empty one here would
-	// silently deactivate the bridge and break parity instead of proving it.
 	if (input.orchestratorTarget !== undefined && (typeof input.orchestratorTarget !== "string" || !input.orchestratorTarget.trim())) {
 		return { ok: false, code: "invalid_intercom_bridge", message: "orchestratorTarget must be a non-empty string when provided.", diagnostics };
 	}
@@ -346,8 +336,6 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 	if (context === "fork") {
 		diagnostics.push({ code: "host_required", severity: "host-required", message: "Exact fork session branching requires Pi host session snapshots." });
 	}
-	// Execution rewrites the discovered agent through the bridge before any
-	// other launch resolution, so preflight must hash the same rewritten agent.
 	const bridge = resolveIntercomBridge({
 		config: loadConfig().intercomBridge,
 		...(bridgeOverride ? { override: bridgeOverride.value } : {}),
@@ -386,7 +374,6 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 	if (resolvedSkills.missing.length > 0) diagnostics.push({ code: "missing_skill", severity: "error", message: `Missing skills: ${resolvedSkills.missing.join(", ")}` });
 
 	const externalRunner = agent.runner?.type === "external-cli" || agent.runner?.type === "external-job";
-	// Machine placement has no preflight input; execution enforces it. Preview the runner-type admission here.
 	try {
 		assertRequiredChildExtensionsAdmitted([resolveRequiredChildExtensions(input.parentSessionId)], { agent: agent.name, runnerType: agent.runner?.type });
 	} catch (error) {
@@ -406,7 +393,6 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 			scope: modelScopes,
 			source: modelOrigin === "explicit" ? "explicit" : "inherited",
 		});
-	// Mirrors the launch's thinkingOverrideForTask: `false` means off, and a :level suffix on the resolved model wins over the public selector.
 	const thinkingOverride = input.thinking === undefined || splitKnownThinkingSuffix(primaryModel ?? input.model ?? "").thinkingSuffix
 		? undefined
 		: input.thinking === false ? "off" : input.thinking;
@@ -430,9 +416,7 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 			return { ok: false, code: "thinking_ceiling", message, diagnostics };
 		}
 	}
-	// The Claude Code adapters accept a model and a level that never become a Pi child
-	// model, so validate has to run the same two checks the launch runs, or validate
-	// would report ok for a launch that then fails.
+	// external: Claude Code adapters accept model and thinking level outside the Pi child model.
 	if (agent.runner?.type === "external-cli" && isClaudeCodeAdapterId(agent.runner.adapter)) {
 		try {
 			const override = resolveClaudeCodeOverride({
@@ -483,9 +467,6 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 	const artifactsDir = artifactsEnabled ? getArtifactsDir(input.parentSessionFile ?? null, effectiveCwd, input.artifactDir) : undefined;
 	const artifactPaths = artifactsDir ? getArtifactPaths(artifactsDir, runId, agent.name, 0) : undefined;
 	const outputPath = resolveSingleOutputPath(behavior.output, effectiveCwd, effectiveCwd, artifactsDir ? path.join(artifactsDir, "outputs", runId) : undefined);
-	// An explicit sessionDir is a root keyed by the child run id, matching the
-	// sibling sessionRoot derivation; hosts omitting runId get the documented
-	// deterministic "preflight" placeholder.
 	const sessionRoot = input.sessionDir ? path.join(path.resolve(input.sessionDir), runId) : input.sessionRoot ? path.join(path.resolve(input.sessionRoot), runId) : undefined;
 	const sessionDir = sessionRoot ? path.join(sessionRoot, "run-0") : undefined;
 	const lifecycleAsyncDir = input.nestedRootRunId
@@ -558,7 +539,6 @@ export async function resolveSubagentLaunchContract(input: SubagentLaunchContrac
 			runtimeExtensions: toolPlan.runtimeExtensions,
 			configuredExtensions: toolPlan.configuredExtensions,
 			requiredExtensionIds: toolPlan.requiredExtensions.map(({ id }) => id),
-			// Required paths are private launch authority; preflight exposes their safe IDs above.
 			extensionArgs: toolPlan.extensionArgs.filter((extensionPath) => !requiredExtensions.some(({ path }) => path === extensionPath)),
 			disableAmbientExtensions: toolPlan.disableAmbientExtensions,
 			fanoutAuthorized: toolPlan.fanoutAuthorized,

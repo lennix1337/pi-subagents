@@ -87,7 +87,6 @@ interface MainWatchdogRuntimeOptions {
 	reviewDescription?: string;
 	displayWarning?: (warning: WatchdogWarningDetails, options?: WatchdogWarningSendOptions) => void;
 	displayUserWarning?: (warning: WatchdogWarningDetails) => void;
-	/** Supplying this main-session delivery capability gates clarification (children omit it). */
 	displayClarification?: (content: string) => void;
 	reviewChangesOnly?: boolean;
 	lspDiagnostics?: WatchdogLspDiagnosticsFunction;
@@ -453,7 +452,6 @@ export class MainWatchdogRuntime {
 				return;
 			}
 			if ((outcome === "completed" || typeof outcome === "object") && this.status !== "failed" && this.status !== "stale") {
-				// A question consumes this evidence just like a completed review, not a pending exchange.
 				this.lastReviewInputSignature = signature;
 				if (changeSignature) this.lastReviewedChangeSignature = changeSignature.key;
 				this.currentChangedPaths = changeSignature?.changedPaths;
@@ -616,7 +614,6 @@ export class MainWatchdogRuntime {
 		}
 	}
 
-	// The agent-end boundary review is authoritative; an in-flight cadence review is superseded.
 	private cancelMidRunReview(): void {
 		if (!this.midRunReviewing) return;
 		this.midRunGeneration++;
@@ -693,7 +690,6 @@ export class MainWatchdogRuntime {
 				this.reviewing = false;
 				this.activeReviewId = undefined;
 				this.activeReviewWarning = undefined;
-				// A review that ended without a verdict (no result, or superseded) must not leave "reviewing" behind.
 				if (this.status === "reviewing") this.status = this.pendingDeltas.length ? "queued" : "idle";
 			}
 			this.resolveWaiters(this.isSettled());
@@ -715,8 +711,6 @@ export class MainWatchdogRuntime {
 		this.deliverBoundaryWarning(details);
 	}
 
-	// A displayed boundary warning continues the run; the same identity back from consecutive
-	// boundaries means no progress, so it is shown held instead of continuing again.
 	private deliverBoundaryWarning(details: WatchdogWarningDetails): void {
 		const identity = details.identity ?? reviewInputSignature([details.severity, details.summary, details.evidence].join("\n"));
 		if (this.lastBoundaryIdentity === identity) this.boundaryRepeats++;
@@ -733,7 +727,6 @@ export class MainWatchdogRuntime {
 		this.routeWarning(delivered, stalemate ? { triggerTurn: false } : undefined);
 	}
 
-	// The previous boundary finding is a repeat to count, not a duplicate, until stalemate.
 	private repeatableBoundaryIdentity(): string | undefined {
 		return this.waitingAtAgentEnd && !this.stalemate ? this.lastBoundaryIdentity : undefined;
 	}

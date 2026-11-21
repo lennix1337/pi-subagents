@@ -86,8 +86,6 @@ export function resolveDisabledFeatureSurface(config: FeatureConfig): DisabledFe
 	const actions = new Map<string, string>();
 	for (const feature of features) {
 		const surface = featureSurface(feature);
-		// A parameter shared with workflow-scripts is always attributed to workflow-scripts,
-		// whatever order the config lists the features in.
 		for (const param of surface.params) if (feature === "workflow-scripts" || !params.has(param)) params.set(param, surface.disabledBy);
 		for (const action of surface.actions) actions.set(action, surface.disabledBy);
 	}
@@ -103,8 +101,6 @@ export function disabledFeatureUseError(request: object, surface: DisabledFeatur
 	for (const [param, disabledBy] of surface.params) {
 		if (params[param] !== undefined) return `${label} option '${param}' is disabled by config ${disabledBy}.`;
 	}
-	// workflowScript is the internal carrier for slash, prompt-workflow, RPC, and scheduled scripts.
-	// Callers check the original request, before the package lowers chain/tasks into its own script.
 	if (params.workflowScript !== undefined && surface.features.has("workflow-scripts")) {
 		return `${label} workflow scripts are disabled by config ${featureSurface("workflow-scripts").disabledBy}.`;
 	}

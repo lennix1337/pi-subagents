@@ -32,8 +32,6 @@ const WATCHER_RESTART_DELAY_MS = 3000;
 const POLL_INTERVAL_MS = 3000;
 const HEALTHY_SCAN_INTERVAL_MS = 60_000;
 const RETRY_DELAY_MS = 100;
-// Acknowledging and retiring a delivered result are retried after RETRY_DELAY_MS, so they make one
-// lease attempt instead of parking this event loop while a runner publishes the same run.
 const CLEANUP_LEASE_WAIT_MS = 0;
 const SLOW_RESULT_SCAN_MS = 500;
 
@@ -46,7 +44,7 @@ type ResultWatcherTimers = {
 	clearInterval: typeof clearInterval;
 };
 
-type ResultWatcherDeps = {
+export type ResultWatcherDeps = {
 	fs?: ResultWatcherFs;
 	timers?: ResultWatcherTimers;
 	notifier?: Pick<CompletionNotifier, "deliver"> & Partial<Pick<CompletionNotifier, "flush">>;
@@ -122,7 +120,6 @@ interface ResultScanStats {
 	startedAt: number;
 }
 
-/** The last `"property": <value>` whose value matches `valuePattern`, parsed without reading the whole file; malformed reads as none. */
 function jsonPropertyValue(raw: string, property: string, valuePattern: string): unknown {
 	let encoded: string | undefined;
 	for (const match of raw.matchAll(new RegExp(`"${property}"\\s*:\\s*(${valuePattern})`, "g"))) encoded = match[1];
@@ -143,7 +140,6 @@ function resultFileIdentity(raw: string, file: string): ResultFileIdentity {
 	return {
 		sessionId: jsonStringProperty(raw, "sessionId"),
 		completionOwnerId: jsonStringProperty(raw, "completionOwnerId"),
-		// Recorded as a flat object, so a brace-free match is the whole value.
 		completionOwnerProcess: jsonPropertyValue(raw, "completionOwnerProcess", `\\{[^{}]*\\}`),
 		parentWorkflowRunId: jsonStringProperty(raw, "parentWorkflowRunId"),
 		runId: file.replace(/\.json$/i, ""),
@@ -189,14 +185,11 @@ function hasDeliveredNotification(data: ResultFileData): boolean {
 	return typeof data.notificationDeliveredAt === "number" && Number.isFinite(data.notificationDeliveredAt);
 }
 
-/** Marks the payload that was delivered, unless a newer payload replaced it (then returns undefined). */
 function markDeliveredNotification(resultPath: string, data: ResultFileData, read: ResultSnapshot, now: number): { data: ResultFileData; read: ResultSnapshot } | undefined {
 	const marked = { ...data, runId: read.runId, notificationDeliveredAt: now };
 	return withResultRunLease(path.dirname(resultPath), read.runId, () => {
 		if (resultSnapshotReplaced(resultPath, read)) return undefined;
 		const { state } = writeAsyncResultFile(resultPath, marked);
-		// writeAsyncResultFile writes JSON.stringify(payload, null, 2). A denied promotion leaves the
-		// older public payload in place.
 		const snapshot = JSON.stringify(marked, null, 2);
 		const stalePublic = state === "pending" ? readResultPayload(resultPath) : undefined;
 		return { data: marked, read: { ...read, snapshot, stalePublic } };
@@ -230,17 +223,12 @@ export function createResultWatcher(
 	const pendingTriggerTurn = new Map<string, boolean>();
 	const processing = new Set<string>();
 	const handling = new Set<Promise<void>>();
-	// While deliverPendingResults runs, completions skip the batch delay.
 	let deliveringPending = 0;
 	const identityCache = new Map<string, { signature: string; identity: ResultFileIdentity }>();
-	// Result file -> last logged mission-sync error. A failed sync is retried
-	// every pass, so the same error is logged once per result file.
 	const reportedMissionSyncFailures = new Map<string, string>();
 	let deliveryActive = true;
 	let deliveryEpoch = 0;
 	let resultScanTimer: ReturnType<typeof setInterval> | null = null;
-	// The sole in-memory ownership lease. It is acquired for one active session
-	// and revoked before the watcher, queues, or callbacks are torn down.
 	let activeSessionId: string | null = null;
 	const ownsResult = deps.ownership?.owns
 		?? ((sessionId: string, completionOwnerId: unknown) => sessionId === state.currentSessionId
@@ -335,12 +323,8 @@ export function createResultWatcher(
 		const inspected = inspectResult(file, knownSignature, observed);
 		if (!inspected) return false;
 		const { identity } = inspected;
-		// Missing identity stays on the normal parser path so malformed or legacy
-		// files keep their existing diagnostics and compatibility behavior.
 		if (!identity.sessionId) return true;
 		if (ownsResult(identity.sessionId, deliveryOwnerId(identity.sessionId, identity.completionOwnerId, identity.completionOwnerProcess, identity.parentWorkflowRunId))) return true;
-		// Acknowledgment removes the observer index; gating on the mission binding instead
-		// re-ran mission sync for an unowned result on every scan.
 		if (identity.runId && fsApi.existsSync(missionObserverIndexPath(resultsDir, identity.runId))) return true;
 		if (identity.runId && (observed ?? observedRunIds()).has(identity.runId)) return true;
 		return Boolean(deps.observeCompletion && !deps.observedCompletionRunIds);
@@ -374,8 +358,6 @@ export function createResultWatcher(
 		processing.add(file);
 		let rereadReplacedPayload = false;
 		let resultPath = publicResultPath(file);
-		// The public payload is read just before the payload itself, so anything published after the
-		// read differs from both.
 		let publicAtRead: string | undefined;
 		const readPayload = (payloadPath: string): string => {
 			publicAtRead = readResultPayload(publicResultPath(file));
@@ -453,8 +435,6 @@ export function createResultWatcher(
 			}
 			const epoch = deliveryEpoch;
 			if (!ownsCompletion(sessionId, completionOwnerId, epoch)) return;
-			// Recorded before dedupe and before the unlink below so bg_wait can
-			// use the in-memory record or its bounded durable replay after cleanup.
 			const completionPersisted = recordWaitCompletion(state, runId, data, Date.now(), completionTtlMs, {
 				resultsDir,
 				sessionId,
@@ -603,7 +583,6 @@ export function createResultWatcher(
 				scheduleResult(file, triggerTurn, RETRY_DELAY_MS);
 				return;
 			}
-			// A newer payload replaced this one; keep the hold until that one is delivered.
 			if (markReplacedPayload()) return;
 			deps.onResultDelivered?.(runId);
 			try {
@@ -678,10 +657,6 @@ export function createResultWatcher(
 		if (elapsed < SLOW_RESULT_SCAN_MS) return;
 		const resultScanLogging = deps.resultScanLogging ?? "activity";
 		if (resultScanLogging === "off") return;
-		// A scan that inspected and scheduled nothing is a quiet no-op (e.g. the
-		// healthy periodic rescan while no async runs are pending). Under
-		// "activity", skip it so empty scans do not burn context tokens in the
-		// session transcript.
 		if (resultScanLogging === "activity" && stats.files === 0 && stats.scheduled === 0) return;
 		console.error(`Subagent result scan inspected ${stats.files} indexed result file(s), scheduled ${stats.scheduled} in ${elapsed}ms (${resultsDir}).`);
 	};
@@ -719,7 +694,6 @@ export function createResultWatcher(
 		const triggerTurn = options.triggerTurn !== false;
 		for (const file of eligibleResultFiles()) scheduleResult(file, triggerTurn);
 	};
-	/** Hand every result that is already on disk to the notifier now, without coalescing or batch delays. */
 	const deliverPendingResults = async (): Promise<void> => {
 		if (!deliveryActive) return;
 		deliveringPending += 1;
@@ -819,14 +793,12 @@ export function createResultWatcher(
 					try {
 						writeResultIndexForData(path.join(resultsDir, fileName), JSON.parse(fsApi.readFileSync(path.join(resultsDir, fileName), "utf-8")) as Record<string, unknown>);
 					} catch {
-						// The writer may still be renaming the file; handleResult will retry from the normal result path.
 					}
 					scheduleResult(fileName, true);
 				}
 			});
 			const watcher = state.watcher;
 			watcher.on("error", (error) => {
-				// A watcher that stopResultWatcher() or a restart already replaced must not revive delivery.
 				if (state.watcher !== watcher) return;
 				if (shouldPoll(error)) return startPolling(error);
 				console.error(`Subagent result watcher failed for '${resultsDir}':`, error);

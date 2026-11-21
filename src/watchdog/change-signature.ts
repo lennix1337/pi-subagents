@@ -19,8 +19,6 @@ function positiveEnvNumber(name: string, fallback: number): number {
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-// Read at call time (not module load) so tests can override env guards after
-// this module is imported.
 function maxHashFileBytes(): number {
 	return positiveEnvNumber("PI_SUBAGENTS_MAX_HASH_FILE_BYTES", DEFAULT_MAX_HASH_FILE_BYTES);
 }
@@ -50,7 +48,6 @@ function comparablePath(value: string): string {
 	try {
 		resolved = fs.realpathSync.native(resolved);
 	} catch {
-		// Keep the lexical path when canonicalization is unavailable.
 	}
 	return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 }
@@ -59,11 +56,6 @@ function isHomeRepoRoot(root: string): boolean {
 	return comparablePath(root) === comparablePath(os.homedir());
 }
 
-/**
- * Probe the index without asking Git to inspect the working tree. The output
- * cap keeps this check bounded even for repositories with a very large index;
- * an ENOBUFS result still proves that at least one tracked path exists.
- */
 function hasTrackedEntries(root: string): boolean | undefined {
 	const result = spawnSync("git", ["-C", root, "ls-files", "--cached", "--error-unmatch", "--", "."], {
 		encoding: "utf-8",
@@ -118,10 +110,7 @@ function hashFileEntry(normalized: string, fullPath: string, stat: fs.Stats, bud
 			budget.bytes += stat.size;
 		} catch (error) {
 			const code = (error as NodeJS.ErrnoException).code;
-			// A file racing away between lstat and read: mirror the lstat ENOENT path.
 			if (code === "ENOENT") return { path: normalized, state: "deleted" };
-			// Any other read failure (too-large, EACCES, EISDIR, ...) degrades to the
-			// metadata marker so one unreadable file never discards the whole signature.
 			hash = largeFileHash(stat);
 			if (code !== "ERR_FS_FILE_TOO_LARGE") {
 				console.warn("[pi-subagents] watchdog hashFile fell back to metadata for", normalized + ":", (error as Error)?.message);

@@ -1,11 +1,3 @@
-/**
- * Integration tests for async (background) agent execution.
- *
- * Tests the async support utilities: jiti availability check,
- * status file reading/caching.
- *
- * Requires pi packages to be importable. Skips gracefully if unavailable.
- */
 
 import { describe, it } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -39,7 +31,6 @@ import {
 
 const WATCH_TIMEOUT_MS = 30_000;
 
-// A runner that never starts or never settles must fail this test by name, not stall the whole CI step.
 function watchTimeoutMessage(what: string, asyncDir: string, extra?: () => string): string {
 	const read = (name: string) => {
 		try { return fs.readFileSync(path.join(asyncDir, name), "utf8").slice(-2000); } catch (error) { return `<${(error as NodeJS.ErrnoException).code ?? "unreadable"}>`; }
@@ -706,7 +697,6 @@ export default function() {
 				}
 				if (failures.length) reportFailure();
 				fs.rmSync(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
-				// Validate channel support/correlation without reading artifacts on success.
 				const summary = observer.summary();
 				t.diagnostic(`#1906 observer ${JSON.stringify(summary)}`);
 				if (runnerStarted) {
@@ -950,7 +940,6 @@ export default function() {
 		assert.equal(children.find(({ key }) => key === "inherited")?.ok, false);
 		assert.match(children.find(({ key }) => key === "inherited")?.error ?? "", /Missing structured_output call/);
 		assert.deepEqual(children.find(({ key }) => key === "disabled"), { key: "disabled", ok: true, output: "false opted out" });
-		// Each inherited-schema child that skips structured_output also gets one follow-up prompt.
 		assert.equal(mockPi.callCount(), 5);
 	});
 
@@ -1417,7 +1406,6 @@ export default function() {
 			assert.ok(launch.details.asyncId);
 			assert.equal((await readAsyncPayload(launch.details.asyncId)).success, true);
 
-			// A new executor must recover the durable launch declaration, not its current settings.
 			mockPi.onCall({ jsonl: [events.assistantMessage("Continued work", scenario.echo)] });
 			const resumed = await makeAsyncExecutor(agents, { modelResponseAliases: scenario.current }).execute(
 				`alias-revive-${index}`, { action: "resume", id: launch.details.asyncId, message: "Continue", acceptance: false },
@@ -2134,7 +2122,6 @@ syncBuiltinESMExports();
 		fs.mkdirSync(childCwd, { recursive: true });
 		const registration = registerRequiredChildExtensions({ sessionId: "session-123", extensions: [{ id: "host-policy", path: fileURLToPath(import.meta.url) }], requireForAllRunners: true });
 		const agents = [makeAgent("external", { runner: { type: "external-cli", command: process.execPath, args: ["-e", ""] } })];
-		// The child's own agent discovery runs after workflow admission and before its launch: dispose there.
 		const executor = makeAsyncExecutor(agents, {}, (cwd) => {
 			if (cwd === childCwd) registration.dispose();
 			return { agents };
@@ -2693,7 +2680,6 @@ throw new Error("injected parent-visible heavy import rejection");
 			const processEvents = new Map<number, Array<{ type: "exit" | "close"; at: string; exitCode: number | null; signal: NodeJS.Signals | null }>>();
 			const childProcessChannel = channel("child_process");
 			const observeProcess = (message: unknown) => {
-				// Diagnostics must never affect the spawn they observe.
 				try {
 					const proc = (message as { process?: unknown }).process;
 					if (!(proc instanceof ChildProcess) || typeof proc.pid !== "number") return;

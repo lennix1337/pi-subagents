@@ -22,7 +22,6 @@ it("does not notify a dynamic launch count when a workflow launches", async () =
 	const originalWarn = console.warn;
 	console.warn = (...args: unknown[]) => void consoleWarnings.push(args.map(String).join(" "));
 	try {
-		// The invalid acceptance level stops the call right after the warnings, before any child launches.
 		await executor.execute("warn", {
 			workflowScript: `const key = args.key;\nreturn await runs.run(key, { agent: "worker", task: "Reply OK." });`,
 			args: { key: "a" },

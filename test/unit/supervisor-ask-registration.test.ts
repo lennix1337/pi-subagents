@@ -58,11 +58,6 @@ function makeCtx(sessionId: string, sessionFile: string | null = null): { cwd: s
 	};
 }
 
-/**
- * Write an ask directly to the channel the way a child's `contact_supervisor` call does, without
- * going through a live poller. This is the state the wave-11 incident was in: the request file was
- * on disk and no scan had happened yet.
- */
 function writeRequest(input: { sessionId: string; runId: string; agent?: string; index?: number; message?: string; reason?: "need_decision" | "progress_update"; expiresAt?: number }): string {
 	const agent = input.agent ?? "worker";
 	const index = input.index ?? 0;
@@ -106,7 +101,6 @@ afterEach(() => {
 	delete process.env.PI_INTERCOM_ASK_TIMEOUT_MS;
 });
 
-/** Deterministic session/model seam: real launch hooks and tools, with the host's tool allowlist. */
 function hookRuntime(launch: ChildSessionLaunch, platform: NodeJS.Platform, signal: AbortSignal) {
 	type Tool = { execute(id: string, params: Record<string, unknown>, signal: AbortSignal, update: undefined, ctx: unknown): Promise<{
 		content: Array<{ type: string; text?: string }>; isError?: boolean;
@@ -131,7 +125,6 @@ function hookRuntime(launch: ChildSessionLaunch, platform: NodeJS.Platform, sign
 		sendMessage(message: typeof notices[number]) { if (message.customType === "subagent_supervisor_request") notices.push(message); },
 	};
 	registered.set("read", { execute: async () => { throw new Error("fixture has no model-authored read calls"); } });
-	// Capture each native channel's platform without changing unrelated executor filesystem behavior.
 	const descriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
 	try {
 		Object.defineProperty(process, "platform", { ...descriptor, value: platform });
@@ -376,11 +369,9 @@ describe("supervisor ask registration", () => {
 								});
 								assert.notEqual(receipt.isError, true, text(receipt));
 								workflows.push(receipt.details.asyncDir);
-								// Enter B's real prompt-runtime final drain before C writes its delayed ask.
 								await runtime.emit("agent_end");
 								bDrainReturnedBeforeReply = true;
 								assert.equal(cReturned, false, "the owner drain must yield before C is replied to");
-								// No explicit pending scan: executor activation must discover C's delayed ask.
 								await waitForCondition(() => runtime.notices.length > 0, "B to discover C's ask without a manual scan");
 								const pending = await runtime.call(NATIVE_SUPERVISOR_TOOL_NAME, { action: "pending" });
 								const [ask] = pending.details.pending;
@@ -420,12 +411,10 @@ describe("supervisor ask registration", () => {
 					runId: randomUUID(), parentSessionId: a, orchestratorIntercomTarget: "shared-name", signal: abort.signal,
 				});
 				await waitForCondition(() => runtimes.length > 0, "coordinator startup");
-				// Surface diagnostic failures immediately rather than hiding them behind an ask timeout.
 				const result = await Promise.race([
 					run.then(result => { assert.equal(result.exitCode, 0, result.error); return result; }),
 					(async () => {
 						await waitForCondition(() => {
-							// A may be idle; its explicit query is authoritative.
 							void parentTools.get(NATIVE_SUPERVISOR_TOOL_NAME)!.execute("pending", { action: "pending" });
 							return parent.pending.size > 0;
 						}, "B's escalation to A");
@@ -483,7 +472,6 @@ describe("supervisor ask registration", () => {
 			fs.writeFileSync(path.join(root, "status.json"), JSON.stringify({ runId, state: "running" }));
 			runtime.events.emit(SUBAGENT_ASYNC_STARTED_EVENT, { id: runId, asyncDir: root, agent: "leaf", sessionId: runtime.sessionFile });
 			request = contact.execute("ask", { reason: "need_decision", message: "Which option?" }, abort.signal);
-			// Attach rejection handling before any assertion can abort the child.
 			void request!.catch(() => {});
 			await waitForCondition(() => runtime.notices.length > 0, "direct async ask notification");
 			const pending = await runtime.call(NATIVE_SUPERVISOR_TOOL_NAME, { action: "pending" });
@@ -624,7 +612,6 @@ describe("supervisor ask registration", () => {
 		const resolved = writeRequest({ sessionId: owner, runId });
 		const dir = resolveSupervisorChannelDir(runId, "worker", 0);
 		fs.writeFileSync(path.join(dir, "replies", `${resolved}.json`), "{}");
-		// Put mismatched metadata in the exact target directory, not just another directory.
 		for (const mismatch of [{ runId: "other" }, { agent: "other" }, { childIndex: 1 }]) {
 			const id = writeRequest({ sessionId: owner, runId });
 			const file = path.join(dir, "requests", `${id}.json`);
@@ -703,7 +690,6 @@ describe("supervisor ask registration", () => {
 				assert.equal(intervals.size, 1);
 				assert.equal(starts, cycle + 1);
 				const controlId = randomUUID();
-				// Model the unchanged foreground insertion/activation and last-control removal.
 				state.foregroundControls.set(controlId, { runId: controlId, activeChildren: new Map(), schedulingOwners: 1 } as never);
 				channel.activateTransport();
 				assert.equal(starts, cycle + 1, "foreground activation reuses the poller");
@@ -819,7 +805,6 @@ describe("supervisor ask registration", () => {
 			const first = writeRequest({ sessionId, runId });
 			const tool = tools.get(NATIVE_SUPERVISOR_TOOL_NAME)!;
 			await assert.rejects(tool.execute("wrong", { action: "reply", to: "different-agent", message: "Approved" }), /No pending supervisor request matches/);
-			// A reply to a request that is gone names the one that can still be answered.
 			await assert.rejects(tool.execute("unknown", { action: "reply", replyTo: "unknown", message: "Approved" }), (error: Error) => {
 				assert.match(error.message, /No pending supervisor request found for replyTo 'unknown'\. It was answered, expired or withdrawn\. Pending now:/);
 				assert.match(error.message, new RegExp(`- ${first}: worker \\[${runId}#0\\]`));
@@ -893,9 +878,6 @@ describe("supervisor ask registration", () => {
 		} finally { channel.dispose(); }
 	});
 
-	// D1: `refreshPendingRequests` only re-evaluates asks already in `pending`; it never reads the
-	// filesystem. With no watcher installed and the demand-gated poller stopped, an ask written by
-	// a child was unfindable by ANY number of `action:"pending"` calls.
 	it("discovers an ask written while nothing was polling", async () => {
 		const sessionId = `session-${randomUUID()}`;
 		const runId = `run-${randomUUID()}`;
@@ -914,7 +896,6 @@ describe("supervisor ask registration", () => {
 
 		try {
 			channel.start();
-			// The ask lands AFTER start(), so the start-time poll cannot have seen it.
 			const requestId = writeRequest({ sessionId, runId });
 			assert.equal(channel.pending.has(requestId), false, "precondition: nothing has scanned the ask yet");
 
@@ -1058,7 +1039,6 @@ describe("supervisor ask registration", () => {
 			channel.hasPendingRequests();
 			assert.equal(expiresAt(queued), delivered, "a delivered ask keeps its deadline");
 
-			// 500 ms: long enough not to expire (and be removed) on a slow runner, shorter than the 1000 ms extension.
 			const dropped = writeRequest({ sessionId, runId, expiresAt: Date.now() + 500 });
 			channel.hasPendingRequests();
 			emit("agent_settled", {});
@@ -1094,7 +1074,6 @@ describe("supervisor ask registration", () => {
 		}
 	});
 
-	// Drive the real child-side disk protocol: steering cannot resolve asks, explicit reply can.
 	it("only unblocks the real contact_supervisor tool through an explicit reply, not steer or follow_up", async () => {
 		const sessionId = `session-${randomUUID()}`;
 		const workflowRunId = `workflow-${randomUUID()}`;
@@ -1129,8 +1108,6 @@ describe("supervisor ask registration", () => {
 			assert.equal(ordinary.details.steering?.targets[0]?.state, "queued");
 			assert.deepEqual(queued.splice(0), [{ message: "No ask is open here." }]);
 
-			// The child blocks here exactly as it does in production: inside an open tool call,
-			// polling its reply file.
 			const blocked = childTools.get("contact_supervisor")!.execute("ask", {
 				action: "ask",
 				reason: "need_decision",

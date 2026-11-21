@@ -237,28 +237,21 @@ describe("Claude Code adapter", () => {
 		assert.deepEqual(resolveClaudeCodeOverride({ model: "claude-opus-5.5" }), { args: ["--model", "claude-opus-5.5"], model: "claude-opus-5.5" });
 		assert.deepEqual(resolveClaudeCodeOverride({ model: " sonnet " }), { args: ["--model", "sonnet"], model: "sonnet" });
 		assert.deepEqual(resolveClaudeCodeOverride({ model: "claude-opus-5.5:high" }), { args: ["--model", "claude-opus-5.5", "--effort", "high"], model: "claude-opus-5.5" });
-		// A bare ":level" asks for the effort without pinning a model.
 		assert.deepEqual(resolveClaudeCodeOverride({ model: ":medium" }), { args: ["--effort", "medium"] });
-		// The suffix wins over the frontmatter value, which is the Pi child precedence.
 		assert.deepEqual(resolveClaudeCodeOverride({ model: "opus:low", thinking: "max" }), { args: ["--model", "opus", "--effort", "low"], model: "opus" });
 		assert.deepEqual(resolveClaudeCodeOverride({ thinking: "medium" }), { args: ["--effort", "medium"] });
-		// Pi's wider thinking scale collapses onto Claude Code's five-value effort scale.
 		assert.equal(resolveClaudeCodeOverride({ thinking: "off" }), undefined);
 		assert.deepEqual(resolveClaudeCodeOverride({ model: "haiku:minimal" }), { args: ["--model", "haiku", "--effort", "low"], model: "haiku" });
 		assert.deepEqual(resolveClaudeCodeOverride({ thinking: "xhigh" }), { args: ["--effort", "xhigh"] });
 	});
 
 	it("runs a bare level on the agent's own model and keeps a Pi default out of --model", () => {
-		// A bare level means the agent's model at that effort, so the two forms agree.
 		assert.deepEqual(resolveClaudeCodeOverride({ model: ":high", agent: { model: "claude-opus-5.5" } }), { args: ["--model", "claude-opus-5.5", "--effort", "high"], model: "claude-opus-5.5" });
 		assert.deepEqual(resolveClaudeCodeOverride({ agent: { model: "claude-opus-5.5" } }), { args: ["--model", "claude-opus-5.5"], model: "claude-opus-5.5" });
-		// A launch model replaces the agent's model entirely.
 		assert.deepEqual(resolveClaudeCodeOverride({ model: "haiku:low", agent: { model: "claude-opus-5.5" } }), { args: ["--model", "haiku", "--effort", "low"], model: "haiku" });
-		// subagents.defaultModel is a Pi child model, so the CLI never sees it.
 		const fromSettings = { model: "anthropic/claude-sonnet-4-5", modelSource: { type: "subagents.defaultModel", model: "anthropic/claude-sonnet-4-5" } };
 		assert.equal(resolveClaudeCodeOverride({ agent: fromSettings }), undefined);
 		assert.deepEqual(resolveClaudeCodeOverride({ agent: fromSettings, thinking: "low" }), { args: ["--effort", "low"] });
-		// A frontmatter model the operator wrote stays the agent's own model.
 		assert.deepEqual(resolveClaudeCodeOverride({ agent: { model: "claude-opus-5.5", modelSource: { type: "subagents.defaultModel", model: "anthropic/claude-sonnet-4-5" } } }), { args: ["--model", "claude-opus-5.5"], model: "claude-opus-5.5" });
 	});
 
@@ -270,7 +263,6 @@ describe("Claude Code adapter", () => {
 		assert.throws(() => resolveClaudeCodeOverride({ model: "opus --tools Bash" }), /Invalid Claude Code model/);
 		assert.throws(() => resolveClaudeCodeOverride({ thinking: "turbo" }), /Invalid thinking level/);
 		assert.throws(() => resolveClaudeCodeOverride({ thinking: "off; rm -rf /" }), /Invalid thinking level/);
-		// A Bedrock inference profile keeps its colon, because "0" is not a level.
 		assert.deepEqual(resolveClaudeCodeOverride({ model: "us.anthropic.claude-sonnet-4-5-20250929-v1:0" }), {
 			args: ["--model", "us.anthropic.claude-sonnet-4-5-20250929-v1:0"],
 			model: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
@@ -282,11 +274,8 @@ describe("Claude Code adapter", () => {
 			() => resolveClaudeCodeOverride({ model: "sonnet:max", thinkingCeiling: "low", agentName: "cc", runId: "run-1" }),
 			/Thinking level 'max' exceeds configured maximum 'low' for agent 'cc' run 'run-1'\./,
 		);
-		// The ceiling compares the requested level, not the effort it maps to, so a
-		// "minimal" request stays legal under a "minimal" ceiling although it emits low.
 		assert.deepEqual(resolveClaudeCodeOverride({ model: "sonnet:minimal", thinkingCeiling: "minimal" }), { args: ["--model", "sonnet", "--effort", "low"], model: "sonnet" });
 		assert.deepEqual(resolveClaudeCodeOverride({ model: "sonnet:max", thinkingCeiling: "max" }), { args: ["--model", "sonnet", "--effort", "max"], model: "sonnet" });
-		// No requested level means no ceiling to check.
 		assert.deepEqual(resolveClaudeCodeOverride({ model: "sonnet", thinkingCeiling: "low" }), { args: ["--model", "sonnet"], model: "sonnet" });
 	});
 

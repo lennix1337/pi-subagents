@@ -43,7 +43,6 @@ function nonEmptyString(value: unknown): string | undefined {
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-/** A legacy alias can be valid metadata while still being unaddressable on the current filesystem. */
 function isUnaddressableResultCandidate(error: unknown): boolean {
 	return (error as NodeJS.ErrnoException)?.code === "ENAMETOOLONG";
 }
@@ -174,9 +173,6 @@ function writeIndexedPendingResultFile(resultPath: string, data: Record<string, 
 	const sessionId = nonEmptyString(data.sessionId);
 	if (!sessionId) throw new Error(`Cannot write async result '${resultPath}' without a sessionId.`);
 	const resultsDir = path.dirname(resultPath);
-	// A consumer can take the payload and remove its indexes as soon as the payload appears,
-	// so every index must exist before then. A failed index write still publishes the
-	// payload, unindexed but recoverable, before the error is rethrown.
 	let indexFailure: { error: unknown } | undefined;
 	writeAtomicJson(resultPendingPath(resultsDir, sessionId, runId), data, () => {
 		try {
@@ -207,33 +203,28 @@ export function removeResultIndex(resultsDir: string, sessionId: string | undefi
 			try {
 				fs.rmSync(indexPath, { force: true });
 			} catch {
-				// Index cleanup must not affect result delivery.
 			}
 		}
 		for (const pendingPath of resultPendingPaths(resultsDir, sessionId, runId)) {
 			try {
 				fs.rmSync(pendingPath, { force: true });
 			} catch {
-				// Pending cleanup must not affect result delivery.
 			}
 		}
 	}
 	try {
 		fs.rmSync(runIndexPath(resultsDir, runId), { force: true });
 	} catch {
-		// Index cleanup must not affect result delivery.
 	}
 	if (toolCallId) {
 		try {
 			fs.rmSync(toolCallIndexPath(resultsDir, toolCallId, runId), { force: true });
 		} catch {
-			// Index cleanup must not affect result delivery.
 		}
 	}
 	try {
 		fs.rmSync(observerIndexPath(resultsDir, MISSION_OBSERVER, runId), { force: true });
 	} catch {
-		// Index cleanup must not affect result delivery.
 	}
 }
 
@@ -242,7 +233,6 @@ export function removeMissionObserverIndex(resultsDir: string, runId: string | u
 	try {
 		fs.rmSync(observerIndexPath(resultsDir, MISSION_OBSERVER, runId), { force: true });
 	} catch {
-		// Observer index cleanup must not affect result delivery.
 	}
 }
 
@@ -272,18 +262,15 @@ export function readResultPayload(filePath: string): string | undefined {
 		return fs.readFileSync(filePath, "utf-8");
 	} catch (error) {
 		const code = (error as NodeJS.ErrnoException).code;
-		// A directory at the public path blocks promotion; it holds no payload.
 		if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR" || isUnaddressableResultCandidate(error)) return undefined;
 		throw error;
 	}
 }
 
-// Pending paths come first so a reader promoting pending to public between two reads is still seen.
 function resultPayloadCandidates(publicPath: string, read: ResultSnapshot): string[] {
 	return [...(read.sessionId ? resultPendingPaths(path.dirname(publicPath), read.sessionId, read.runId) : []), publicPath];
 }
 
-/** A payload is one the consumer already read (or an older one it saw beside it), so not newer. */
 function readByConsumer(publicPath: string, read: ResultSnapshot, candidate: string, current: string): boolean {
 	return current === read.snapshot || (candidate === publicPath && current === read.stalePublic);
 }
@@ -305,8 +292,6 @@ export function resultSnapshotReplaced(publicPath: string, read: ResultSnapshot)
 export function retireResultSnapshot(publicPath: string, read: ResultSnapshot, payloadPath = publicPath, leaseWaitMs?: number): "retired" | "replaced" {
 	const resultsDir = path.dirname(publicPath);
 	return withResultRunLease(resultsDir, read.runId, () => {
-		// Check every shared path before deleting any: unleased reader promotion can move a newer
-		// pending payload onto the public path between two deletions.
 		if (resultSnapshotReplaced(publicPath, read)) {
 			if (payloadPath !== publicPath && readResultPayload(payloadPath) === read.snapshot) fs.rmSync(payloadPath, { force: true });
 			return "replaced";
@@ -330,7 +315,6 @@ export function retireResultSnapshot(publicPath: string, read: ResultSnapshot, p
 /** Removes the mission observer index for the payload an observer handled, unless a newer payload replaced it. */
 export function acknowledgeMissionObserverSnapshot(publicPath: string, read: ResultSnapshot, leaseWaitMs?: number): "acknowledged" | "replaced" {
 	const resultsDir = path.dirname(publicPath);
-	// With no index there is nothing to remove; skipping keeps the lease off runs without a mission.
 	if (!fs.existsSync(observerIndexPath(resultsDir, MISSION_OBSERVER, read.runId))) return "acknowledged";
 	return withResultRunLease(resultsDir, read.runId, () => {
 		if (resultSnapshotReplaced(publicPath, read)) return "replaced";
@@ -377,8 +361,7 @@ export function promotePendingResultFile(resultsDir: string, sessionId: string, 
 	if (!pendingPath) return "none";
 	const resultPath = path.join(resultsDir, file);
 	try {
-		// POSIX rename replaces the destination atomically. Deleting it first lets a
-		// losing promoter unlink the result that another promoter just published.
+		// external: POSIX rename replaces the destination atomically.
 		fs.renameSync(pendingPath, resultPath);
 		return existingResultFile(resultPath) ? "promoted" : "pending";
 	} catch (error) {
@@ -477,8 +460,6 @@ export function resultPayloadPathForIndexedRun(resultsDir: string, runId: string
 			fs.rmSync(entryPath, { force: true });
 			return undefined;
 		}
-		// A valid index can precede its payload while the writer is publishing it, so a lookup
-		// must not delete it. Payload-less indexes are swept by age in cleanupResultIndexes.
 		return resultPayloadLocationFromIndex(resultsDir, entry)?.path;
 	} catch (error) {
 		const code = (error as NodeJS.ErrnoException).code;
@@ -486,7 +467,6 @@ export function resultPayloadPathForIndexedRun(resultsDir: string, runId: string
 		if (code !== "ENOENT" && code !== "ENOTDIR") {
 			console.error(`Ignoring invalid async result run index '${entryPath}':`, error);
 			try { fs.rmSync(entryPath, { force: true }); } catch {
-				// Invalid optional run-index cleanup is best-effort.
 			}
 		}
 	}
@@ -608,7 +588,6 @@ export function cleanupResultIndexes(resultsDir: string, now = Date.now(), maxAg
 			if (entry.isDirectory()) {
 				visit(fullPath);
 				try { fs.rmdirSync(fullPath); } catch {
-					// Non-empty or concurrently removed index directories are left in place.
 				}
 				continue;
 			}
@@ -629,7 +608,6 @@ export function cleanupResultIndexes(resultsDir: string, now = Date.now(), maxAg
 					fs.rmSync(fullPath, { force: true });
 					removed += 1;
 				} catch {
-					// Invalid optional index cleanup is best-effort.
 				}
 			}
 		}

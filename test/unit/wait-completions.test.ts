@@ -20,7 +20,6 @@ describe("workflow wait completion projection", () => {
 		writeAsyncResultFile(resultPath, data);
 		writeAsyncResultFile(path.join(root, `${runId}.json`), { ...data, results: [{ output: "WRONG_NAMESPACE" }] });
 		const terminal: AsyncRunSummary[] = [{ id: runId, sessionId: "owner", asyncDir: root, mode: "single", state: "complete", startedAt: Date.now(), steps: [] }];
-		// SAFETY: the collector only reads the optional completedResults store from this fixture.
 		const state = { currentSessionId: "owner" } as SubagentState;
 		const references: string[] = [];
 		assert.equal(collectWaitCompletions(terminal, state, resultsDir, (text) => references.push(text))?.[0]?.runId, runId);
@@ -40,7 +39,6 @@ describe("workflow wait completion projection", () => {
 		t.after(() => fs.rmSync(resultsDir, { recursive: true, force: true }));
 		const runId = "shared-run";
 		const terminal: AsyncRunSummary[] = [{ id: runId, sessionId: "owner", asyncDir: resultsDir, mode: "single", state: "complete", startedAt: Date.now(), steps: [] }];
-		// SAFETY: recordWaitCompletion initializes the only state collection used by this fixture.
 		const state = { currentSessionId: "owner" } as SubagentState;
 		recordWaitCompletion(state, runId, { runId, sessionId: "owner", agent: "owner-agent", success: true }, Date.now(), 60_000);
 		const resultPath = path.join(resultsDir, `${runId}.json`);
@@ -155,7 +153,6 @@ describe("workflow wait completion projection", () => {
 				const runId = "shared-run";
 				const resultPath = path.join(resultsDir, `${runId}.json`);
 				writeAsyncResultFile(resultPath, { runId, sessionId: "owner", agent: "initial-owner" });
-				// Leave the owner's index intact while replacing its public payload.
 				fs.writeFileSync(resultPath, JSON.stringify({
 					runId,
 					sessionId: payloadOwner,

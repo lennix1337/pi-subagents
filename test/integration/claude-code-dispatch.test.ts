@@ -1,10 +1,3 @@
-/**
- * End-to-end dispatch tests for the Claude Code model and thinking override.
- *
- * These launch the real background runner against a fake `claude` that records
- * its argv, so they prove the tokens travel from a launch request to the CLI.
- * On Windows the fake is an npm-style `.cmd` shim, as an npm install would create.
- */
 
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -28,7 +21,6 @@ afterEach(() => {
 	for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
-/** A fake CLI that records every invocation and answers the adapter's preflight. */
 function fakeClaude(): { command: string; calls: () => string[][] } {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-cc-dispatch-"));
 	dirs.push(dir);
@@ -81,7 +73,6 @@ describe("Claude Code override launch", { skip: !available ? "pi packages not av
 		const launch = calls.filter((args) => args[0] === "-p");
 		assert.equal(launch.length, 1);
 		assert.deepEqual(launch[0]?.slice(-4), ["--model", "claude-opus-5.5", "--effort", "high"]);
-		// The preflight probes stay single-argument: no launch token leaks into them.
 		assert.deepEqual(calls.filter((args) => args[0] === "--version" || args[0] === "--help"), [["--version"], ["--help"]]);
 	});
 

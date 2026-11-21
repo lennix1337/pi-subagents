@@ -92,7 +92,7 @@ describe("runner dispatcher honours the resolved idle timeout", () => {
 	}
 
 	it("a short headersTimeout cuts a slow response; 0 (disabled) lets it finish", async () => {
-		// undici coalesces idle timers on a ~1s tick, so keep the delay well past the bound.
+		// external: undici coalesces idle timers on an approximately one-second tick.
 		await withDelayedServer(2_500, async (url) => {
 			const bounded = new EnvHttpProxyAgent(runnerHttpDispatcherOptions(200));
 			try {
@@ -114,7 +114,6 @@ describe("runner dispatcher honours the resolved idle timeout", () => {
 	});
 
 	it("installRunnerHttpDispatcher applies the resolved setting to the process-global dispatcher", async () => {
-		// Runs last in this file: it replaces the global dispatcher and fetch for this test process.
 		await withDelayedServer(2_500, async (url) => {
 			installRunnerHttpDispatcher(fixture({ project: { httpIdleTimeoutMs: 200 } }));
 			const installed = getGlobalDispatcher();

@@ -11,7 +11,6 @@ import { workflowScriptDigest } from "./workflow-reuse.ts";
 import { isRunId } from "./workflow-revival.ts";
 import { isReusableWorkflowStopCause, WORKFLOW_STOP_CAUSE_OWNER_EXITED } from "./workflow-stop-cause.ts";
 
-/** A run may be resumed again after at most this many resumes that followed Pi exits (auto-resume only). */
 const MAX_WORKFLOW_RESUME_ATTEMPTS = 3;
 
 type WorkflowResumeTrigger = "auto" | "manual";
@@ -80,15 +79,11 @@ export function prepareWorkflowResume(input: { asyncDirRoot: string; sourceRunId
 	const { asyncDirRoot, sourceRunId, trigger } = input;
 	const refuse = (code: WorkflowResumeRefusalCode, reason: string): WorkflowResumePreparation => ({ ok: false, ...workflowResumeRefusal(code, reason, sourceRunId) });
 	const sourceAsyncDir = path.join(asyncDirRoot, sourceRunId);
-	// Only the session that owns the run (itself or one it replaced) may resume it, and nothing is
-	// written into another session's run, so this comes before the reconcile.
 	const stored = readStatus(sourceAsyncDir);
 	if (stored && !ownsRun(input.currentSessionId, stored.sessionId)) return refuse("not-owned", "it was started in another session; reopen that session to resume it");
-	// Session start has already reconciled this session's runs; a resume by id may come later.
 	if (trigger === "manual") reconcileAsyncRun(sourceAsyncDir);
 	const status = readStatus(sourceAsyncDir);
 	if (!status || status.mode !== "workflow" || !isReusableWorkflowStopCause(status.workflow?.stopCause)) return refuse("not-interrupted", "not interrupted; pass message to revive one of its children");
-	// The attempt the resumed run records: only resumes that follow a Pi exit count.
 	const attempt = (status.workflow?.resumeOrigin?.attempt ?? 0) + (status.workflow?.stopCause === WORKFLOW_STOP_CAUSE_OWNER_EXITED ? 1 : 0);
 	if (trigger === "auto" && attempt > MAX_WORKFLOW_RESUME_ATTEMPTS) return refuse("attempts", `${MAX_WORKFLOW_RESUME_ATTEMPTS} resumes already followed Pi exits`);
 	const read = readWorkflowLaunchRecord(sourceAsyncDir);

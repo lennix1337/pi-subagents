@@ -121,7 +121,6 @@ describe("subagent tool activation", () => {
 		const tool = { name: "subagent", description: "historical", parameters: { type: "object" } };
 		const history = [{ role: "system", content: "", toolsAdded: [], timestamp: 1 }];
 		const cold = createRuntime(history, [], [], DYNAMIC);
-		// Real Pi restores the session's tool state on start; a cold transcript restores loader only.
 		cold.select(["read", "subagents_enable"]);
 		await cold.emit("session_start", { type: "session_start", reason: "reload" });
 		assert.equal(cold.active().includes("subagent"), false);
@@ -217,14 +216,12 @@ async function startAgent(runtime: ReturnType<typeof createRuntime>): Promise<st
 }
 
 type Runtime = ReturnType<typeof createRuntime>;
-// A compaction that kept no tool checkpoint, placed as Pi's buildSessionContext places it: first, with no system message before it.
 const compacted = { role: "compactionSummary", summary: "", tokensBefore: 0, timestamp: 0 };
 const other = declared(["read", "other_extension_tool"]);
 const OWNED = ["subagents_enable", "subagent", "contact_supervisor", "bg_wait"];
 const RESUME = { type: "session_start", reason: "resume" };
 const RELOAD = { type: "session_start", reason: "reload" };
 const TREE = { type: "session_tree", newLeafId: null, oldLeafId: null };
-// The host's live set before a replay: /reload activates every extension tool; resume and session_tree restore the transcript's tools.
 const allOn = (runtime: Runtime) => runtime.select(["read", ...runtime.tools.keys()]);
 const replays = (current: string[]): Array<[string, (runtime: Runtime) => void, { type: string }]> => [
 	["resume", (runtime) => runtime.select(["read", ...current]), RESUME],
@@ -232,7 +229,6 @@ const replays = (current: string[]): Array<[string, (runtime: Runtime) => void, 
 	["tree", (runtime) => runtime.select(["read", ...current]), TREE],
 ];
 
-// Asserts what the replay applied, then that before_agent_start declares the same.
 async function assertOwned(runtime: Runtime, label: string, expected: Record<string, boolean>): Promise<void> {
 	const active = runtime.active();
 	for (const [name, on] of Object.entries(expected)) assert.equal(active.includes(name), on, `${label}: active ${name}`);
@@ -257,7 +253,6 @@ describe("toolActivation modes", () => {
 			const first = await startAgent(runtime);
 			assert.ok(first.includes("subagent") && first.includes("read"));
 			assert.equal(first.includes("subagents_enable"), false);
-			// Switching to a capable model mid-session changes nothing.
 			runtime.context.model = COMPATIBLE;
 			assert.deepEqual(await startAgent(runtime), first);
 		}
@@ -358,7 +353,6 @@ describe("toolActivation modes", () => {
 
 	it("brings back the extension's tools an unload left off when a new process restores the transcript", async () => {
 		const extensionTools = ["subagent", "contact_supervisor", "bg_wait", "subagent_supervisor"];
-		// A new process (`pi --continue`) starts with the transcript's tools, which the unload left without this extension's.
 		const restart = async (messages: any[], excluded: string[] = [], restored = ["read"]) => {
 			const runtime = createRuntime(messages, excluded, [], { model: COMPATIBLE });
 			runtime.tools.set("plan_tool", { name: "plan_tool", sourceInfo: { path: "other-extension" } });
@@ -370,7 +364,6 @@ describe("toolActivation modes", () => {
 		const continued = await restart(firstUpdate);
 		assert.deepEqual(continued.active().sort(), ["bg_wait", "contact_supervisor", "read", "subagent", "subagent_supervisor"]);
 
-		// The next turn declares what is active; a second update then removes it again.
 		const redeclared = continued.active().filter((name) => name !== "read");
 		const again = await restart([...firstUpdate, declared(redeclared), declared([], redeclared)]);
 		assert.ok(again.active().includes("subagent"), "second update: subagent");
@@ -380,17 +373,12 @@ describe("toolActivation modes", () => {
 		assert.ok(excluded.active().includes("bg_wait"), "excluded: bg_wait");
 		assert.equal(excluded.active().includes("subagent_supervisor"), false, "excluded: subagent_supervisor");
 
-		// Without an unload, the transcript's tools stand: bg_wait was never declared here.
 		const unaffected = await restart([declared(["read", "subagent", "contact_supervisor"])], [], ["read", "subagent", "contact_supervisor"]);
 		assert.equal(unaffected.active().includes("bg_wait"), false, "unaffected: bg_wait");
 		assert.ok(unaffected.active().includes("subagent"), "unaffected: subagent");
 	});
 
 	it("decides a session whose activation record a compaction lost as a new session, and honours a later removal", async () => {
-		// A compaction without a checkpoint drops the session-start declaration while other extensions'
-		// tool-selection messages survive. The activation state is then decided by the new-session rule:
-		// eager on a model that cannot add tools (no loader), cold on one that can. A removal recorded after
-		// the compaction boundary is honoured.
 		const surviving = declared(["read", "other_extension_tool"]);
 		const eagerAuto = ["read", "subagent", "contact_supervisor", "bg_wait", "subagent_supervisor"];
 
@@ -407,7 +395,6 @@ describe("toolActivation modes", () => {
 		assert.equal(coldAuto.active().includes("bg_wait"), false, "cold: no bg_wait");
 		assert.ok((await startAgent(coldAuto)).includes("subagents_enable"), "cold: loader kept");
 
-		// Synthetic: Pi cannot remove a tool that was never declared. It pins that such a removal is a choice, not an unload.
 		const removedAfterCompaction = createRuntime([compacted, surviving, declared([], ["subagent", "contact_supervisor"])], [], [], { model: INCOMPATIBLE });
 		removedAfterCompaction.select(["read"]);
 		await removedAfterCompaction.emit("session_start", { type: "session_start", reason: "resume" });
@@ -421,7 +408,6 @@ describe("toolActivation modes", () => {
 	});
 
 	it("re-decides the activation state a compaction lost, whatever other tools survive", async () => {
-		// The loader's declaration is compacted away, then a background-work provider declares bg_wait.
 		const messages = [compacted, other, declared(["bg_wait"])];
 		const dispose = registerBackgroundWorkProvider({ name: "tool-activation-lost-loader", listActiveWork: () => [] });
 		try {
@@ -435,7 +421,6 @@ describe("toolActivation modes", () => {
 	});
 
 	it("treats a compaction that kept a tool checkpoint as an intact transcript", async () => {
-		// guard: the checkpoint system message precedes the summary and re-declares the active tools.
 		const messages = [declared(["read", "other_extension_tool"]), compacted, declared(["bg_wait"])];
 		for (const caseModel of [COMPATIBLE, INCOMPATIBLE]) {
 			await replayAll(messages, { model: caseModel }, ["other_extension_tool", "bg_wait"], "checkpointed",
@@ -446,7 +431,6 @@ describe("toolActivation modes", () => {
 	});
 
 	it("keeps the loader of a lost activation state across an unload recorded after the compaction", async () => {
-		// Both the old and the new unload rule call this an unload; it pins the loader and the bg_wait restore.
 		const runtime = createRuntime([compacted, other, declared(["bg_wait", "subagent_supervisor"]), declared([], ["bg_wait", "subagent_supervisor"])], [], [], { model: COMPATIBLE });
 		runtime.select(["read"]);
 		await runtime.emit(RESUME.type, RESUME);
@@ -454,7 +438,6 @@ describe("toolActivation modes", () => {
 	});
 
 	it("keeps a surviving activation record after a compaction, whatever the model", async () => {
-		// guard: the loader and subagent are one activation state; either surviving declares it.
 		await replayAll([compacted, declared(["read", "subagents_enable"])], { model: INCOMPATIBLE }, ["subagents_enable"], "lost, loader survives",
 			{ subagents_enable: true, subagent: false, contact_supervisor: false, bg_wait: false });
 		await replayAll([compacted, declared(["read", "subagent", "contact_supervisor", "bg_wait"])], { model: COMPATIBLE }, ["subagent", "contact_supervisor", "bg_wait"], "lost, subagent survives",
@@ -470,7 +453,6 @@ describe("toolActivation modes", () => {
 	});
 
 	it("replays a transcript that never declared this extension's tools without adding them", async () => {
-		// The harness starts with every registered tool active, as /reload does.
 		const auto = createRuntime([other], [], [], { model: COMPATIBLE });
 		await auto.emit(RELOAD.type, RELOAD);
 		await assertOwned(auto, "intact, never declared", { subagents_enable: false, subagent: false, bg_wait: false });
@@ -523,7 +505,6 @@ describe("toolActivation modes", () => {
 			["intact, never declared", [other], { model: COMPATIBLE }, ["other_extension_tool"]],
 		];
 		const owned = (names: string[]) => {
-			// subagent_supervisor follows the live set while subagent is off, so it is compared only with subagent on.
 			const compared = names.includes("subagent") ? [...OWNED, "subagent_supervisor"] : OWNED;
 			return compared.filter((name) => names.includes(name)).sort();
 		};
@@ -562,7 +543,6 @@ describe("toolActivation modes", () => {
 			assert.equal(selected.includes("subagent_supervisor"), supervisor, `${label}: subagent_supervisor`);
 		}
 
-		// A cold session that never declared bg_wait: its unload removes the loader, and a new process brings it back.
 		const unloaded = createRuntime([declared(["read", "subagents_enable", "subagent_supervisor"]), declared([], ["subagents_enable", "subagent_supervisor"])], [], [], { model: COMPATIBLE });
 		unloaded.select(["read"]);
 		await unloaded.emit("session_start", { type: "session_start", reason: "resume" });
@@ -607,7 +587,6 @@ describe("toolActivation modes", () => {
 			await runtime.emit("session_start", { type: "session_start", reason: "resume" });
 			assert.ok(runtime.active().includes("subagent_supervisor"));
 			assert.equal(runtime.active().includes("subagent"), false);
-			// Pi restores a branch's own tools before session_tree; a branch that never had the tool loses it.
 			runtime.select(["read", "subagents_enable", "bg_wait"]);
 			await runtime.emit("session_tree", { type: "session_tree", newLeafId: null, oldLeafId: null });
 			assert.ok(runtime.active().includes("subagent_supervisor"), "branch switch while a reply is owed");

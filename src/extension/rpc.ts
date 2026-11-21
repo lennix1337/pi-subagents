@@ -321,7 +321,6 @@ interface RegisterSubagentRpcBridgeOptions {
 	resultsDir?: string;
 	kill?: (pid: number, signal?: NodeJS.Signals | 0) => boolean;
 	now?: () => number;
-	/** Native live state, projected into the optional public fleet-status capability. */
 	state?: SubagentState;
 	disabledFeatures?: DisabledFeatureSurface;
 }
@@ -534,10 +533,8 @@ function spawnParams(params: unknown, options: RegisterSubagentRpcBridgeOptions)
 	if (script !== undefined) {
 		if (typeof script !== "string" || !script.trim()) throw new SubagentRpcError("invalid_params", "RPC spawn script must be a non-empty string.");
 		if (input.workflow !== undefined) throw new SubagentRpcError("invalid_params", "RPC spawn script cannot be combined with workflow.");
-		// The executor's internal carrier; the model-facing tool cannot set it.
 		input.workflowScript = script;
 	}
-	// With workflow scripts disabled, name the setting before normalization can report a script-shape error instead.
 	const disabledFeatureError = options.disabledFeatures?.features.has("workflow-scripts") ? disabledFeatureUseError(input, options.disabledFeatures, "RPC spawn") : undefined;
 	if (disabledFeatureError) throw new SubagentRpcError("invalid_params", disabledFeatureError);
 	const normalized = normalizePublicSubagentExecution(input);
@@ -674,7 +671,6 @@ function stopAsyncRun(
 				message: `Stop requested for async run ${initialRunId}.`,
 			};
 		}
-		// Workflow controls live in-process; a persisted run directory cannot restore them.
 		throw new SubagentRpcError("invalid_state", child
 			? `Child '${child.id}' in workflow ${initialRunId} has no live stop callback available.`
 			: `Workflow ${initialRunId} has no live run controller available to stop.`);
@@ -721,7 +717,6 @@ function stopAsyncRun(
 	}
 	if (child) emitChildStopping(runId, location.asyncDir, child);
 
-	// This is an acceptance receipt, not terminal proof, even when a proven paused run was sealed.
 	return {
 		runId,
 		asyncDir: location.asyncDir,
@@ -754,7 +749,6 @@ async function handleRequest(
 			try {
 				sessionId = resolveCurrentSessionId(ctx.sessionManager);
 			} catch {
-				// Let the executor produce the canonical error when session identity is unavailable.
 			}
 			if (canUseInMemoryStatus(options.state, sessionId)) {
 				const fleet = buildFleetStatus(options.state, fleetKeys, sessionId);
@@ -798,9 +792,6 @@ async function handleRequest(
 		return executeChecked(options, ctx, request.requestId, request.method, resumeParams(request.params));
 	}
 	if (request.method === "cost") {
-		// The same parent-plus-child accounting `/subagent-cost` renders, as data.
-		// Read-only: it walks the current session branch and existing artifacts,
-		// so callers should request it on their own turn boundaries, not on a timer.
 		if (request.params !== undefined && !isRecord(request.params)) throw new SubagentRpcError("invalid_params", "RPC cost params must be an object when provided.");
 		return (await import("../slash/subagent-cost.ts")).collectSubagentCost(ctx, options.state ?? { baseCwd: ctx.cwd });
 	}

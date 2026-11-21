@@ -1,4 +1,3 @@
-/** chain/tasks through executePublic with disabledFeatures "workflow-scripts", using the mock pi child launcher. */
 
 import assert from "node:assert/strict";
 import * as fs from "node:fs";

@@ -1,11 +1,3 @@
-/**
- * A child whose model comes from an extension-registered provider fails to
- * start when that extension is not loaded into it, and Pi core reports only
- * that the model is unknown. These tests drive the real failure paths for both
- * hosts: a foreground child must be told that it inherits the parent's
- * registered providers and how to load the extension itself, and a child that
- * did load the ambient extensions must keep the plain core error.
- */
 
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
@@ -18,7 +10,6 @@ import { createTempDir, makeAgent, removeTempDir } from "../support/helpers.ts";
 const MODEL = "pengepul/commandcode/deepseek/deepseek-v4.1-flash";
 const MODEL_NOT_FOUND = `Model "${MODEL}" not found. Use --list-models to see available models.`;
 
-/** A pi module stub whose model resolver rejects the provider-extension model. */
 function unresolvedModelPi(): PiCodingAgentModule {
 	return {
 		ModelRuntime: { create: async () => ({}) },
@@ -40,7 +31,6 @@ const bridgeParent: ParentProviderRegistry = {
 };
 const errorReply = { role: "assistant", content: [], stopReason: "error", errorMessage: PROVIDER_ERROR, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0 } } };
 
-/** A pi module stub whose `bridge/model` session replays `replies` as the first prompt's assistant messages; an Error reply rejects the prompt. */
 function bridgePi(replies: unknown[], childClaimsBridge = false): PiCodingAgentModule {
 	const runtime = { childClaimsBridge };
 	return {

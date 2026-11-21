@@ -1,14 +1,3 @@
-/**
- * Acting ahead lifecycle: admits a CI failure, reserves a slot synchronously,
- * launches one background child in its own worktree, and caps its runtime. When
- * the child finishes, the harness confirms the fix itself. Only a confirmed fix
- * is reported; everything else is discarded silently and kept as a counter for the
- * caller, so a speculative attempt never shows up as an operator notice.
- *
- * Launching, stopping and subscribing are injected, so the lifecycle is testable
- * without a live runner. The slot is held through verification, and the runtime cap
- * covers it too.
- */
 import type { PrWatchEvent } from "../integrations/pr-thread-subscriptions.ts";
 import { admitSpeculation, speculationKey, type ActingAheadConfig, type ActingAheadDecision, type ActingAheadState } from "./acting-ahead-policy.ts";
 import type { SpeculativeEvidence, SpeculativeVerdict } from "./acting-ahead-verify.ts";

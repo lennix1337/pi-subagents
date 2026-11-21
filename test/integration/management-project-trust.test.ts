@@ -5,7 +5,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it } from "node:test";
 
-// Drives the production extension wiring (src/extension/index.ts), so a dropped trust option is caught.
 const script = String.raw`
 	import fs from "node:fs";
 	import path from "node:path";

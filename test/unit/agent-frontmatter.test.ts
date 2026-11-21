@@ -346,8 +346,6 @@ body`);
 });
 
 describe("blank lines in nested frontmatter blocks", () => {
-	// Exactly-empty lines are the truncation trigger (issue #77): whitespace-only
-	// lines were always collected, only `trimmed === ""` lines were dropped.
 	const fm = (body: string) => parseFrontmatter(`---\n${body}---\npayload`);
 
 	it("preserves a nested block value across exactly-empty lines", () => {
@@ -433,7 +431,6 @@ describe("blank lines in nested frontmatter blocks", () => {
 			"",
 		].join("\n"));
 		const agent = discoverAgents(project, "project").agents.find((item) => item.name === "loader");
-		// `- |` clip-chomps: the delivered arg carries one trailing newline.
 		assert.deepEqual(agent?.runner, { type: "external-cli", command: "node", args: ["-e", `${script}\n`], promptDelivery: "stdin" });
 	}));
 
@@ -1449,7 +1446,6 @@ Agent prompt
 				},
 			},
 		});
-		// Mark this fixture as the project root, even when /tmp is a project.
 		fs.mkdirSync(path.join(dir, ".pi"));
 		writeAgent(path.join(dir, "root-agent.md"), `---
 name: root-agent

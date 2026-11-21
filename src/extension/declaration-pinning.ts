@@ -2,16 +2,11 @@ import { declarationsEqual, getCurrentSystemMessage, toToolDeclaration, type Mes
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { TSchema } from "typebox";
 
-// Pi records each declared tool definition and prompt section in the session transcript and
-// re-declares any difference before the next request. A changed tool or prompt section makes
-// the provider re-read the whole conversation without its prompt cache, so a session keeps the
-// pi-subagents definitions and prompt text it already declared. Only a session that never
-// declared a tool gets its current definition. Setting `pinToolDeclarations` to false turns this
-// off, so a resumed session gets the current definitions at the cost of one prompt-cache miss. (#2852)
+// external: Pi records tool declarations and prompt sections in the session transcript.
+// external: Provider prompt caches miss when tool definitions or prompt sections change.
 
 type PinnableTool = ToolDefinition<TSchema, unknown>;
 
-/** What a session declared for one tool; an absent snippet or guidelines keeps the current value. */
 interface DeclaredPin {
 	declaration: Tool;
 	snippet?: { text?: string };
@@ -22,21 +17,13 @@ interface Pins {
 	current: Map<string, PinnableTool>;
 	declared: Map<string, DeclaredPin>;
 	registered: Map<string, string>;
-	/** The prompt sections the session transcript recorded, read on session events only. */
 	sections: Record<string, string | null>;
-	/** False when the session should get the current definitions instead of the recorded ones. */
 	pinned: boolean;
 }
 
 const pinsByApi = new WeakMap<ExtensionAPI, Pins>();
 const GUIDELINES_PLACEHOLDER = "\u0000pi-subagents guidelines";
 
-/**
- * A recorded description without the text a host appends to each declared tool, such as Pi's
- * codemode note on script-callable tools. The host decorates whatever is registered, so reusing a
- * decorated description would add the note again on every session start (#2889). Drops a repeated
- * trailing paragraph, then a trailing paragraph added after the current description.
- */
 function undecorated(recorded: string, current: string): string {
 	const paragraphs = recorded.split("\n\n");
 	while (paragraphs.length > 1 && paragraphs.at(-1) === paragraphs.at(-2)) paragraphs.pop();
@@ -46,7 +33,6 @@ function undecorated(recorded: string, current: string): string {
 
 function pinnedDefinition(tool: PinnableTool, pin: DeclaredPin | undefined): PinnableTool {
 	const { constrainedSampling, promptSnippet, promptGuidelines, ...rest } = tool;
-	// An unchanged declaration keeps the registered schema object rather than its JSON copy.
 	const recorded = pin ? { ...pin.declaration, description: undecorated(pin.declaration.description, rest.description) } : undefined;
 	const declaration = recorded && !declarationsEqual(recorded, tool) ? recorded : undefined;
 	const definition: PinnableTool = { ...rest, description: declaration?.description ?? rest.description, parameters: declaration?.parameters ?? rest.parameters };
@@ -74,7 +60,6 @@ function sectionLines(text: string | undefined, name: string): string[] | undefi
 	return start >= 0 && end > start ? lines.slice(start + 1, end) : undefined;
 }
 
-/** Mirrors the unexported buildRules of Pi's default system prompt, without prompt-level guidelines. */
 function ruleLines(activeTools: string[], guidelines: Map<string, string[]>): string[] {
 	const lines: string[] = [];
 	const add = (rule: string): void => {
@@ -95,11 +80,6 @@ function ruleLines(activeTools: string[], guidelines: Map<string, string[]>): st
 
 const sameLines = (left: string[], right: string[]) => left.length === right.length && left.every((line, index) => line === right[index]);
 
-/**
- * The rules section does not say which tool contributed a bullet, so a declared tool's guidelines
- * are recovered by rebuilding the recorded rules with candidate bullets at that tool's position.
- * Nothing is recovered unless the rebuild first reproduces Pi's current rules.
- */
 function recordedGuidelines(pi: ExtensionAPI, ctx: ExtensionContext, recorded: string[], names: string[]): Map<string, string[]> {
 	const recovered = new Map<string, string[]>();
 	const activeTools = pi.getActiveTools();
@@ -119,9 +99,7 @@ function recordedGuidelines(pi: ExtensionAPI, ctx: ExtensionContext, recorded: s
 }
 
 function recordedSystemMessage(ctx: ExtensionContext | undefined): SystemMessage | undefined {
-	// SAFETY: Pi's session manager exposes buildSessionContext, but its read-only extension type omits it.
 	const sessionManager = ctx?.sessionManager as (ExtensionContext["sessionManager"] & { buildSessionContext?(): { messages: Message[] } }) | undefined;
-	// A host without a readable transcript, such as a test double, declares nothing to keep.
 	if (typeof sessionManager?.buildSessionContext !== "function") return undefined;
 	return getCurrentSystemMessage(sessionManager.buildSessionContext().messages);
 }
@@ -134,7 +112,7 @@ function declaredPins(pi: ExtensionAPI, pins: Pins, ctx: ExtensionContext | unde
 	const guidelines = rules ? recordedGuidelines(pi, ctx, rules, declarations.map((tool) => tool.name).filter((name) => pins.current.has(name))) : new Map<string, string[]>();
 	return new Map(declarations.map((declaration) => {
 		const pin: DeclaredPin = { declaration };
-		// Pi renders each snippet on one line as "- <tool>: <snippet>".
+		// external: Pi renders tool snippets as one-line list entries.
 		if (snippets) pin.snippet = { text: snippets.find((line) => line.startsWith(`- ${declaration.name}: `))?.slice(declaration.name.length + 4) };
 		const recovered = guidelines.get(declaration.name);
 		if (recovered) pin.guidelines = recovered;
@@ -147,7 +125,7 @@ function pinsFor(pi: ExtensionAPI): Pins {
 	if (existing) return existing;
 	const pins: Pins = { current: new Map(), declared: new Map(), registered: new Map(), sections: {}, pinned: true };
 	pinsByApi.set(pi, pins);
-	// Pi restores the transcript's active tools before both events, so handler order does not matter.
+	// external: Pi restores transcript active tools before session events.
 	const refresh = (ctx: ExtensionContext | undefined) => {
 		const system = pins.pinned ? recordedSystemMessage(ctx) : undefined;
 		pins.sections = system?.sections ?? {};
@@ -174,7 +152,6 @@ export function recordedPromptSection(pi: ExtensionAPI, name: string): string | 
  */
 export function registerPinnedTool<TParams extends TSchema, TDetails>(pi: ExtensionAPI, tool: ToolDefinition<TParams, TDetails>): void {
 	const pins = pinsFor(pi);
-	// SAFETY: Pinning reads only model-facing fields and re-registers every runtime field unchanged.
 	pins.current.set(tool.name, tool as unknown as PinnableTool);
 	pins.registered.delete(tool.name);
 	register(pi, pins, tool.name);

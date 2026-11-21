@@ -50,7 +50,6 @@ function declarationLength(config: ExtensionConfig, toolDescriptionMode?: "full"
 }
 
 describe("workflow-scripts tool surface", () => {
-	// The default description is short enough that the chain/tasks schema outweighs the script guidance it replaces.
 	it("is smaller than the full-mode declaration", () => {
 		const enabled = declarationLength({}, "full");
 		const disabled = declarationLength(DISABLED, "full");
@@ -124,7 +123,6 @@ describe("workflow-scripts admission", () => {
 			return (replies.get(subagentRpcReplyEvent(requestId)) as { error?: { code: string; message: string } }).error;
 		};
 		assert.deepEqual(await spawn("script", { script: "return 1;" }), { code: "invalid_params", message: `RPC spawn workflow scripts are disabled by config ${SETTING}.` });
-		// Normalization would otherwise report "args requires workflow." and hide the setting.
 		assert.deepEqual(await spawn("args", { agent: "scout", task: "x", args: {} }), { code: "invalid_params", message: `RPC spawn option 'args' is disabled by config ${SETTING}.` });
 		assert.equal((await spawn("chain", { chain: [{ agent: "scout", task: "x" }] }))?.message, LEGACY_ERROR);
 	});

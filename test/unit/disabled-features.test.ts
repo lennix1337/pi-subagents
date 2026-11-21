@@ -92,9 +92,7 @@ describe("disabled feature groups", () => {
 
 	for (const group of GROUPS) {
 		it(`${group.name}: removes exactly its top-level parameters from the schema`, () => {
-			// Options fields are opaque in the provider schema; the executor rejects disabled ones.
 			for (const param of group.params) assert.ok(fullKeys.includes(param) || SUBAGENT_OPTION_KEYS.includes(param), `${param} is not a subagent parameter`);
-			// workflow-scripts replaces the removed script parameters with chain/tasks after task.
 			const added = group.name === "workflow-scripts" ? ["tasks", "chain"] : [];
 			assert.deepEqual(schemaKeys(group.config), fullKeys.filter((key) => !group.params.includes(key)).flatMap((key) => key === "task" ? [key, ...added] : [key]));
 		});
@@ -129,7 +127,6 @@ describe("disabled feature execution boundaries", () => {
 			const result = await createExecutor({ disabledFeatures: ["external-machines"] }).executePublic(
 				"disabled-workflow-child",
 				{
-					// A non-literal agent skips static agent validation and reaches launch admission.
 					workflowScript: `const agent = "worker"; return await runs.all([{ key: "local", agent, task: "scan" }, { key: "remote", agent, task: "scan", machine: "box" }]);`,
 					async: false,
 					chatProgress: "off",
@@ -138,7 +135,6 @@ describe("disabled feature execution boundaries", () => {
 				undefined,
 				ctx(root),
 			);
-			// runs.all admits the batch together, so neither child launches.
 			const error = `workflow child 'remote' option 'machine' is disabled by config disabledFeatures "external-machines".`;
 			assert.deepEqual((result.details.workflow?.value as Array<{ key: string; ok: boolean; error?: string }>).map(({ key, ok, error }) => ({ key, ok, error })), [
 				{ key: "local", ok: false, error },
@@ -176,7 +172,6 @@ describe("disabled feature discovery", () => {
 		for (const toolDescriptionMode of [undefined, "full"] as const) {
 			const description = buildSubagentToolDescription({ toolDescriptionMode }, { disabledFeatures });
 			for (const text of featureText) assert.ok(!description.includes(text), `${toolDescriptionMode ?? "default"} description still has ${text}`);
-			// Every safety line stays; with workflow-scripts disabled only the script-writing wording changes.
 			for (const line of SUBAGENT_SAFETY_GUIDANCE.split("\n").filter((text) => !/runs\.|workflow call/.test(text))) assert.ok(description.includes(line), `${toolDescriptionMode ?? "default"} description lacks safety line ${line}`);
 			if (toolDescriptionMode === "full") assert.match(description, /Thinking uses model suffix\./);
 		}

@@ -162,26 +162,12 @@ export function resolveMcpDirectToolSelections(
 	return resolveMcpDirectToolResolution(mcpDirectTools, cwd, runtimeSnapshotHost).selections;
 }
 
-/**
- * pi-mcp-adapter keeps priority whenever it is loaded. 2.x registers /mcp, so Pi does not load its
- * built-in MCP. 3.x always registers /mcp-adapter and leaves /mcp to the built-in MCP.
- */
 function usesBuiltinMcp(host: McpRuntimeSnapshotHost | undefined): host is McpRuntimeSnapshotHost {
 	const commands = host?.getCommands?.() ?? [];
 	return commands.find((command) => command.name === "mcp")?.sourceInfo.path === "builtin:mcp"
 		&& !commands.some((command) => /^mcp-adapter(?::\d+)?$/.test(command.name));
 }
 
-/**
- * Pi names built-in MCP tools `mcp__<server>__<tool>` with everything but `[A-Za-z0-9_]` replaced
- * by `_`, in the namespace `mcp__<server>` with `-` replaced by `_`. Selectors name the raw tool;
- * the server part may be the configured name or its `-`→`_` form, since Pi refuses two servers
- * whose names differ only in `-` and `_`. An overlong name, or one an earlier tool already took (`a_b`
- * before `a.b`), gets a suffix hashed from the raw server and tool (Pi's `createMcpToolName`), so
- * that suffixed name identifies the tool, and only the configured server name selects it. The
- * unsuffixed name may belong to another raw tool; the
- * child checks each granted tool's raw identity before it exposes the tool.
- */
 function resolveBuiltinMcpSelections(selectors: string[], tools: readonly McpHostToolInfo[]): McpDirectToolResolution {
 	const selections: ResolvedMcpDirectToolSelection[] = [];
 	const unresolvedSelectors: string[] = [];
@@ -199,7 +185,6 @@ function resolveBuiltinMcpSelections(selectors: string[], tools: readonly McpHos
 	return { selections, unresolvedSelectors, builtin: true };
 }
 
-/** The names Pi's `createMcpToolName` can give a raw tool, the hash-suffixed one first. */
 function builtinMcpToolNames(server: string, tool: string): string[] {
 	const name = `mcp__${server}__${tool}`.replace(/[^A-Za-z0-9_]/g, "_");
 	const hash = createHash("sha256").update(`${server}\0${tool}`).digest("hex").slice(0, 8);
@@ -298,7 +283,6 @@ function resolveRuntimeMcpServers(
 			const snapshot = getRuntimeMcpServerSnapshot(runtimeSnapshotHost, serverName);
 			runtimeServers[serverName] = snapshot.definition;
 		} catch {
-			// Missing, disposed, or shadowed runtime servers remain unresolved below.
 		}
 	}
 	return runtimeServers;
@@ -352,8 +336,7 @@ function loadMcpConfig(cwd: string): McpConfig {
 function getConfigPaths(projectRoot: string): string[] {
 	const agentDir = getAgentDir();
 	const projectDir = getProjectConfigDir(projectRoot);
-	// pi-mcp-adapter 3.x reads mcp-adapter.json. Pi's own mcp.json files belong to
-	// Pi's built-in MCP support, so servers there are never adapter-registered.
+	// external: pi-mcp-adapter 3.x reads mcp-adapter.json; Pi built-in MCP uses mcp.json.
 	const candidates = [
 		GENERIC_GLOBAL_CONFIG_PATH,
 		path.join(agentDir, "mcp-adapter.json"),
@@ -471,8 +454,7 @@ function isServerCacheValid(entry: ServerCacheEntry | undefined, definition: Ser
 }
 
 export function computeMcpServerHash(definition: ServerEntry): string {
-	// Aligned with pi-mcp-adapter's computeServerHash; since 3.1.0 stdio hashes include
-	// inheritEnv/literalEnv. A mismatch leaves that server's cached direct-tool selectors unresolved.
+	// external: pi-mcp-adapter 3.1.0 includes inheritEnv and literalEnv in stdio server hashes.
 	const isStdio = definition.command !== undefined;
 	const literalEnv = isStdio && definition.literalEnv === true;
 	const identity: Record<string, unknown> = {

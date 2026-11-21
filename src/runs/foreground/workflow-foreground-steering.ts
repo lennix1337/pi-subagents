@@ -109,7 +109,6 @@ export async function steerWorkflowRun(input: {
 	} catch (error) {
 		return managementError(`Failed to queue steering for workflow ${runId}: ${error instanceof Error ? error.message : String(error)}`);
 	}
-	// Only the owner writes the ledger. No acknowledgment leaves an honest, unaddressed queued receipt.
 	const steering = await waitForSteeringAction({ asyncDir, sourceRunId: runId, requestId, timeoutMs: input.ackTimeoutMs ?? 3_000, signal: input.signal })
 		?? { requestId, state: "pending" as const, deliveryStatus: "queued" as const, sourceRunId: runId, targets: input.index === undefined ? [] : [{ index: input.index, state: "pending" as const }] };
 	const failed = steering.state === "failed" || steering.state === "partial";

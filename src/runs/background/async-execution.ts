@@ -1,6 +1,3 @@
-/**
- * Async execution logic for subagent tool
- */
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -97,7 +94,6 @@ import { assertWorkflowLaneKey, normalizeWorkflowLaneMetadata } from "../shared/
 import { assertRequiredChildExtensionsAdmitted, resolveRequiredChildExtensions, writeRetainedRequiredChildExtensions, type RequiredChildExtensionSnapshot } from "../../shared/required-child-extensions.ts";
 
 const require = nodeModule.createRequire(import.meta.url);
-// Cache failures as well as roots: management must remain loadable, and launches must not retry another SDK.
 const piPackageSelection = ((): { root?: string } | { error: unknown; root?: never } => {
 	try {
 		return { root: resolveHostPiPackageRoot() };
@@ -145,7 +141,6 @@ function resolveJitiCliPath(): string | undefined {
 			const cliPath = resolveJitiCliFromPackageJson(packageJsonPath);
 			if (cliPath) return cliPath;
 		} catch {
-			// Candidate not available in this install, continue probing.
 		}
 	}
 	return undefined;
@@ -153,7 +148,6 @@ function resolveJitiCliPath(): string | undefined {
 
 const jitiCliPath = resolveJitiCliPath();
 const asyncRunnerModuleDir = path.dirname(fileURLToPath(import.meta.url));
-// Resolved per launch: an in-place package update can swap a sibling's .ts for .js.
 function asyncRunnerSourcePath(): string {
 	return resolveRuntimeModulePath(asyncRunnerModuleDir, "subagent-runner-bootstrap");
 }
@@ -167,7 +161,7 @@ function supportsNativeRunner(nodeExecutable: string): boolean {
 	&& !sourceUnderNodeModules();
 }
 
-interface AsyncExecutionContext {
+export interface AsyncExecutionContext {
 	pi: ExtensionAPI;
 	cwd: string;
 	currentSessionId: string;
@@ -195,7 +189,7 @@ interface AsyncExecutionContext {
 
 export const DEFAULT_ASYNC_TIMEOUT_MS = 30 * 60 * 1000;
 
-interface AsyncChainParams {
+export interface AsyncChainParams {
 	chain: ChainStep[];
 	task?: string;
 	/** Raw caller-facing goal used only by the started event. */
@@ -260,7 +254,7 @@ interface AsyncChainParams {
 	activeAsyncCapacity?: ActiveAsyncCapacityHandle;
 }
 
-interface AsyncSingleParams {
+export interface AsyncSingleParams {
 	/** Originating executor invocation, distinct from the async run id. */
 	toolCallId?: string;
 	agent: string;
@@ -443,13 +437,9 @@ function closeFd(fd: number | undefined): void {
 	try {
 		fs.closeSync(fd);
 	} catch {
-		// Best-effort cleanup; child process already owns its duplicated stdio fd.
 	}
 }
 
-/**
- * Spawn the async runner process
- */
 const RUNNER_STARTUP_TIMEOUT_MS = 10_000;
 type RunnerStartupState = "ready" | "acknowledged" | "confirmed" | "identified";
 
@@ -511,11 +501,6 @@ async function waitForRunnerStartup(startupPath: string, expectedState: RunnerSt
 const writePrivateStartupControlJson = createAtomicJsonWriter({ mode: 0o600, ignoreCleanupErrorAfterSuccess: true });
 
 function writeRunnerStartupControl(filePath: string, payload: { action: "ack" | "confirm" | "proceed"; token: string }): void {
-	// Delegate to the shared atomic JSON writer (temp file + rename, retrying
-	// transient Windows EPERM/EBUSY/EACCES locks and cleaning up the temp file
-	// on failure), so the startup handshake gets the same locking resilience as
-	// every other async control/result file. This is exercised by
-	// test/unit/atomic-json.test.ts.
 	writePrivateStartupControlJson(filePath, payload);
 }
 
@@ -531,7 +516,6 @@ function runnerIsAlive(pid: number): boolean {
 function waitForStartupIntervalSync(delayMs = 20): void {
 	const waitUntil = Date.now() + delayMs;
 	while (Date.now() < waitUntil) {
-		// Pre-handshake failures happen before the runner can be observed asynchronously.
 	}
 }
 
@@ -571,7 +555,6 @@ async function completeRunnerStartupHandshake(
 	getObservedProcessExit: () => { exitCode: number | null; signal: NodeJS.Signals | null } | undefined,
 	runnerProcessInstanceId: string,
 	persistStartupFailure: (message: string) => void,
-	// Behind a launcher the spawned pid is only the wrapper's: adopt the runner-reported pid and never signal the wrapper.
 	launcherIdentity?: { adopt: (pid: unknown, pidNamespaceScope: unknown) => string | undefined; terminate: () => boolean },
 ): Promise<SpawnRunnerResult> {
 	const terminateRunnerBeforeProceedAsync = async (proc: ChildProcess, processClosed: Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>) => launcherIdentity ? launcherIdentity.terminate() : terminateRunnerBeforeProceedAsyncDefault(proc, processClosed);
@@ -639,7 +622,6 @@ function persistPreProceedStartupFailure(asyncDir: string, runId: string, runner
 	try {
 		persistRunnerStartupFailure({ asyncDir, runId, runnerProcessInstanceId, sessionId, completionOwnerId, message });
 	} catch {
-		// Startup failures must still return the original launch error.
 	}
 }
 
@@ -677,7 +659,6 @@ function spawnRunner(cfg: object, suffix: string, cwd: string, initialStatus: Om
 		: (isDynamicRunnerGroup(step) ? step.parallel.parentSessionId : step.parentSessionId) !== launchParentSessionId);
 	if (inconsistentParent) return { error: "Background runner steps have inconsistent parent session identities." };
 
-	// The compiled host exposes its SDK only through Pi's extension loader.
 	const binaryHost = resolveBunPiExecutable();
 	if (!binaryHost && "error" in piPackageSelection) throw piPackageSelection.error;
 	const nodeExecutable = resolveNodeExecutable();
@@ -704,9 +685,6 @@ function spawnRunner(cfg: object, suffix: string, cwd: string, initialStatus: Om
 	const runnerProcessInstanceId = randomUUID();
 	const hasRevivalLease = typeof (cfg as { revivalLease?: unknown }).revivalLease === "object";
 	const launchBarrierToken = hasRevivalLease ? undefined : runnerProcessInstanceId;
-	// A broker launcher may start the runner outside its own process, even under another kernel, so the
-	// spawned pid is only the wrapper's and only a direct runner shares Pi's boot id. The runner reports
-	// its own identity before it is allowed to proceed.
 	const launcher = (cfg as { launcher?: RunnerLauncher }).launcher;
 	const bootId = launcher ? undefined : currentBootId();
 	const launchConfig = { ...cfg, runnerProcessInstanceId, ...(launchBarrierToken ? { launchBarrierToken } : {}), ...(bootId ? { bootId } : {}) };
@@ -732,7 +710,6 @@ function spawnRunner(cfg: object, suffix: string, cwd: string, initialStatus: Om
 	const identityPath = launcher && launchBarrierToken && launchAsyncDir ? path.join(launchAsyncDir, "runner-startup.json") : undefined;
 	if (identityPath) fs.rmSync(identityPath, { force: true });
 	let runnerIdentity: { pid: number; pidNamespaceScope?: string } | undefined;
-	// Wrapper exit is not runner exit, so only a reported runner in this namespace may be signalled.
 	const terminateBeforeProceed = (pid: number): boolean => !launcher
 		? terminateRunnerBeforeProceed(pid)
 		: runnerIdentity !== undefined && runnerIdentity.pidNamespaceScope === currentPidNamespaceScope() && terminateRunnerBeforeProceed(runnerIdentity.pid);
@@ -757,7 +734,6 @@ function spawnRunner(cfg: object, suffix: string, cwd: string, initialStatus: Om
 			stdoutFd = fs.openSync(logPaths.stdoutPath, "a");
 			stderrFd = fs.openSync(logPaths.stderrPath, "a");
 		}
-		// Short-circuit native peer aliases so Pi's loader and generated factories preserve filesystem resolution semantics.
 		const preload = Object.keys(hostPeerAliases.aliases).length > 0
 			? ["--import", new URL("../../../runner-peer-preload.mjs", import.meta.url).href]
 			: [];
@@ -772,7 +748,6 @@ function spawnRunner(cfg: object, suffix: string, cwd: string, initialStatus: Om
 			...omitGitRoutingEnv(omitExtensionBindingsEnv(process.env)),
 			...childCacheRetentionEnv(),
 			[PI_CODING_AGENT_PACKAGE_ROOT_ENV]: binaryHost ? undefined : piPackageRoot,
-			// npm must override inherited bundled layouts (#2071); binaries retain release assets.
 			PI_PACKAGE_DIR: binaryHost ? process.env.PI_PACKAGE_DIR : piPackageRoot,
 			[JITI_ALIAS_ENV]: binaryHost ? undefined : JSON.stringify(hostPeerAliases.aliases),
 			PI_ASYNC_NATIVE_RUNNER: !binaryHost && (runnerIsJavaScript || nativeRunnerSupported) ? "1" : "0",
@@ -810,10 +785,7 @@ function spawnRunner(cfg: object, suffix: string, cwd: string, initialStatus: Om
 				try {
 					writePrivateAtomicJson(path.join(asyncDir, "launcher-close.json"), { version: 1, runId, runnerProcessInstanceId, closeObservedAt: Date.now(), exitCode, signal, ...(runnerIdentity ? { runnerPid: runnerIdentity.pid } : {}) });
 				} catch {
-					// Diagnostic only; process-terminal proof stays authoritative.
 				}
-				// The runner may outlive its wrapper; only a confirmed-dead runner in this pid namespace finalizes here,
-				// otherwise status-pid reconciliation does it later.
 				if (!runnerIdentity || runnerIdentity.pidNamespaceScope !== currentPidNamespaceScope()
 					|| checkRecordedPidLiveness(runnerIdentity) !== "dead") return;
 			}
@@ -874,7 +846,6 @@ function spawnRunner(cfg: object, suffix: string, cwd: string, initialStatus: Om
 				...(launcher ? {} : { pid: proc.pid, pidNamespaceScope: currentPidNamespaceScope(), ...(bootId ? { bootId } : {}) }),
 				processTerminal: { version: 1, state: "pending", runId: initialStatus.runId, runnerProcessInstanceId },
 			});
-			// Aggregate waits must see the launch before the runner's first status update.
 			updateActiveRunIndex(path.dirname(initialStatusPath), initialStatus.state, initialStatus.toolCallId);
 		} catch (error) {
 			const message = `Failed to persist initial async status: ${error instanceof Error ? error.message : String(error)}`;
@@ -1003,8 +974,6 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 	} = params;
 	const instructionFileError = instructionFileChainPlacementError(chain, agents, params.machine);
 	if (instructionFileError) return { error: instructionFileError };
-	// One runner hosts every new step, so they share one launcher or none. Covers initial chains and
-	// appends to a running runner; the attached root runs in its own runner.
 	const stepLaunchers = [...new Set(chain.flatMap(getStepAgents))].map((name) => ({ name, launcher: agents.find((agent) => agent.name === name)?.launcher }));
 	const launcherNames = new Set(stepLaunchers.map(({ launcher }) => launcher));
 	if (launcherNames.size > 1) {
@@ -1108,8 +1077,6 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 				throw new AsyncStartValidationError(error instanceof Error ? error.message : String(error));
 			}
 		}
-		// A code-owned Claude Code adapter owns its argv, but it does accept an explicit
-		// model/thinking request; those become --model/--effort on the launch below.
 		const claudeCodeAdapter = a.runner?.type === "external-cli" && isClaudeCodeAdapterId(a.runner.adapter);
 		if (externalRunner) {
 			const unsupported: string[] = [];
@@ -1174,7 +1141,6 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 		taskTemplate = taskTemplate.replace(/\{task\}/g, originalTask ?? "");
 		taskTemplate = taskTemplate.replace(/\{chain_dir\}/g, behaviorCwd ?? runnerCwd);
 		const taskText = `${readInstructions.prefix}${taskTemplate}${progressInstructions.suffix}`;
-		// A namespaced parallel output path is added to each child's task by the runner.
 		const task = namespaceOutputPath ? taskText : injectSingleOutputInstruction(taskText, outputPath, a);
 
 		const modelScopes = resolveModelScopesForAgent(ctx.modelScope, a.name, ctx.currentModel, ctx.scopedModelIds);
@@ -1517,7 +1483,6 @@ export function executeAsyncChain(
 			(step, parallel) => Array.isArray(step.parallel) ? { parallel } : { acceptance: "acceptance" in step ? step.acceptance : undefined, parallel }),
 	});
 	if (acceptanceErrors.length > 0) return formatAsyncStartError(resultMode, acceptanceErrors.join(" "));
-	// Refuse an undefined launcher before the run directory exists and before step building can write progress files.
 	const undefinedLauncher = chain.flatMap(getStepAgents).map((name) => agents.find((agent) => agent.name === name)?.launcher)
 		.find((name) => name !== undefined && !lookupRunnerLauncher(ctx.runnerLaunchers, name));
 	if (undefinedLauncher !== undefined) return formatAsyncStartError(resultMode, `Launcher '${undefinedLauncher}' used by this ${resultMode} is not defined in runnerLaunchers in the user subagent config.`);
@@ -1583,7 +1548,6 @@ export function executeAsyncChain(
 		try {
 			fs.rmSync(asyncDir, { recursive: true, force: true });
 		} catch {
-			// Best-effort cleanup for validation failures before the runner is spawned.
 		}
 		return formatAsyncStartError(resultMode, built.error);
 	}
@@ -1710,7 +1674,6 @@ export function executeAsyncChain(
 		return formatAsyncStartError(resultMode, `Failed to start async ${resultMode} '${id}': ${message}`);
 	}
 
-	// A launcher run's spawn resolves once the runner reports its identity.
 	const finishSpawnResult = (spawnResult: SpawnRunnerResult): AsyncExecutionResult => {
 	if (spawnResult.error) {
 		if (spawnResult.startupDidNotProceed) {
@@ -1890,8 +1853,6 @@ export function executeAsyncSingle(
 	const externalRunner = agentConfig.runner?.type === "external-cli" || agentConfig.runner?.type === "external-job";
 	const externalRunnerType = agentConfig.runner?.type;
 	const permissionRules = resolvePermissionRules(ctx.permissions, agentConfig.permissions);
-	// See the chain path: the Claude Code adapter accepts an explicit model/thinking
-	// request even though no other external runner does.
 	const claudeCodeAdapter = agentConfig.runner?.type === "external-cli" && isClaudeCodeAdapterId(agentConfig.runner.adapter);
 	if (externalRunner) {
 		const unsupported: string[] = [];
@@ -1917,7 +1878,6 @@ export function executeAsyncSingle(
 	const requestedMachine = params.machine ?? agentConfig.machine;
 	const machineUnsupported = formatHerdrMachineRunnerUnsupported({ machine: requestedMachine, agentName: agentConfig.name, runnerType: agentConfig.runner?.type, adapter: agentConfig.runner?.type === "external-cli" ? agentConfig.runner.adapter : undefined, worktree: params.worktree });
 	if (machineUnsupported) return formatAsyncStartError("single", machineUnsupported);
-	// Refuse before the runner starts: a placed child cannot restore a local transcript.
 	if (requestedMachine && params.revivalLease) return formatAsyncStartError("single", PLACED_RESTORE_UNSUPPORTED);
 	const resolvedLauncher = resolveAgentRunnerLauncher(agentConfig, ctx.runnerLaunchers, requestedMachine);
 	if (resolvedLauncher.error) return formatAsyncStartError("single", resolvedLauncher.error);
@@ -1992,8 +1952,6 @@ export function executeAsyncSingle(
 	const validationError = validateFileOnlyOutputMode(outputMode, outputPath, `Async single run (${agent})`);
 	if (validationError) return formatAsyncStartError("single", validationError);
 	const taskWithOutputInstruction = injectSingleOutputInstruction(task, outputPath, agentConfig);
-	// Reads: caller override > agent defaultReads > none. `~`/`~/` expand to home;
-	// absolute paths pass through; relative paths resolve against the child cwd.
 	const reads = params.reads !== undefined ? params.reads : agentConfig.defaultReads ?? false;
 	const readPaths = Array.isArray(reads)
 		? machine

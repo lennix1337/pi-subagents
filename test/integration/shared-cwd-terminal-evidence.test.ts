@@ -7,7 +7,6 @@ import * as path from "node:path";
 import { test } from "node:test";
 import { ASYNC_DIR, RESULTS_DIR, observeSharedCwdRunner } from "../support/async-execution-fixture.ts";
 
-// Synthetic lifecycle only: no runner, providers, polling, or Windows control.
 test("shared-cwd failure artifact preserves correlated allowlisted lifecycle once", () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "terminal-evidence-"));
 	const previous = process.env.PI_SUBAGENTS_TERMINAL_EVIDENCE_DIR;

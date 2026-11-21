@@ -43,7 +43,7 @@ describe("supervisor command actions", () => {
 			const state = liveState(runId);
 			const target = kind === "foreground" ? { kind, id: runId } : { kind, id: runId, location: { resolvedId: runId, asyncDir: dir, resultPath: null } };
 			if (kind === "async") fs.writeFileSync(path.join(dir, "status.json"), JSON.stringify({ runId, sessionId: "session-1", state: "running", steps: [{ agent: "worker", status: "running" }, { agent: "worker", status: "running" }] }));
-			// On Windows, Pi ends a cancelled command with a taskkill it does not await.
+			// external: On Windows Pi ends a cancelled command with an unawaited taskkill.
 			const pidFile = path.join(dir, "command.pid");
 			fs.writeFileSync(path.join(dir, "hold.cjs"), `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setTimeout(() => {}, 10_000);`);
 			let pid: number | undefined;

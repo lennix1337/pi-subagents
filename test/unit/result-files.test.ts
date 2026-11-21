@@ -271,8 +271,6 @@ describe("result file indexes", () => {
 	});
 
 	it("leaves nothing behind once a consumer has taken the payload, wherever the writer is interrupted", (t) => {
-		// Renames are the only writer steps readers can see. A consumer starts polling at each
-		// one in turn; from the moment its cleanup returns, nothing may reappear.
 		for (let startAt = 0, points = Infinity; startAt <= points; startAt++) {
 			const resultsDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-result-files-consumed-"));
 			const resultPath = path.join(resultsDir, "workflow-result.json");
@@ -589,7 +587,6 @@ describe("result file indexes", () => {
 describe("a run's paused result replaced by its final result", () => {
 	const runId = "replaced-run";
 	const sessionId = "session-a";
-	// The runner's paused result has no tool-call id and its final result adds one; state and timestamp can match.
 	const paused = (asyncDir: string) => ({ id: runId, runId, sessionId, asyncDir, state: "paused", timestamp: 1_000, summary: "Paused." });
 	const final = (asyncDir: string) => ({ id: runId, toolCallId: "call-a", sessionId, asyncDir, state: "paused", timestamp: 1_000, summary: "Paused after interrupt. Waiting for explicit next action." });
 	const publishPaused = (publicPath: string): void => withResultRunLease(path.dirname(publicPath), runId, () => writePendingAsyncResultFile(publicPath, paused(path.dirname(publicPath))));
@@ -693,7 +690,6 @@ describe("a run's paused result replaced by its final result", () => {
 			publishPaused(publicPath);
 			resultPayloadPathForIndexedRun(dir, runId);
 			const read = readPublic(publicPath);
-			// The final result's promotion is denied, so it stays pending next to the public paused result.
 			t.mock.method(fsDefault, "renameSync", (source: fs.PathLike, target: fs.PathLike) => {
 				if (String(target) === publicPath) throw Object.assign(new Error("denied"), { code: "EPERM" });
 				return originalRenameSync(source, target);
@@ -703,7 +699,6 @@ describe("a run's paused result replaced by its final result", () => {
 			t.mock.restoreAll();
 			assert.equal(fs.readFileSync(publicPath, "utf-8"), read.snapshot);
 			assert.equal(fs.existsSync(pendingPath(dir, sessionId, runId)), true);
-			// Another process's ordinary lookup promotes the pending final result just before a deletion.
 			let promoted = false;
 			t.mock.method(fsDefault, "rmSync", (target: fs.PathLike, options?: fs.RmOptions) => {
 				if (!promoted) {
@@ -733,7 +728,6 @@ describe("a run's paused result replaced by its final result", () => {
 				publishPaused(publicPath);
 				resultPayloadPathForIndexedRun(dir, runId);
 				const stalePublic = fs.readFileSync(publicPath, "utf-8");
-				// The final result's promotion is denied, so the consumer reads it from pending beside the paused one.
 				t.mock.method(fsDefault, "renameSync", (source: fs.PathLike, target: fs.PathLike) => {
 					if (String(target) === publicPath) throw Object.assign(new Error("denied"), { code: "EPERM" });
 					return originalRenameSync(source, target);

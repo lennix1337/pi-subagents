@@ -25,10 +25,8 @@ const user = (timestamp: number, content = "task"): Message => ({ role: "user", 
 const declared = (messages: Message[]) => getCurrentTools(messages).map((entry) => entry.name);
 const subagentCalls = (messages: Message[]) => messages.flatMap((entry) => entry.role === "assistant" ? entry.content.filter((block) => block.type === "toolCall" && block.name === "subagent").map((block) => (block as { id: string }).id) : []);
 const text = (message: Message | undefined) => typeof message?.content === "string" ? message.content : JSON.stringify(message?.content);
-/** What a request sends when the session holds `messages`, which also stand for the session. */
 const project = (messages: Message[], options: { session?: Message[]; boundary?: string } = {}) => projectForkRequest(messages, systemMessagesBefore(options.session ?? messages, FORKED_AT), FORKED_AT, { boundary: options.boundary });
 
-/** A parent whose prompt declares a base text, a role section and tools, then a fork's own prompt and task. */
 const parentHead = system(10, { content: "Parent base prompt.", sections: { preamble: "<preamble>parent</preamble>", tools: "<tools>a b c</tools>" }, added: [tool("a"), tool("b"), tool("c")] });
 const forkSession = (): Message[] => [
 	parentHead,
@@ -178,7 +176,6 @@ describe("a forked child session", () => {
 
 	type Request = { tools: string[]; declarations: string; results: Message[]; messages: Message[] };
 
-	/** Runs a real SDK session on `sessionFile` and returns what each provider request declared. */
 	type Launch = Partial<Parameters<typeof buildInProcessChildLaunch>[0]>;
 	async function run(options: { sessionFile: string; tools: string[]; replies: Array<ReturnType<typeof fauxAssistantMessage>>; forkCacheKey?: string; launch?: Launch; hooks?: Array<(pi: ExtensionAPI) => void> }): Promise<Request[]> {
 		const faux = fauxProvider({ provider: "probe", models: [{ id: "local" }], tokensPerSecond: 100_000 });
@@ -212,12 +209,10 @@ describe("a forked child session", () => {
 		const [parentRequest] = await run({ sessionFile: parentFile, tools: parent.tools ?? ["read", "bash", "ls"], replies: [fauxAssistantMessage("done")], hooks: parent.hooks });
 		const { SessionManager } = await import("@earendil-works/pi-coding-agent");
 		const manager = SessionManager.open(parentFile, path.join(root, `${name}-forks`));
-		// The parent launched this fork through `subagent` and got a notice from an earlier run.
 		manager.appendMessage({ role: "custom", customType: "subagent-notify", content: "PARENT-NOTICE", display: false, timestamp: Date.now() } as never);
 		manager.appendMessage({ ...fauxAssistantMessage(fauxToolCall("subagent", { agent: "worker", task: "earlier" }, { id: "call_subagent_1" }), { stopReason: "toolUse" }), timestamp: Date.now() });
 		manager.appendMessage({ role: "toolResult", toolCallId: "call_subagent_1", toolName: "subagent", content: [{ type: "text", text: "PARENT-SUBAGENT-RESULT" }], isError: false, timestamp: Date.now() } as never);
 		manager.appendMessage({ ...fauxAssistantMessage(fauxToolCall("subagent", { agent: "worker", task: "this fork" }, { id: "call_subagent_2" }), { stopReason: "toolUse" }), timestamp: Date.now() });
-		// A real fork comes after its parent's messages; keep them apart by more than a millisecond here.
 		await new Promise((resolve) => setTimeout(resolve, 5));
 		const forkFile = manager.createBranchedSession(manager.getLeafId()!)!;
 		return { forkFile, parentTools: parentRequest!.tools, parentDeclarations: parentRequest!.declarations, parentSystem: parentRequest!.messages.filter((entry) => entry.role === "system") };
@@ -300,7 +295,6 @@ describe("a forked child session", () => {
 	it("keeps its working contact_supervisor in a background runner that loads this package as an ambient extension", async () => {
 		const extensions = path.join(process.env.PI_CODING_AGENT_DIR!, "extensions");
 		fs.mkdirSync(extensions, { recursive: true });
-		// This package's own entry point, loaded the way a runner child discovers an installed copy.
 		const loaded = path.join(root, "ambient-loaded");
 		fs.mkdirSync(path.join(extensions, "pi-subagents"));
 		fs.writeFileSync(path.join(extensions, "pi-subagents", "index.ts"), [

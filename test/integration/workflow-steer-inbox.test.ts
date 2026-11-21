@@ -1,11 +1,3 @@
-/**
- * Integration tests for the durable steer inbox of async WORKFLOW runs.
- *
- * `watchAsyncControlInbox` is installed only by subagent-runner.ts, and the runner never executes
- * workflow scripts, so before this fix no process consumed `control/steer-requests/` for a
- * workflow run: a queued request file sat on disk until the run ended and the requester's
- * "delivered" receipt was never backed by a delivery.
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -233,15 +225,12 @@ describe("async workflow steer inbox", { skip: !available ? "pi packages not ava
 		const asyncDir = path.join(ASYNC_DIR, runId);
 
 		try {
-			// The child is now live and parked on the release path, so the workflow run is genuinely
-			// steerable: the only question is whether anything consumes its inbox.
 			await waitForMockPiCall(mockPi, 0, 10_000);
 			requestAsyncSteer(asyncDir, { message: "Focus on the failing test.", id: "workflow-steer-1", ts: Date.now() });
 
 			const status = await waitForAsyncState(runId, (candidate) => recentSteering(candidate, "workflow-steer-1") !== undefined, 15_000);
 			const target = recentSteering(status, "workflow-steer-1");
 			assert.equal(target?.state, "delivered", `expected a real delivery, got ${JSON.stringify(target)}`);
-			// The request file must be consumed, not left on disk for the life of the run.
 			assert.deepEqual(fs.readdirSync(steerRequestsDir(asyncDir)), []);
 
 			const steers = fs.readFileSync(path.join(mockPi.dir, "steers.jsonl"), "utf-8").trim().split("\n").map((line) => JSON.parse(line) as { text: string });
@@ -308,8 +297,6 @@ describe("async workflow steer inbox", { skip: !available ? "pi packages not ava
 		};
 		try {
 			await waitForMockPiCall(mockPi, 0, 10_000);
-			// Hold a transport-written request outside the watched inbox until A disappears.
-			// This controls queue-to-consumption delay without changing the watcher or child lifecycle.
 			const heldDir = path.join(tempDir, "held-steer");
 			if (!parallel) {
 				requestAsyncSteer(heldDir, { id: "disappeared-A", message: "disappeared-A", targetIndex: 0 });
@@ -358,7 +345,6 @@ describe("async workflow steer inbox", { skip: !available ? "pi packages not ava
 		const asyncDir = path.join(ASYNC_DIR, runId);
 
 		await waitForAsyncState(runId, (candidate) => candidate.state === "complete", 15_000);
-		// A terminal run must refuse new steering rather than accept a request nothing will read.
 		assert.equal(fs.existsSync(steerInboxClosedPath(asyncDir)), true, "the steer inbox must be closed at teardown");
 		assert.throws(
 			() => requestAsyncSteer(asyncDir, { message: "Too late.", id: "workflow-steer-late", ts: Date.now() }),

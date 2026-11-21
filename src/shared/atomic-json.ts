@@ -73,8 +73,6 @@ export function createAtomicJsonWriter(options: AtomicJsonWriterOptions = {}): (
 			try {
 				fsImpl.rmSync(tempPath, { force: true });
 			} catch (cleanupError) {
-				// Preserve the write/rename failure: cleanup is best effort and must
-				// not hide the error callers need to classify or report.
 				if (writeError === undefined && !ignoreCleanupErrorAfterSuccess) throw cleanupError;
 			}
 		}

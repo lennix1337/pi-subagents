@@ -1,12 +1,3 @@
-/**
- * In-process child sessions.
- *
- * A child is a pi `AgentSession` created inside the process that owns it: the
- * parent pi process for foreground children, the detached runner process for
- * background children. The factory is injectable so tests can script a child
- * without the real runtime; the default implementation wraps
- * `createAgentSession` from a pi package module.
- */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -169,7 +160,6 @@ type ModelRuntimeInstance = Awaited<ReturnType<PiCodingAgentModule["ModelRuntime
 
 export type ParentProviderRegistry = Pick<ModelRuntimeInstance, "getRegisteredProviderIds" | "getRegisteredProviderConfig" | "getRegisteredNativeProvider">;
 
-/** Registers the parent's providers this child did not claim itself and returns their ids. */
 function inheritParentProviders(modelRuntime: ModelRuntimeInstance, parentProviders: ParentProviderRegistry, claimedProviderIds: ReadonlySet<string>, onError: ((error: ChildSessionExtensionError) => void) | undefined): Set<string> {
 	let providerIds: readonly string[];
 	try {
@@ -198,7 +188,7 @@ function inheritParentProviders(modelRuntime: ModelRuntimeInstance, parentProvid
 
 const CHILD_PROMPT_RUNTIME_EXTENSION_PATH = "<inline:pi-subagents:prompt-runtime>";
 const CHILD_PROMPT_BOUNDARY_EXTENSION_PATH = "<inline:pi-subagents:prompt-boundary>";
-/** Same class as UNICODE_SPACES in pi-coding-agent dist/utils/paths.js, which resolvePath(..., { normalizeUnicodeSpaces: true }) replaces with a space. */
+// external: Pi normalizes Unicode spaces in paths.
 const PI_UNICODE_SPACES = new RegExp("[\\u00A0\\u2000-\\u200A\\u202F\\u205F\\u3000]", "g");
 
 function childExtensionFileIdentity(extensionPath: string): string | undefined {
@@ -217,15 +207,11 @@ function createRequiredChildExtensionIdentity(requiredPaths: ReadonlySet<string>
 		if (known !== undefined || identities.size === 0) return known;
 		const identity = childExtensionFileIdentity(extensionPath);
 		if (identity === undefined || !identities.has(identity)) return undefined;
-		// Retain the alias even if the extension removes its file before reporting a failure.
 		aliases.set(extensionPath, identity);
 		return identity;
 	};
 }
 
-/** The prompt runtime filters parent-only context before ambient extensions inspect
- *  the child prompt, and the boundary hook appends the child boundary after every
- *  extension has added its prompt sections. Every other extension keeps its order. */
 function orderChildPromptHooks<T extends { extensions: Array<{ path: string }> }>(result: T): T {
 	const runtime = result.extensions.filter(({ path }) => path === CHILD_PROMPT_RUNTIME_EXTENSION_PATH);
 	const boundary = result.extensions.filter(({ path }) => path === CHILD_PROMPT_BOUNDARY_EXTENSION_PATH);
@@ -233,7 +219,6 @@ function orderChildPromptHooks<T extends { extensions: Array<{ path: string }> }
 	return { ...result, extensions: [...runtime, ...others, ...boundary] };
 }
 
-/** Ambient bash overrides keep their original backend and priority. */
 function prioritizeChildCommandRuntime<T extends { extensions: Array<{ path: string; tools?: Map<string, unknown> }> }>(result: T): T {
 	const index = result.extensions.findIndex(({ path }) => path === "<inline:pi-subagents:commands>");
 	if (index < 0) return result;
@@ -257,23 +242,14 @@ function prioritizeChildCommandRuntime<T extends { extensions: Array<{ path: str
 	return { ...result, extensions };
 }
 
-/** One launch at a time from env application through `session_start`, so parallel launches never observe each other's `processEnv` while their extensions load and start. */
 let loading: Promise<unknown> = Promise.resolve();
 
-/**
- * pi caches extension factories per process and clears that cache only when a
- * loader reloads a second time, so every child in one process would share each
- * extension's module state. Marking the child's loader as already loaded makes
- * its first `reload()` clear the cache, so the child gets its own instances the
- * way a separate process had them. The flag is a private field of pi's loader.
- */
 function resetExtensionCacheOnReload(loader: object): boolean {
 	if (!("loaded" in loader)) return false;
 	(loader as { loaded: boolean }).loaded = true;
 	return true;
 }
 
-/** Applies `values` to `process.env` and returns a function that puts back the values they replaced. */
 function applyProcessEnv(values: Record<string, string | undefined> | undefined): () => void {
 	if (!values) return () => {};
 	const previous = Object.keys(values).map((name) => [name, process.env[name]] as const);
@@ -289,21 +265,8 @@ function applyProcessEnv(values: Record<string, string | undefined> | undefined)
 	};
 }
 
-/**
- * Pi's built-in MCP extension registers server tools with the configured exposure, `codemode` by
- * default, which the child's `tools` allowlist cannot declare. Registering the selected names as
- * `direct` makes them model-declared and callable; `hidden` stays hidden. A name counts only when
- * the tool's raw identity, its `<server>/<tool>` label, matches the granting selector: Pi can give
- * the sanitized name of `srv/a.b` to `srv/a_b`. The selector's server part may be the configured
- * name or its `-`→`_` form, which Pi's namespace uses: Pi refuses two servers whose names differ
- * only in `-` and `_`, so both forms name the same server. Every other tool the extension registers becomes
- * `hidden`, so neither codemode nor `ctx.executeTool()` can call it, independent of the `tools`
- * allowlist. The `builtin` entry loads
- * through the explicit `builtin:mcp` path even with `noExtensions`, and `replaceable` lets an
- * ambient MCP extension that registers `/mcp` replace it, as in the parent.
- */
 function selectedBuiltinMcpExtension(pi: PiCodingAgentModule, selections: ReadonlyArray<{ name: string; selector: string }>, readinessTool: () => ToolDefinition | undefined): ChildHookExtension & { builtin: true; replaceable: true; waitForTools(signal: AbortSignal, loadError: () => string | undefined): Promise<void> } {
-	// Pi 0.99 export; the pinned SDK types predate it.
+	// external: This export requires Pi 0.99; older SDK types do not declare it.
 	const createMcpExtension = (pi as { createMcpExtension?: () => (api: ExtensionAPI) => void | Promise<void> }).createMcpExtension;
 	if (typeof createMcpExtension !== "function") throw new Error(`Selected built-in MCP tools (${selections.map(({ name }) => name).join(", ")}) need a Pi version with built-in MCP.`);
 	const selectors = new Map(selections.map(({ name, selector }) => [name, selector]));
@@ -326,8 +289,6 @@ function selectedBuiltinMcpExtension(pi: PiCodingAgentModule, selections: Readon
 		const toolCallHandlers: ToolCallHandler[] = [];
 		await mcp(new Proxy(api, {
 			get(target, prop) {
-				// The allowlist can omit codemode. Only MCP's startup hook sees its
-				// host-owned metadata; the session's tool set and permissions do not change.
 				if (prop === "getAllTools") return () => checkingStartup && readinessTool() ? [readinessTool()!] : target.getAllTools();
 				if (prop === "registerTool") {
 					return (tool: Parameters<ExtensionAPI["registerTool"]>[0] & { exposure?: string }) =>
@@ -346,8 +307,6 @@ function selectedBuiltinMcpExtension(pi: PiCodingAgentModule, selections: Readon
 		api.on("session_start", (_event, ctx) => {
 			waitForTools = async (signal) => {
 				if (toolCallHandlers.length === 0) throw new Error(`Selected built-in MCP tools (${selections.map(({ name }) => name).join(", ")}) need Pi 0.99.2 or later; earlier built-in MCP cannot report when its servers have connected.`);
-				// Run only MCP's readiness hook, not a tool or script. Pi 1.0 recognizes its
-				// own codemode schema; newer hosts use that tool's reachesTools metadata.
 				const event: ToolCallEvent = { type: "tool_call", toolCallId: "pi-subagents:mcp-startup", toolName: "codemode", input: { code: selections.map(({ name }) => `tools.${name}`).join(";\n") } };
 				const context = new Proxy(ctx, { get: (target, prop, receiver) => prop === "signal" ? signal : Reflect.get(target, prop, receiver) });
 				checkingStartup = true;
@@ -370,7 +329,6 @@ function selectedBuiltinMcpExtension(pi: PiCodingAgentModule, selections: Readon
 	} };
 }
 
-/** Verify the declaration and callable exposure after Pi finishes the selected connection attempts. */
 function missingBuiltinMcpTools(session: { getAllTools(): Array<{ name: string }>; getActiveToolNames(): string[] }, names: readonly string[]): string[] {
 	const active = new Set(session.getActiveToolNames());
 	const direct = new Set(session.getAllTools().filter((tool) => (tool as { exposure?: string }).exposure === "direct").map(({ name }) => name));
@@ -404,11 +362,7 @@ function flushQueuedProviderRegistrations(loader: InstanceType<PiCodingAgentModu
 		}
 	}
 	if (Array.isArray(runtime.pendingNativeProviderRegistrations)) runtime.pendingNativeProviderRegistrations = [];
-	// Pi core flushes pendingVirtualModelRegistrations when a session binds extensions
-	// (agent-session-services), but this factory resolves the requested model before that
-	// binding, so an extension-registered virtual model never resolves for the child. The
-	// structural cast keeps compiling against SDK versions that predate virtual models;
-	// there the queue is absent and the loop is a no-op.
+	// external: Pi core flushes pending virtual model registrations when binding session extensions.
 	const virtualModelRuntime = modelRuntime as ModelRuntimeInstance & { registerVirtualModel?: (definition: unknown) => void };
 	const virtualModelQueue = runtime as { pendingVirtualModelRegistrations?: Array<{ definition: unknown; extensionPath: string }> };
 	const pendingVirtualModelRegistrations = virtualModelQueue.pendingVirtualModelRegistrations ?? [];
@@ -505,15 +459,11 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 				&& typeof pi.createBashTool === "function"
 				? createChildCommandRuntime(supervisorChannelDir(launch.runtime.runId, launch.runtime.agent, launch.runtime.childIndex)) : undefined;
 			const settingsManager = pi.SettingsManager.create(launch.cwd, agentDir, { projectTrusted: launch.projectTrusted });
-			// Foreground children share Pi's global theme with the parent, so reinitializing it
-			// would overwrite the parent's active light/dark appearance. Detached runners have
-			// no initialized theme and must initialize one for headless extension renderers.
+			// external: Pi theme state is process-global.
 			const themeKey = Symbol.for("@earendil-works/pi-coding-agent:theme");
 			const themeInitialized = Boolean((globalThis as Record<symbol, unknown>)[themeKey]);
 			if (!themeInitialized && typeof pi.initTheme === "function") pi.initTheme(settingsManager.getTheme());
-			// SDK sessions do not install Pi's CLI built-ins. Use the host's own
-			// codemode factory only when this child can select it; older Pi hosts
-			// without that factory retain the strict missing-tool diagnostic.
+			// external: Pi SDK sessions do not install CLI built-ins.
 			const createCodemodeExtension = (pi as PiCodingAgentModule & { createCodemodeExtension?: () => ChildHookExtension["factory"] }).createCodemodeExtension;
 			const codemodeAllowed = !launch.runtime.capabilityCeiling?.denyExtensions &&
 				(launch.tools === undefined || launch.tools.includes("codemode")) && !launch.excludeTools?.includes("codemode");
@@ -532,9 +482,7 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 			const requiredPaths = new Set((launch.requiredExtensions ?? []).map(({ path }) => path));
 			const requiredExtensionIdentity = createRequiredChildExtensionIdentity(requiredPaths);
 			const resolvedExtensionPaths = new Map<string, string>();
-			// Pi reports failures by source path, without resolvedPath. A source Pi never loaded is classified by the
-			// file it names, after Pi's Unicode-space normalization. A required extension that failed under an
-			// unmatched spelling is still rejected by the missing-identity check after loading.
+			// external: Pi reports extension failures by source path without resolvedPath.
 			const isRequiredSource = (extensionPath: string) => requiredPaths.size > 0 && requiredExtensionIdentity(
 				resolvedExtensionPaths.get(extensionPath) ?? (path.isAbsolute(extensionPath) ? extensionPath.replace(PI_UNICODE_SPACES, " ") : extensionPath),
 			) !== undefined;
@@ -544,7 +492,7 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 				settingsManager,
 				noExtensions: !launch.ambientExtensions,
 				noSkills: launch.noSkills,
-				// Pi merges skills from extensions' resources_discover without checking noSkills.
+				// external: Pi merges extension-discovered skills even when noSkills is set.
 				skillsOverride: launch.noSkills ? (base) => ({ ...base, skills: [] }) : undefined,
 				noPromptTemplates: true,
 				noThemes: true,
@@ -556,19 +504,14 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 				} }] : []), ...codemode, ...(builtinMcp ? [builtinMcp] : [])],
 				extensionsOverride: (result) => orderChildPromptHooks(prioritizeChildCommandRuntime(result)),
 				...(launch.systemPrompt !== undefined ? { systemPrompt: launch.systemPrompt } : {}),
-				// An empty list stops Pi from filling the slot with the operator's APPEND_SYSTEM.md (#2960).
+				// external: Pi fills an absent append slot from the operator APPEND_SYSTEM.md.
 				appendSystemPrompt: launch.appendSystemPrompt !== undefined ? [launch.appendSystemPrompt] : [],
 			});
-			// pi's own hosts emit `session_shutdown` before disposing a session so the
-			// extensions loaded into it (ambient extensions included) release their
-			// watchers, servers, and timers. Do the same, then dispose.
 			const shutdownSession = async (session: Awaited<ReturnType<PiCodingAgentModule["createAgentSession"]>>["session"]): Promise<void> => {
 				try {
 					await commands?.shutdown();
 					const runner = session.extensionRunner;
 					if (runner.hasHandlers("session_shutdown")) {
-						// Ref'd so a detached runner with nothing else pending stays alive until the bound
-						// ends and still publishes its result; cleared as soon as the handlers finish.
 						let bound: ReturnType<typeof setTimeout> | undefined;
 						await Promise.race([runner.emit({ type: "session_shutdown", reason: "quit" }), new Promise<void>((resolve) => { bound = setTimeout(resolve, shutdownTimeoutMs); })])
 							.finally(() => clearTimeout(bound));
@@ -611,8 +554,7 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 						: launch.storage.kind === "memory"
 							? pi.SessionManager.inMemory(launch.cwd, newSessionOptions)
 							: pi.SessionManager.create(launch.cwd, undefined, newSessionOptions);
-				// SessionManager.open takes no parent for a file it is about to create, so set it on the
-				// header Pi writes with the first assistant message. Forked and resumed files keep theirs.
+				// external: Pi SessionManager.open takes no parent for a new session file.
 				const header = newSessionFile && launch.parentSessionFile ? sessionManager.getHeader() : null;
 				if (header) header.parentSession = launch.parentSessionFile;
 				const resolvedModel = launch.model
@@ -633,7 +575,7 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 					sessionStartEvent: { type: "session_start", reason: "startup" },
 				});
 				pinChildCacheRetention(session.agent);
-				// Pi reports handler failures through onError instead of throwing, so required startup failures must be collected here.
+				// external: Pi reports extension handler failures through onError rather than throwing.
 				const requiredStartupErrors: string[] = [];
 				let binding = true;
 				try {
@@ -651,7 +593,6 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 					binding = false;
 				}
 				if (requiredStartupErrors.length > 0) {
-					// Binding finished, so the other extensions' session_start handlers ran and may hold resources.
 					await shutdownSession(session);
 					throw new Error(`Required child extension failed during startup: ${requiredStartupErrors.join("; ")}`);
 				}
@@ -670,7 +611,6 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 			const session = await opened;
 			let pending: Promise<void> | undefined;
 			const shutdown = () => shutdownSession(session);
-			// Outside the launch lock: MCP servers connect after `session_start` without reading the per-launch env.
 			if (builtinMcp) {
 				const cancel = new AbortController();
 				const signal = launch.signal ? AbortSignal.any([cancel.signal, launch.signal]) : cancel.signal;
@@ -726,7 +666,7 @@ export function createDefaultChildSessionFactory(options: DefaultChildSessionFac
 			for (const child of children) child.shutDown = true;
 			await Promise.allSettled(children.map((child) => child.abort()));
 			for (const child of children) {
-				try { void child.dispose(); } catch { /* best effort */ }
+				try { void child.dispose(); } catch {  }
 			}
 			await Promise.allSettled([...shutdowns, ...mcpWaits.values()]);
 			if (live.size === 0) runtime = undefined;

@@ -45,7 +45,6 @@ function createRepo(prefix: string): string {
 	fs.writeFileSync(path.join(repoDir, "tracked.txt"), "initial\n", "utf-8");
 	git(repoDir, ["add", "-A"]);
 	git(repoDir, ["commit", "-m", "initial commit"]);
-	// Match Git's canonical top-level path for macOS symlinked temp roots.
 	return fs.realpathSync(repoDir);
 }
 
@@ -54,7 +53,6 @@ function cleanupRepo(repoDir: string, baseDir?: string): void {
 	try { fs.rmSync(repoDir, { recursive: true, force: true }); } catch {}
 }
 
-/** Removes only this repo's nested project folder; never the shared dedicated root. */
 function cleanupProjectWorktrees(repoDir: string, baseDir?: string): void {
 	const dedicatedRoot = baseDir ?? path.join(path.dirname(repoDir), "worktrees");
 	try { fs.rmSync(path.join(dedicatedRoot, path.basename(repoDir)), { recursive: true, force: true }); } catch {}
@@ -71,8 +69,6 @@ function createHookScript(_repoDir: string, fileName: string, source: string): s
 const hookScriptSkip = process.platform === "win32"
 	? "Hook script execution differs on Windows CI environments."
 	: undefined;
-// Unknown settlement intentionally poisons the process. Re-run only that case in
-// an awaited real child so subsequent tests retain normal mutation admission.
 async function runPoisonCaseInChild(name: string): Promise<boolean> {
 	if (process.env.PI_WORKTREE_POISON_CASE === name) return false;
 	await promisify(execFile)(process.execPath, [
@@ -216,7 +212,7 @@ describe("worktree", () => {
 		if (await runPoisonCaseInChild("rejects Worktrunk responses that point at the source checkout")) return;
 		const fakeBin = fs.mkdtempSync(path.join(os.tmpdir(), "pi-worktree-fake-source-wt-"));
 		const fakeScript = path.join(fakeBin, "wt.cjs");
-		// Git for Windows dispatches extensionless git-* test commands through its bundled shell.
+		// external: Git for Windows dispatches extensionless git-* commands through its bundled shell.
 		const fakeWt = path.join(fakeBin, process.platform === "win32" ? "git-wt" : "wt");
 		fs.writeFileSync(fakeScript, `const { spawnSync } = require("node:child_process");
 const args = process.argv.slice(2);
@@ -255,7 +251,6 @@ console.log(JSON.stringify({ action: "created", branch, path: repo, created_bran
 					return true;
 				},
 			);
-			// Invalid output grants no authority to restore or delete source state.
 			assert.equal(git(repoDir, ["branch", "--show-current"]), "pi-subagents/task-source-path-s0-t0");
 			assert.equal(git(repoDir, ["rev-parse", "HEAD"]), originalHead);
 			assert.equal(fs.readFileSync(path.join(repoDir, "tracked.txt"), "utf-8"), "initial\n");

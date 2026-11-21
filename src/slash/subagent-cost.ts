@@ -188,9 +188,7 @@ export function collectSubagentCost(
 		if (parentUsage) addUsage(parent, parentUsage);
 		const details = detailsFromSessionEntry(entry);
 		if (!details) continue;
-		// Only async workflows persist a receipt file; foreground workflow child usage is already in results.
 		if (details.mode === "workflow" && details.runId && details.asyncId) workflowRunIds.add(details.runId);
-		// An async launch result has no child results; its usage lands in run artifacts.
 		else if (details.asyncId && details.results.length === 0) asyncRunIds.add(details.asyncId);
 		for (const result of details.results) {
 			addChild({ agent: result.agent, runId: typeof result.runId === "string" ? result.runId : undefined, usage: usageFromValue(result.usage), sessionFile: result.sessionFile });
@@ -207,12 +205,12 @@ export function collectSubagentCost(
 	let sessionFile: string | null = null;
 	try {
 		sessionFile = ctx.sessionManager.getSessionFile() ?? null;
-	} catch { /* an unpersisted session can still report direct child usage */ }
+	} catch {  }
 	const artifactsDirs = new Set<string>();
 	const addArtifactsDir = (cwd: string | undefined): void => {
 		try {
 			artifactsDirs.add(getArtifactsDir(sessionFile, cwd, state.artifactDirPreference));
-		} catch { /* invalid or unavailable project roots are ignored */ }
+		} catch {  }
 	};
 	addArtifactsDir(ctx.cwd);
 	addArtifactsDir(state.baseCwd);
@@ -249,16 +247,13 @@ export function collectSubagentCost(
 				if (!usage || !addChild({ ...ref, usage })) unresolvedAsyncChildren += 1;
 			}
 		} catch (error) {
-			// Without a receipt, a bg_wait completion cannot prove it reported every child (a stopped workflow may omit one).
 			unresolvedAsyncChildren += 1;
-			// A running workflow has no receipt yet; readWorkflowReceipt keeps the ENOENT as its cause.
 			const missing = (error as NodeJS.ErrnoException).code === "ENOENT" || ((error as Error).cause as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
 			if (!missing) console.error(`Failed to resolve async subagent usage for '${workflowRunId}':`, error);
 		}
 	}
 
 	for (const asyncRunId of asyncRunIds) {
-		// A bg_wait completion already reported this run's results; its children carry no child runId.
 		if (completedRunIds.has(asyncRunId)) continue;
 		try {
 			const status = readStatus(path.join(DIRS.async, asyncRunId));
@@ -268,12 +263,10 @@ export function collectSubagentCost(
 			}
 			addArtifactsDir(status.cwd);
 			const steps = status.steps;
-			// The runner suffixes artifact names with the flat step index only for multi-step runs.
 			steps.forEach((step, index) => {
 				const flatIndex = steps.length > 1 ? index : undefined;
 				const usage = metadataUsage([...artifactsDirs], { runId: asyncRunId, agent: step.agent }, flatIndex === undefined ? [undefined, 0] : [flatIndex]);
 				const identity = flatIndex === undefined ? `run:${asyncRunId}` : `run:${asyncRunId}:${flatIndex}`;
-				// Pending and running steps have not finalized their metadata yet.
 				const settled = step.status !== "pending" && step.status !== "running";
 				if (!addChild({ agent: step.agent, runId: asyncRunId, identity, usage }) && settled) unresolvedAsyncChildren += 1;
 			});

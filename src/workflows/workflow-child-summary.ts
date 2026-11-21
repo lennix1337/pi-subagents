@@ -50,7 +50,6 @@ function requiredId(value: string, label: string): string {
 	return id;
 }
 
-/** Provider tool-call ids can be multi-kilobyte; the verbatim id stays in AsyncStatus.toolCallId, so an oversize id is recorded as its digest. */
 function parentToolCallId(value: string, label: string): string {
 	if (typeof value === "string" && value.trim() && Buffer.byteLength(value, "utf8") > MAX_REQUIRED_ID_BYTES) return hashedSegment(value);
 	return requiredId(value, label);

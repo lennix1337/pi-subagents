@@ -51,7 +51,6 @@ export default function registerSmokeProvider(pi: ExtensionAPI) {
 		fs.appendFileSync("/stage/lifecycle.jsonl", JSON.stringify({ event: "start", sessionId: ctx.sessionManager.getSessionId(), sdkIdentity: ctx.sessionManager instanceof SessionManager, case: process.env.PI_STANDALONE_CASE, pid: process.pid, executable: process.execPath, tools: pi.getActiveTools(), model: ctx.model?.id, provider: ctx.model?.provider }) + "\n");
 	});
 	pi.on("session_shutdown", async (_event, ctx) => {
-		// Exercise notification-before-disposal ordering without adding another matrix mode.
 		if (mode === "interrupt") await new Promise((resolve) => setTimeout(resolve, 250));
 		fs.appendFileSync("/stage/lifecycle.jsonl", JSON.stringify({ event: "shutdown", sessionId: ctx.sessionManager.getSessionId(), sessionFile: ctx.sessionManager.getSessionFile(), case: process.env.PI_STANDALONE_CASE, pid: process.pid, calls: faux.state.callCount }) + "\n");
 	});

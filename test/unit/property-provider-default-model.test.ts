@@ -6,10 +6,6 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import { discoverAgents } from "../../src/agents/agents.ts";
 import { PROPERTY_CASES, intBetween, pick, seededRandom, shuffled, type Rng } from "../support/seeded-random.ts";
 
-// Property test for `subagents.defaultModelByProvider`: the default for a parent session's provider is the
-// entry for that exact provider or, failing that, for its longest family prefix ending at a `-` boundary
-// (`openai` matches `openai-codex-account-2`, `anthropic` does not match `anthropicx`). A bare model id runs on
-// the parent's own provider; an id with a `/` is used as written. The model below states that rule directly.
 
 const FALLBACK = "openai-codex-account-2/gpt-6.1-terra:low";
 const KEY_POOL = ["anthropic", "anthropic-account", "openai", "openai-codex", "openai-codex-account", "open", "openrouter"];
@@ -37,7 +33,6 @@ function randomByProvider(next: Rng): Record<string, string> {
 	return byProvider;
 }
 
-// Nested families (`openai`, `openai-codex`, `openai-codex-account`) are what the longest-prefix rule decides.
 function randomParent(next: Rng, byProvider: Record<string, string>): string {
 	const keys = Object.keys(byProvider);
 	const roll = next();
@@ -46,7 +41,6 @@ function randomParent(next: Rng, byProvider: Record<string, string>): string {
 	return `${pick(next, PARENT_POOL)}${pick(next, ["", "", "-2", "x", "-account-3"])}`;
 }
 
-/** The worker's model for a parent provider. A throw on a legal provider name is reported as a failed property. */
 function workerModel(project: string, parent: string): string | undefined {
 	let worker: { model?: string } | undefined;
 	try {
@@ -98,7 +92,6 @@ describe("provider default model (property tests)", () => {
 			const byProvider = randomByProvider(next);
 			const parent = randomParent(next, byProvider);
 			writeJson(settingsPath, { subagents: { defaultModel: FALLBACK, defaultModelByProvider: byProvider } });
-			// A fresh project directory per case: discovery results are cached per directory and provider.
 			const project = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-project-"));
 			try {
 				const expected = expectedDefault(byProvider, parent);

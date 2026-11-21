@@ -489,9 +489,6 @@ export function applySubagentProfile(name: string): { filePath: string; settings
 		const existing = settings.subagents && typeof settings.subagents === "object" && !Array.isArray(settings.subagents)
 			? settings.subagents as Record<string, unknown>
 			: {};
-		// A profile owns the complete agent mapping, but unrelated subagent settings
-		// (notably disableBuiltins, modelScope, watchdog, etc.) survive profile switches.
-		// Machine placement is not a model choice, so an existing pin survives a profile switch too.
 		const agentOverrides: Record<string, ProfileAgentOverride> = { ...profile.subagents.agentOverrides };
 		const existingOverrides = existing.agentOverrides && typeof existing.agentOverrides === "object" && !Array.isArray(existing.agentOverrides)
 			? existing.agentOverrides as Record<string, unknown>

@@ -140,7 +140,6 @@ describe("retained foreground nested route tracker", () => {
 		const tracker = createRetainedNestedRouteTracker(state, {
 			platform: "linux",
 			pollIntervalMs: 60_000,
-			// SAFETY: the tracker uses only fs.watch(path, listener), not the options overloads.
 			watch: ((_path: fs.PathLike, listener: fs.WatchListener<string>) => {
 				notify = () => listener("rename", "event.json");
 				return watcher;

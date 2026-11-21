@@ -106,9 +106,6 @@ for (const kind of ["empty", "dead-owned", "result-queued-owned", "result-runnin
 				if (kind.startsWith("result-")) { fs.mkdirSync(DIRS.results, { recursive: true }); fs.writeFileSync(join(DIRS.results, `${id}.json`), JSON.stringify({ success: true, results: [] })); }
 			}
 			const originalRead = fs.readFileSync; const originalStat = fs.statSync; const originalReaddir = fs.readdirSync;
-			// lstat rejects the regular-file entry on every OS. Marker cleanup then
-			// stats file/status.json: Windows reports ENOENT, POSIX ENOTDIR.
-			// Exercise the native boundary and deterministically cover both contracts.
 			const injectedCode = kind === "rejected-entry-ENOENT" ? "ENOENT" : kind === "rejected-entry-ENOTDIR" ? "ENOTDIR" : undefined;
 			let boundaryCode = injectedCode;
 			if (rejectedEntry && !boundaryCode) {

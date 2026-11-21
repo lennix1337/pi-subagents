@@ -1,10 +1,3 @@
-/**
- * Glue between the progress supervisor and the async run store. Snapshot and
- * notice formatting are pure; listing, liveness, HEAD probes and control
- * requests are the only I/O, and each reuses an existing channel: the run
- * listing is read-only (`reconcile: false`), steer and stop go through the
- * control inbox the runner already watches.
- */
 import { execFile } from "node:child_process";
 import { listAsyncRuns } from "../../runs/background/async-status.ts";
 import { requestAsyncStop, requestAsyncSteer } from "../../runs/background/control-channel.ts";

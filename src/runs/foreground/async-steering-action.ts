@@ -67,8 +67,6 @@ export async function steerAsyncRun(input: {
 			};
 		}
 	}
-	// The read-only snapshot precedes even stale-run reconciliation. An ask arriving
-	// later does not make a runner acknowledgement proof of consumption or unblocking.
 	const status = reconcileAsyncRun(asyncDir, { kill: input.kill }).status;
 	if (input.state.currentSessionId && !ownsRun(input.state.currentSessionId, status?.sessionId)) {
 		return {
@@ -89,10 +87,6 @@ export async function steerAsyncRun(input: {
 		const followUpEligible = canQueueRetainedAsyncFollowUp(status, input.index);
 		const retained = input.mode === "follow_up" && followUpEligible;
 		if (!retained) {
-			// Name the terminal state and the next action so a steer that lost a race with
-			// completion does not look like a missing run. Mirrors the sibling nested/workflow errors.
-			// Offer resume only when the resume action's own target checks accept the run (it resolves without
-			// requiring a session file, as at subagent-executor's resume), and otherwise say why not.
 			let resumeHint = `Continue it with action "resume", or read its saved result.`;
 			try {
 				resolveAsyncResumeTarget({ dir: asyncDir, index: input.index }, { kill: input.kill }, { requireSessionFile: false, sessionId: input.state.currentSessionId ?? undefined });
@@ -204,7 +198,6 @@ export async function steerAsyncRun(input: {
 			try {
 				fs.appendFileSync(path.join(asyncDir, "events.jsonl"), `${JSON.stringify({ type: "subagent.steering.notice", ts: Date.now(), runId: status.runId, requestId, state, message, ...(status.sessionId ? { currentSessionId: status.sessionId } : {}) })}\n`);
 			} catch {
-				// The action result and status remain authoritative if diagnostic notification persistence fails.
 			}
 		};
 		try {
@@ -245,8 +238,6 @@ export async function steerAsyncRun(input: {
 				await new Promise<void>((resolve) => setTimeout(resolve, 50));
 			}
 			if (!paused) {
-				// The attempt is over, so release single-flight for later steers. Keep the marker so a late
-				// acknowledgment of this request is still recorded as late.
 				fs.rmSync(claimPath, { force: true });
 				throw new Error(`Source run did not confirm a paused state within ${pauseBudgetMs / 1000} seconds after the recovery interrupt (last observed state: ${lastObservedState ?? "unknown"}). No replacement was launched and the steering message was not applied. Once it pauses, continue it with action "resume" and id "${status.runId}".`);
 			}

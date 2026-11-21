@@ -365,7 +365,6 @@ export function resolveWorkflowReceiptResumeEntry(input: {
 	const receipt = readWorkflowReceipt(input.asyncDirRoot, input.reference.workflowRunId.trim());
 	const recorded = receipt.entries[key];
 	if (!recorded) throw new Error(`Workflow receipt '${receipt.workflowRunId}' has no child key '${key}'.`);
-	// A detached top-level revival after the receipt was written continues this key's lineage.
 	const revival = recorded.latestRunId ? projectWorkflowKeyRevival(input.asyncDirRoot, receipt.workflowRunId, key, recorded.latestRunId) : undefined;
 	const entry = revival
 		? { ...recorded, latestRunId: revival.latestRunId, continuation: { runIds: [...recorded.continuation.runIds, ...revival.revivedRunIds] } }

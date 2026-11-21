@@ -110,9 +110,6 @@ function selectedStatusStep(status: AsyncStatus | null, index: number): NonNulla
 
 function isTerminalStatus(status: AsyncStatus | null, index: number): boolean {
 	if (!status) return false;
-	// A workflow-owned single runner publishes its result after completing its
-	// step. Keep that window open while root process proof is absent or pending;
-	// explicit terminal/unavailable proof retains the existing step fallback.
 	if (status.mode === "single" && status.parentWorkflowRunId
 		&& (!status.processTerminal || status.processTerminal.state === "pending")) return isSettledAsyncRunState(status.state);
 	const step = selectedStatusStep(status, index);

@@ -8,14 +8,6 @@ import type { runExternalCli } from "./external-cli-runner.ts";
 import { REX_LOCAL_MACHINE, resolveRexLocalPlacement } from "./rex-machine.ts";
 export { shellQuoteRemote as shellQuote } from "./herdr-connection.ts";
 
-/**
- * Herdr saved-machine placement for external CLI children.
- *
- * Herdr owns which machines exist and how ssh reaches them (`herdr machine list --json`).
- * pi-subagents owns what runs there: native Pi and the six code-owned external profiles are
- * launched in fresh Herdr-owned visible panes. SSH is bounded transport and never owns the agent.
- * `cwd` means the directory on that machine; the remote `cd` is the directory check.
- */
 
 const MAX_MACHINE_NAME_LENGTH = 128;
 const HERDR_MACHINE_LIST_TIMEOUT_MS = 7_500;
@@ -38,7 +30,6 @@ interface HerdrMachineCatalogEntry {
 interface MachineSettingsEntry {
 	cwd?: string;
 	env?: Record<string, string>;
-	/** User settings only: run this machine's children in Rex panes reached over SSH at `ssh`. */
 	rex?: { ssh: string };
 }
 
@@ -138,7 +129,6 @@ function readHerdrMachineCatalog(env: NodeJS.ProcessEnv, herdrBin: string): Herd
 	return parseMachineCatalog(result.stdout);
 }
 
-/** Mirrors Herdr's own selector rules: profile id first, then a unique case-sensitive label; disabled fails closed. */
 function selectMachine(catalog: HerdrMachineCatalogEntry[], requested: string): HerdrMachineCatalogEntry {
 	const byId = catalog.find((entry) => entry.id === requested);
 	const matches = byId ? [byId] : catalog.filter((entry) => entry.label === requested);
@@ -196,7 +186,6 @@ function machineSettingsFrom(settings: Record<string, unknown>, keys: readonly s
 	return entry;
 }
 
-/** Project settings beat user settings, field by field; the entry may be keyed by label, id, or the typed selector. Only user settings may name a Rex SSH host, so a cloned repo never chooses where a task runs. */
 function readMachineSettings(cwd: string, keys: readonly string[]): MachineSettingsEntry | undefined {
 	const userPath = path.join(getAgentDir(), "settings.json");
 	const projectPath = path.join(getProjectConfigDir(findProjectRootForSettings(cwd)), "settings.json");
@@ -207,7 +196,6 @@ function readMachineSettings(cwd: string, keys: readonly string[]): MachineSetti
 	return { ...user, ...project };
 }
 
-/** Whether user settings name `machine` as a Rex SSH host. */
 function userRexMachine(machine: string): boolean {
 	const userPath = path.join(getAgentDir(), "settings.json");
 	return machineSettingsFrom(readJsonObject(userPath), [machine], userPath)?.rex !== undefined;
@@ -223,7 +211,6 @@ function findProjectRootForSettings(cwd: string): string {
 	}
 }
 
-/** The child's cwd on a remote machine: an absolute launch cwd, or the launch cwd under the machine's configured root. */
 function remoteMachineCwd(stepCwd: string | undefined, root: string | undefined, name: string): string {
 	const step = stepCwd?.trim();
 	if (step && isRemoteAbsolute(step)) return step;

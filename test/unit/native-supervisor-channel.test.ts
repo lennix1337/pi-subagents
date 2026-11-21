@@ -161,7 +161,6 @@ describe("native supervisor channel", () => {
 			const runId = randomUUID();
 			const requestId = writeRequest({ sessionId: owner, runId });
 			const ownDir = resolveSupervisorChannelDir(runId, "worker", 0);
-			// Even a request with the same owner is not scanned unless its run is registered.
 			for (let i = 0; i < 100; i++) writeRequest({ sessionId: owner, runId: randomUUID() });
 			let dirs: string[] = [];
 			let tick: (() => void) | undefined;

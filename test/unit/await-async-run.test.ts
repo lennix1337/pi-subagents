@@ -134,11 +134,9 @@ describe("awaitExistingAsyncRun", () => {
 
 	it("is unavailable when a live-looking runner pid was saved before a reboot", async () => {
 		const asyncDir = childDir();
-		// This test process is alive, so only the boot id can say the recorded runner is gone.
 		writeStatus(asyncDir, { pid: process.pid, pidNamespaceScope: currentPidNamespaceScope(), bootId: "boot-before" });
 		resetBootIdForTesting(() => "boot-now");
 		try {
-			// Without the boot check the live pid would keep the wait open until this signal fires.
 			const outcome = await awaitExistingAsyncRun(asyncDir, "child-run", AbortSignal.timeout(5_000));
 
 			assert.equal(outcome.status, "unavailable");
@@ -229,7 +227,6 @@ describe("claimWorkflowAwaitedResult", () => {
 		fs.rmSync(tempDir, { recursive: true, force: true });
 	});
 
-	// The runner's paused result has no tool-call id and its final result adds one; state and timestamp can match.
 	const paused = { id: "child-run", runId: "child-run", sessionId: "session-a", state: "paused", timestamp: 1_000, results: [{ agent: "worker", output: "", success: false }] };
 	const final = { id: "child-run", toolCallId: "tool-call-a", sessionId: "session-a", state: "paused", timestamp: 1_000, results: [{ agent: "worker", output: "paused after interrupt", success: false }] };
 

@@ -474,14 +474,12 @@ describe("control channel: watchAsyncControlInbox", () => {
 			assert.equal(fired, 1);
 			assert.equal(fs.existsSync(interruptRequestPath(asyncDir)), false);
 
-			// No pending request → spurious event is a no-op.
 			h.trigger();
 			assert.equal(fired, 1);
 
 			dispose();
 			assert.equal(h.closed(), true);
 
-			// After dispose, even a fresh request is ignored.
 			requestAsyncInterrupt(asyncDir);
 			h.trigger();
 			assert.equal(fired, 1);
@@ -618,7 +616,6 @@ describe("control channel: watchAsyncControlInbox", () => {
 			h.trigger();
 			assert.deepEqual(steers, ["first"]);
 
-			// A spurious event with nothing queued is a no-op.
 			h.trigger();
 			assert.deepEqual(steers, ["first"]);
 

@@ -86,7 +86,6 @@ function writeStatus(asyncDir: string, status: AsyncStatus): void {
 	fs.mkdirSync(asyncDir, { recursive: true });
 	const statusPath = path.join(asyncDir, "status.json");
 	writeAtomicJson(statusPath, status);
-	// readStatus is metadata-cached. Keep fast test rewrites monotonic.
 	statusWriteMtimeMs = Math.max(statusWriteMtimeMs + 1, Date.now());
 	const mtime = new Date(statusWriteMtimeMs);
 	fs.utimesSync(statusPath, mtime, mtime);
@@ -304,7 +303,6 @@ describe("acknowledged steering action", () => {
 			const result = await steerAsyncRun({ state: createState(), runId, message: "too late", mode: "follow_up", location: { asyncDir } });
 			assert.equal(result.isError, true);
 			assert.match(result.content[0]!.text, /mode "follow_up" requires a completed single-child workflow run/);
-			// Resume revives a completed run without a saved session, so it is still offered.
 			assert.match(result.content[0]!.text, /Continue it with action "resume"/);
 		} finally {
 			removeAsyncDir(asyncDir);

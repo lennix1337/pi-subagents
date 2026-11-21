@@ -26,9 +26,6 @@ function readText(result: { content: Array<{ type: string; text?: string }> }): 
 describe("agent management config parsing", () => {
 	beforeEach(() => {
 		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-management-"));
-		// Anchor project discovery here. On Windows, os.tmpdir() is below the
-		// physical user home, so an unanchored test can climb into ~/.pi and
-		// write fixture agents into the operator's real configuration.
 		fs.mkdirSync(path.join(tempDir, ".pi"), { recursive: true });
 		oldAgentDir = process.env.PI_CODING_AGENT_DIR;
 		process.env.PI_CODING_AGENT_DIR = path.join(tempDir, "agent-home");
@@ -1174,7 +1171,6 @@ Advise only.
 		const ctx = {
 			get cwd() {
 				cwdReads += 1;
-				// handleUpdate reads cwd again after discovery, which models the definition disappearing between reads.
 				if (cwdReads === 2) fs.unlinkSync(agentPath);
 				return tempDir;
 			},
@@ -1329,7 +1325,6 @@ Drive the failing test first.
 						: [],
 				},
 				ui: {
-					// RPC mode defines ui.custom as a no-op that resolves undefined.
 					custom: async () => undefined,
 					select: async (_title: string, items: string[]) => { choices = items; return undefined; },
 					notify: (message: string) => warnings.push(message),

@@ -38,8 +38,7 @@ export function flattenSubagentToolOptions(params: Record<string, unknown>, disa
 	}
 	const disabledKey = entries.find(([key]) => disabled?.params.has(key))?.[0];
 	if (disabledKey) throw new Error(`subagent option 'options.${disabledKey}' is disabled by config ${disabled!.params.get(disabledKey)}.`);
-	// Pi converts only the declared top-level parameters ("true" -> true); `options` is an untyped bag in the
-	// tool schema, so its values get the same conversion here. Some providers send nested scalars as strings.
+	// external: Pi converts only declared top-level tool parameters.
 	const converted = Value.Convert(SubagentOptionParams, structuredClone(options)) as Record<string, unknown>;
 	if (!optionsValidator.Check(converted)) {
 		const errors = [...optionsValidator.Errors(converted)].slice(0, 4).map((error) => `options${error.instancePath.replaceAll("/", ".")} ${error.message}`);

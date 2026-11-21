@@ -10,12 +10,10 @@ function readBootIdFromOs(): string | undefined {
 			return execFileSync("sysctl", ["-n", "kern.bootsessionuuid"], { encoding: "utf-8", timeout: 1000, stdio: ["ignore", "pipe", "ignore"] }).trim() || undefined;
 		}
 	} catch {
-		// An unreadable boot id only means liveness falls back to probing the pid.
 	}
 	return undefined;
 }
 
-// Process-wide, so the bundled extension and the compiled runner modules share one value.
 const BOOT_ID_KEY = Symbol.for("pi-subagents.boot-id.v1");
 const runtime = globalThis as typeof globalThis & { [BOOT_ID_KEY]?: { value: string | undefined } };
 

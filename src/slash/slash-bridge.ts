@@ -14,7 +14,6 @@ import {
 interface SlashSubagentRequest {
 	requestId: string;
 	params: SubagentParamsLike;
-	/** Optional requester context for in-process extension bridge calls. */
 	ctx?: ExtensionContext;
 }
 

@@ -526,7 +526,7 @@ export function writeWatchdogModelSettings(input: WatchdogModelSettingsWrite): s
 	});
 }
 
-/** `projectTrusted: false` (the session declined trust) leaves the project's settings.json unread, as Pi does for its own settings. */
+// external: Pi does not read settings from untrusted projects.
 function settingsFileSources(cwd: string, projectTrusted: boolean | undefined): Array<{ scope: "user" | "project"; path: string | undefined }> {
 	const user = { scope: "user" as const, path: getUserSettingsPath() };
 	return projectTrusted === false ? [user] : [user, { scope: "project" as const, path: getProjectSettingsPath(cwd) }];

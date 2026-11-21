@@ -3,9 +3,6 @@ import { describe, it } from "node:test";
 import { extractToolArgsPreview, toolArgsKey } from "../../src/shared/utils.ts";
 import { PROPERTY_CASES, intBetween, pick, seededRandom, shuffled, type Rng } from "../support/seeded-random.ts";
 
-// Property tests for the digest that decides whether two tool calls are the same call (loop detection).
-// The model below is an independent definition of "same arguments": JSON value equality where object key
-// order does not matter and a property whose value is `undefined` is absent, as JSON.stringify treats it.
 
 const KEYS = ["command", "path", "a", "b", "", "x y", "__proto__", "ключ", "10", "-"];
 const STRINGS = ["", "ls -la", "a.ts", 'say "hi"', "two\nlines", "tab\t", "ünï", "\u0000", "\ud83d", "a.ts "];
@@ -17,7 +14,6 @@ function isObject(value: unknown): value is Args {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-// Own data property, so a key such as "__proto__" stays a key instead of setting the prototype.
 function setOwn(target: Args, key: string, value: unknown): void {
 	Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true });
 }
@@ -40,7 +36,6 @@ function randomValue(next: Rng, depth: number): unknown {
 function randomArgs(next: Rng, depth: number): Args {
 	const args: Args = {};
 	for (let count = intBetween(next, 0, 4); count > 0; count--) {
-		// A JS-side `undefined` property: present on the object, absent in the JSON model.
 		const value = next() < 0.12 ? undefined : randomValue(next, depth);
 		setOwn(args, pick(next, KEYS), value);
 	}
@@ -80,7 +75,6 @@ function slotsOf(value: unknown, out: Slot[] = []): Slot[] {
 	return out;
 }
 
-/** One small edit somewhere in the arguments: a changed leaf, a removed or added key, or a swap. */
 function perturb(next: Rng, root: Args): Args {
 	const copy = clone(root) as Args;
 	const slots = slotsOf(copy);

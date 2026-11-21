@@ -150,7 +150,6 @@ describe("async resume lookup", () => {
 	});
 
 	it("refuses to revive a worktree child in the source checkout while its runner is finalizing", async () => {
-		// Git reports the long Windows path; a short 8.3 temp path would fail the cwd containment check first.
 		const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "pi-async-resume-finalizing-")));
 		const repo = path.join(root, "repo");
 		const asyncDir = path.join(root, "runs", "run-finalizing");
@@ -166,7 +165,6 @@ describe("async resume lookup", () => {
 		try {
 			const sessionFile = path.join(root, "session.jsonl");
 			fs.writeFileSync(sessionFile, "", "utf-8");
-			// Interrupt marks the run paused before the runner captures the child's handoff.
 			writeJson(path.join(asyncDir, "status.json"), {
 				runId: "run-finalizing", mode: "single", state: "paused", startedAt: 100, lastUpdate: 200, cwd: repo,
 				steps: [{ agent: "worker", status: "paused", sessionFile, worktreePath: setup.worktrees[0]!.path, branch: setup.worktrees[0]!.branch }],

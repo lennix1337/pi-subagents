@@ -1291,12 +1291,10 @@ describe("main watchdog runtime", () => {
 		assert.equal(snapshot.boundaryRepeats, 3);
 		assert.equal(snapshot.lastWarning?.state, "stalemate");
 
-		// After stalemate the same finding is a plain duplicate again: no further delivery.
 		runtime.enqueueDelta("Assistant:\nStill bad, fourth time.");
 		await runtime.handleAgentEnd({ type: "agent_end" }, { cwd: "/tmp/project" });
 		assert.equal(delivered.length, 3);
 
-		// A real prompt resets the counter.
 		runtime.handleBeforeAgentStart({ prompt: "Human: try a different approach." }, { cwd: "/tmp/project" });
 		runtime.enqueueDelta("Assistant:\nNew attempt.");
 		await runtime.handleAgentEnd({ type: "agent_end" }, { cwd: "/tmp/project" });

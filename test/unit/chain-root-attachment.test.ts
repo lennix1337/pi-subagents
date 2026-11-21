@@ -134,8 +134,6 @@ describe("async chain root attachment", () => {
 			steps: [{ agent: "worker", status: "complete" }],
 		});
 
-		// The live publisher is this process; advance only the waiter's clock,
-		// leaving the real completed-step evidence intact until publication.
 		const waiting = waitForImportedAsyncRoot(importedRoot);
 		for (let poll = 0; poll < 3; poll++) {
 			t.mock.timers.tick(500);

@@ -1,6 +1,3 @@
-/**
- * Core execution logic for running subagents
- */
 
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
@@ -273,13 +270,6 @@ function snapshotResult(result: SingleResult, progress: AgentProgress): SingleRe
 	};
 }
 
-/**
- * Streaming variant of snapshotResult for `onUpdate` progress events: it drops the
- * unbounded `messages` transcript in favour of compact tool-call summaries so a
- * single `tool_execution_update` event stays small; the parent records every
- * one in its transcript and `events.jsonl`. Non-streaming consumers such as
- * foreground detach receipts and terminal consumers use snapshotResult directly.
- */
 function snapshotStreamResult(result: SingleResult, progress: AgentProgress): SingleResult {
 	const snapshot = snapshotResult({ ...result, messages: undefined }, progress);
 	snapshot.toolCalls = boundStreamedToolCalls(result);
@@ -319,7 +309,6 @@ function structuredDelegationProgressChanged(
 	progress: AgentProgress,
 	result: SingleResult,
 ): boolean {
-	// Observations replace internal diagnostics; no transcript walk or serialization on heartbeats.
 	if (previous.providerDiagnostics !== progress.providerDiagnostics
 		|| previous.currentTool !== progress.currentTool
 		|| previous.currentToolArgs !== progress.currentToolArgs
@@ -380,9 +369,6 @@ async function runSingleAttempt(
 	assertThinkingWithinCeiling({ model: modelArg, configThinking: effectiveThinking, ceiling: options.thinkingCeiling, agent: agent.name, runId: options.runId });
 	const expectedModelForVerification = shared.verifyModel ? modelArg : undefined;
 	const resolvedThinking = resolveEffectiveThinking(modelArg, effectiveThinking);
-	// Display name for the child session: applied inside the child through its
-	// runtime config and echoed back on the result payload so hosts can label
-	// this run without reading the child's session file.
 	const childSessionName = deriveChildSessionName({ agent: agent.name, task: shared.originalTask ?? task });
 	const watchdogConfig = resolveWatchdogConfig(options.cwd ?? runtimeCwd, { projectTrusted: options.projectTrusted });
 	const childWatchdog = watchdogConfig.ok
@@ -419,7 +405,6 @@ async function runSingleAttempt(
 		descendantAllowedAgents: agent.allowedAgents,
 		extensions: agent.extensions,
 		subagentOnlyExtensions: agent.subagentOnlyExtensions,
-		// Exact terminal protocol belongs to session resources, not compactable history.
 		systemPrompt: shared.acceptancePrompt ? `${shared.systemPrompt}\n${shared.acceptancePrompt}` : shared.systemPrompt,
 		mcpDirectTools: agent.mcpDirectTools,
 		cwd: options.cwd ?? runtimeCwd,
@@ -441,7 +426,6 @@ async function runSingleAttempt(
 		permissionRules,
 		permissionAuditPath,
 		childWatchdog,
-		// registerChildWatchdog returns before reading the sink when no watchdog exists.
 		watchdogStatus: childWatchdog ? (event) => onWatchdogStatus?.(event) : undefined,
 		waitToolEnabled: options.waitToolEnabled,
 		waitToolDefaultTimeoutMs: options.waitToolDefaultTimeoutMs,
@@ -560,7 +544,6 @@ async function runSingleAttempt(
 		};
 		return result;
 	}
-	// A machine 'local' child edits this disk, so its local Git evidence is authoritative, as for an unplaced run.
 	const localGitEvidence = !options.machine || isRexLocalMachine(options.machine);
 	const mutationCwd = isRexLocalMachine(options.machine) ? options.machine.cwd : options.cwd ?? runtimeCwd;
 	const mutationSnapshot = !localGitEvidence ? { source: "tracked-files" as const, trackedOnly: true as const, cwd: mutationCwd, dirtyFiles: [], fingerprints: {}, unavailable: "Local Git evidence is not authoritative for a pane-native remote run." } : snapshotTrackedMutations(mutationCwd);
@@ -623,7 +606,6 @@ async function runSingleAttempt(
 			startup.abort();
 			if (!session) return;
 			void session.abort().catch(() => {
-				// The session settles through its prompt promise; abort failures are not separately actionable.
 			});
 		};
 
@@ -652,9 +634,6 @@ async function runSingleAttempt(
 				tokens: receiptProgress.tokens,
 				durationMs: receiptProgress.durationMs,
 			};
-			// The attempt is not detached until the outer coordinator has accepted and
-			// synchronously published the receipt. A persistence/callback failure must
-			// leave this attempt attached and abortable rather than orphaning it.
 			let accepted = false;
 			try {
 				accepted = options.onDetachReceipt?.(receipt) === true;
@@ -667,9 +646,6 @@ async function runSingleAttempt(
 			return true;
 		};
 
-		// If the child emits a terminal assistant stop but its run never settles
-		// (a hook is stuck), abort it after a short grace period and then finish
-		// without it.
 		const FINAL_STOP_GRACE_MS = 1000;
 		const HARD_FINISH_MS = 3000;
 		let forcedTermination = false;
@@ -721,7 +697,7 @@ async function runSingleAttempt(
 			if (sessionSettled || finalDrainTimer || lifecycleFinished) return;
 			finalDrainTimer = setTimeout(() => {
 				if (lifecycleFinished || sessionSettled) return;
-				// Pi runs auto-compaction after the final agent_end and only then emits agent_settled.
+				// external: Pi runs auto-compaction after final agent_end before agent_settled.
 				if (capture.finalDrainHeld() || observeQueuedDrainHold() || compactionAfterFinalOpen) {
 					finalDrainTimer = undefined;
 					armFinalDrainTimer();
@@ -756,8 +732,7 @@ async function runSingleAttempt(
 		}
 		const applyChildLifecycle = (action: ChildLifecycleAction, event?: { type?: string; willRetry?: unknown }): void => {
 			if (action === "cancel-drain") {
-				// After a clean final stop, a non-retrying agent_end may be the child's last event
-				// (Pi may not emit agent_settled), so it re-arms the drain instead of cancelling it.
+				// external: Pi may not emit agent_settled after a clean final stop.
 				terminalAgentEndReceived = event?.type === "agent_end" && event.willRetry !== true && cleanTerminalAssistantStopReceived;
 				agentSettledReceived = false;
 				clearFinalDrainTimers();
@@ -807,9 +782,7 @@ async function runSingleAttempt(
 			unsubscribe?.();
 			onWatchdogStatus = undefined;
 			void jsonlWriter.close().catch(() => {
-				// JSONL artifact flush is best effort.
 			});
-			// Report the run only after the child's extensions have shut down.
 			void Promise.resolve().then(async () => {
 				if (code === 0 && !result.interrupted && !result.timedOut && !result.stopped && !abortedBySignal) {
 					try { await session?.finishCommands?.(); }
@@ -830,8 +803,7 @@ async function runSingleAttempt(
 
 		let activeLongRunningNotified = false;
 		type PendingToolResult = { tool: string; path?: string; mutates: boolean; startedAt?: number };
-		// Pi's parallel tool execution emits every tool_execution_start before the first result message,
-		// so results are matched to their call by toolCallId; the last-started slot covers events without one.
+		// external: Pi emits all parallel tool_execution_start events before the first result.
 		const pendingToolResultsByCallId = new Map<string, PendingToolResult>();
 		let pendingToolResult: PendingToolResult | undefined;
 		type ActiveToolCall = { attentionEmitted?: boolean; key: string; tool: string; args: string; startedAt: number; path?: string };
@@ -1101,7 +1073,6 @@ async function runSingleAttempt(
 			if (providerDiagnostics !== result.providerDiagnostics) {
 				result.providerDiagnostics = providerDiagnostics;
 				progress.providerDiagnostics = providerDiagnostics;
-				// message_end already emits synchronously below; retry-only transitions need their own update.
 				if (evt.type !== "message_end") fireUpdate();
 			}
 			progress.durationMs = now - startTime;
@@ -1187,12 +1158,10 @@ async function runSingleAttempt(
 					}
 					if (evt.message.errorMessage) assistantError = assistantMessageError(evt.message);
 					else if (hasToolCall && evt.message.stopReason === "toolUse") {
-						// A recovered request can finish via a terminating tool, without a text stop.
 						assistantError = undefined;
 					}
 					const assistantText = extractTextFromContent(evt.message.content);
 					appendRecentOutput(progress, assistantText.split("\n").slice(-10));
-					// Final assistant message: start the settle drain window.
 					if (terminalAssistantStop) {
 						if (!evt.message.errorMessage && assistantText.trim()) assistantError = undefined;
 						cleanTerminalAssistantStopReceived ||= !evt.message.errorMessage;
@@ -1203,8 +1172,7 @@ async function runSingleAttempt(
 						applyChildLifecycle(projectChildLifecycle(evt, true, childLifecycleState));
 					}
 				}
-				// Pi delivers every tool result, including a call blocked by a tool_call handler, as a
-				// toolResult message after tool_execution_end; it emits no separate result event.
+				// external: Pi delivers tool results as toolResult messages after tool_execution_end, including blocked calls.
 				if (evt.message.role === "toolResult") {
 					const resultText = extractTextFromContent(evt.message.content);
 					const resultCallId = (evt.message as { toolCallId?: unknown }).toolCallId;
@@ -1212,7 +1180,6 @@ async function runSingleAttempt(
 					if (keyedSnapshot) pendingToolResultsByCallId.delete(resultCallId as string);
 					const toolSnapshot = keyedSnapshot ?? pendingToolResult;
 					if (!keyedSnapshot || pendingToolResult === keyedSnapshot) pendingToolResult = undefined;
-					// The result message's own tool name is authoritative; the pending snapshot is only a fallback.
 					const resultToolName = (evt.message as { toolName?: unknown }).toolName;
 					const blockedTool = (typeof resultToolName === "string" && resultToolName.length > 0 ? resultToolName : undefined) ?? toolSnapshot?.tool;
 					const budgetBlocked = Boolean(options.toolBudget && isToolBudgetBlockedMessage(options.toolBudget, resultText, blockedTool));
@@ -1225,7 +1192,6 @@ async function runSingleAttempt(
 						);
 					}
 					appendRecentOutput(progress, resultText.split("\n").slice(-10));
-					// A budget block has its own signal; it is not a failing mutation.
 					if (toolSnapshot?.mutates && !budgetBlocked && didMutatingToolFail(evt.message)) {
 						recordMutatingFailure(mutatingFailures, {
 							tool: toolSnapshot.tool,
@@ -1354,7 +1320,6 @@ async function runSingleAttempt(
 			activeToolTimeoutKeysByName.set(toolName, keys);
 		};
 
-		/** The child run ended (or was forced to end); fold in the captures and finish. */
 		const settle = (promptError: unknown, forced = false): void => {
 			if (lifecycleFinished || sessionSettled) return;
 			sessionSettled = true;
@@ -1370,11 +1335,7 @@ async function runSingleAttempt(
 			if (!closeError && promptErrorMessage !== undefined) {
 				closeError = promptErrorMessage;
 			}
-			// A foreground child never loads the parent's ambient extensions. A model
-			// whose provider the parent registry does not serve resolves as "not found"
-			// before the child starts; a provider it does serve is inherited without its
-			// extension's session hooks and can fail the first request. Keep the
-			// original error first and add the host rule and remedies after it.
+			// external: Foreground children do not load the parent Pi session ambient extensions.
 			if (promptErrorMessage !== undefined
 				&& closeError === promptErrorMessage
 				&& isChildModelResolutionFailure(promptErrorMessage)
@@ -1395,7 +1356,6 @@ async function runSingleAttempt(
 				closeError = hostStopReason ?? (session?.shutDown ? "Subagent stopped because the parent session shut down." : STOPPED_BEFORE_COMPLETION_ERROR);
 			}
 			if (hostStopReason && !result.interrupted && !result.timedOut) result.stopped = true;
-			// A workflow child ended by the workflow's abort signal was stopped, not failed.
 			if (options.abortedAsStopped && abortedBySignal && !session?.shutDown && !result.interrupted && !result.timedOut) result.stopped = true;
 			if (!closeError && forced && !forcedDrainAfterFinalSuccess) {
 				closeError = "Subagent session did not settle after it was aborted.";
@@ -1456,13 +1416,9 @@ async function runSingleAttempt(
 			}
 		}
 
-		// Publish only after every callback and cleanup guard captured by detach or
-		// later lifecycle events has initialized. Consumers may invoke synchronously.
 		try {
 			options.onDetachReady?.((reason = "user request") => detachForeground(reason));
 		} catch (error) {
-			// A consumer callback is advisory. Keep the child attached and observable
-			// rather than rejecting this attempt and orphaning its live session.
 			appendRecentOutput(progress, [`Foreground detach callback failed: ${error instanceof Error ? error.message : String(error)}`]);
 		}
 
@@ -1501,9 +1457,7 @@ async function runSingleAttempt(
 					},
 				});
 				messageBaseline = created.messages.length;
-				// A runtime replacement can stop a child that detached while it was still being created.
 				if (!hostStopReason) await created.prompt(`Task: ${task}`);
-				// A structured child that finished normally without calling structured_output gets one more turn (#2997).
 				if (options.structuredOutput
 					&& !structuredOutputToolInvoked
 					&& !sessionSettled
@@ -1629,9 +1583,6 @@ async function runSingleAttempt(
 	const structuredText = result.structuredOutput === undefined ? undefined : JSON.stringify(result.structuredOutput, null, 2);
 	let fullOutput = stripAcceptanceReport(acceptanceOutput);
 	if (!fullOutput.trim() && structuredText !== undefined) fullOutput = structuredText;
-	// Text still streaming when the child timed out or its session threw never reached
-	// a completed message. Keep it, labeled; the run still fails and the text never
-	// stands in for acceptance or a requested output file.
 	const partialCause: PartialOutputCause | undefined = result.timedOut
 		? "timeout"
 		: childPromptFailed && !abortedBySignal && !result.interrupted && !result.stopped ? "child error" : undefined;
@@ -1666,7 +1617,6 @@ async function runSingleAttempt(
 			: `${timeoutCause}\n\n${result.timeoutRecovery.message}`;
 	}
 		if (options.outputPath && result.exitCode === 0) {
-			// The schema is the caller's contract: a bound output file holds the structured result, not closing prose.
 			const resolvedOutput = resolveSingleOutput(options.outputPath, structuredText ?? fullOutput, shared.outputSnapshot, options.outputClaimPath);
 			fullOutput = stripAcceptanceReport(resolvedOutput.fullOutput);
 			result.savedOutputPath = resolvedOutput.savedPath;
@@ -1706,7 +1656,6 @@ async function runSingleAttempt(
 	return result;
 }
 
-/** Keep the structured output artifact files other consumers read by path. */
 function writeStructuredOutputArtifacts(runtime: NonNullable<RunSyncOptions["structuredOutput"]>, value: unknown, acceptanceReport: unknown): void {
 	try {
 		mkdirSync(path.dirname(runtime.outputPath), { recursive: true });
@@ -1716,13 +1665,9 @@ function writeStructuredOutputArtifacts(runtime: NonNullable<RunSyncOptions["str
 			else rmSync(runtime.acceptanceReportPath, { force: true });
 		}
 	} catch {
-		// The captured value is already on the result; the file is observability only.
 	}
 }
 
-/**
- * Run a subagent synchronously (blocking until complete)
- */
 async function runSyncCompletionInner(
 	runtimeCwd: string,
 	agents: AgentConfig[],
@@ -1895,9 +1840,6 @@ async function runSyncCompletionInner(
 			error: error instanceof Error ? error.message : String(error),
 		}, options.context));
 	}
-	// Publish the running child so an external panel can show it while it works.
-	// Observability only: a failure here never changes what the child does.
-	// The record stays on disk while the child runs, so it carries no task prompt.
 	try {
 		writeLiveForegroundRun({
 			runId: options.runId,
@@ -2116,9 +2058,6 @@ async function runSyncCompletionInner(
 		: undefined;
 	try {
 		if (result.interrupted && detachedReason === "user request") {
-			// Only an accepted user-detach receipt needs a non-rejecting terminal
-			// ledger. Attached and background execution retain their baseline
-			// acceptance behavior.
 			result.acceptance = buildInterruptedAcceptanceLedger(effectiveAcceptance);
 		} else if (result.stopped) {
 			result.acceptance = buildSkippedAcceptanceLedger(effectiveAcceptance, { id: "stopped", message: "Acceptance was not evaluated because the subagent was stopped." });
@@ -2147,8 +2086,6 @@ async function runSyncCompletionInner(
 	}
 	const acceptanceFailure = acceptanceFailureMessage(result.acceptance);
 	stripAcceptanceReportsFromMessages(result.messages);
-	// A passing typed gate supplies the structured output for runs that have no
-	// outputSchema of their own; preflight rejects the combination.
 	const typedGate = typedVerifyOutput(result.acceptance);
 	if (typedGate && result.structuredOutput === undefined && !acceptanceFailure && result.exitCode === 0) {
 		result.structuredOutput = typedGate.value;
@@ -2228,8 +2165,6 @@ export async function runSync(
 	task: string,
 	options: RunSyncOptions,
 ): Promise<SingleResult> {
-	// Capture the strict contract before consumer-owned objects can be mutated
-	// after a detached receipt is published.
 	const strictContract = isAgentContract(options.agentContract);
 	let detachedReason: string | undefined;
 	let publishedReceipt: SingleResult | undefined;
@@ -2245,8 +2180,6 @@ export async function runSync(
 	if (originSignal?.aborted) forwardOriginAbort();
 	else originSignal?.addEventListener("abort", forwardOriginAbort, { once: true });
 
-	// Keep the live foreground record fresh while the child works, including a
-	// detached child that outlives this call.
 	const panelHeartbeat = setInterval(() => {
 		try { touchLiveForegroundRun(options.runId, options.index ?? 0); }
 		catch (error) { console.error("Failed to refresh the live foreground record:", error); }
@@ -2259,12 +2192,8 @@ export async function runSync(
 		onDetachedExit: undefined,
 		onDetachReceipt: (detachedReceipt) => {
 			if (detachedReason || publishedReceipt) return false;
-			// Keep the authoritative result, fallback snapshot, and caller receipt
-			// separately owned while the completion pipeline remains live.
 			publishedReceipt = structuredClone(detachedReceipt);
 			const callerReceipt = structuredClone(detachedReceipt);
-			// A strict contract was already validated before detach; normalize private
-			// and caller snapshots to the only safely known version.
 			publishedReceipt.agentContract = strictContract ? { version: 1 } : undefined;
 			callerReceipt.agentContract = strictContract ? { version: 1 } : undefined;
 			detachedReason = detachedReceipt.detachedReason ?? "user request";
@@ -2319,8 +2248,6 @@ export async function runSync(
 		});
 		if (strictContract) attachContractProjections(failedResult);
 		try {
-			// Replace the provisional detach receipt metadata with the authoritative
-			// terminal failure. Persistence remains best-effort and cannot orphan work.
 			persistSingleResultMetadata({
 				metadataPath: failedResult.artifactPaths?.metadataPath,
 				enabled: options.artifactConfig?.enabled !== false && options.artifactConfig?.includeMetadata !== false,
@@ -2345,16 +2272,11 @@ export async function runSync(
 		try {
 			await options.onDetachedExit?.(terminalResult);
 		} catch {
-			// The authoritative result has settled. Consumer callback failures are
-			// contained here; each consumer owns cleanup through its own finally block.
 		}
 	}).catch(() => {
-		// Attached completion rejection remains observable through the returned
-		// promise without becoming an unhandled side-channel rejection.
 	}).finally(() => {
 		originSignal?.removeEventListener("abort", forwardOriginAbort);
 		clearInterval(panelHeartbeat);
-		// The child is done, detached or not: its live record goes with it.
 		try { removeLiveForegroundRun(options.runId, options.index ?? 0); }
 		catch (error) { console.error("Failed to remove the live foreground record:", error); }
 	});

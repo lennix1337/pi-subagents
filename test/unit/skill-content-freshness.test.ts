@@ -34,7 +34,6 @@ describe("skill content freshness", () => {
 		const first = resolveSkills(["fresh-skill"], cwd);
 		assert.match(first.resolved[0]?.content ?? "", /VERSION-ONE/);
 
-		// Same length, same timestamp: a copy keyed by mtime would serve the old text.
 		fs.writeFileSync(skillFile, "---\nname: fresh-skill\ndescription: d\n---\nVERSION-TWO\n");
 		fs.utimesSync(skillFile, stamp, stamp);
 

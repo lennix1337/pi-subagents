@@ -37,7 +37,6 @@ export function resolvePiPackageRoot(entry = process.argv[1]): string | undefine
 			? findPiPackageRootFromEntry(fs.realpathSync(entry))
 			: undefined;
 	} catch {
-		// process.argv[1] probing is best-effort; callers can fall back to PATH/package resolution.
 		return undefined;
 	}
 }
@@ -57,7 +56,6 @@ export function resolveHostDependencyPiPackageRoot(entry = process.argv[1]): str
 		try {
 			fs.lstatSync(root);
 		} catch (error) {
-			// ENOTDIR: a file named node_modules is not a candidate, so keep walking like Node's resolver.
 			const code = (error as NodeJS.ErrnoException).code;
 			if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
 			const parent = path.dirname(dir);
@@ -65,7 +63,6 @@ export function resolveHostDependencyPiPackageRoot(entry = process.argv[1]): str
 			dir = parent;
 			continue;
 		}
-		// The nearest candidate is authoritative, even with a broken link or manifest.
 		const canonicalRoot = fs.realpathSync(root);
 		readPiPackageJson(path.join(canonicalRoot, "package.json"));
 		return canonicalRoot;
@@ -155,7 +152,6 @@ type PiPackageSelection =
 	| { root: string; cliScript: string }
 	| { root: string; packageJson: PiPackageJson; authoritative: boolean };
 
-/** Preserve direct JS launches; extensionless .bin/pi launchers must honor explicit roots first. */
 function selectPiPackage(deps: PiSpawnDeps): PiPackageSelection | undefined {
 	const existsSync = deps.existsSync ?? fs.existsSync;
 	const realpathSync = deps.realpathSync ?? fs.realpathSync;
@@ -171,7 +167,6 @@ function selectPiPackage(deps: PiSpawnDeps): PiPackageSelection | undefined {
 					? findPiPackageRootFromEntry(canonicalArgvPath) : undefined;
 				if (root) return { root, cliScript: canonicalArgvPath };
 			} catch {
-				// Ownership probing is best-effort; an unverified host entry is not a Pi CLI.
 			}
 		}
 	}
@@ -182,7 +177,6 @@ function selectPiPackage(deps: PiSpawnDeps): PiPackageSelection | undefined {
 		?? resolveHostDependencyPiPackageRoot(argv1);
 	if (root) return { root, packageJson: readPiPackageJson(path.join(root, "package.json"), deps.readFileSync), authoritative: true };
 
-	// Only extension-relative discovery is best-effort, for both SDK and CLI consumers.
 	const packageJsonCandidates: Array<() => string | undefined> = [];
 	if (deps.resolvePackageJson) packageJsonCandidates.push(deps.resolvePackageJson);
 	packageJsonCandidates.push(() => {
@@ -197,7 +191,6 @@ function selectPiPackage(deps: PiSpawnDeps): PiPackageSelection | undefined {
 			if (!packageJsonPath) continue;
 			return { root: path.dirname(packageJsonPath), packageJson: readPiPackageJson(packageJsonPath, deps.readFileSync), authoritative: false };
 		} catch {
-			// No authoritative host root was found; keep probing the extension install.
 		}
 	}
 	return undefined;

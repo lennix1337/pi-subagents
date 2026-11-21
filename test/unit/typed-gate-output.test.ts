@@ -22,7 +22,6 @@ function tempGitRepo(): string {
 	return dir;
 }
 
-/** A gate command that prints exactly `text` on stdout and exits 0. */
 function printing(text: string): string {
 	return `${process.execPath} -e "process.stdout.write(process.argv[1])" ${JSON.stringify(text)}`;
 }

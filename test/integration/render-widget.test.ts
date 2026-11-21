@@ -190,7 +190,7 @@ describe("subagent async widget rendering", () => {
 		const ctx = {
 			hasUI: true,
 			ui: {
-				// Pi 0.85 setExtensionWidget disposes/deletes before inserting.
+				// external: Pi 0.85 setExtensionWidget disposes/deletes before inserting.
 				setWidget(key: string, factory: ((tui: typeof tui, theme: typeof theme) => Widget) | undefined) {
 					widgets.get(key)?.dispose?.();
 					widgets.delete(key);
@@ -1083,7 +1083,6 @@ describe("subagent async widget rendering", () => {
 
 	it("counts unloaded workflow children and step-less parallel runs like FleetView in the progressive header", () => {
 		resetWidgetLayout();
-		// FleetView counts only loaded workflow children, and synthesizes steps from `agents` for step-less runs.
 		const solo = { asyncId: "solo", asyncDir: "/tmp/solo", mode: "single", agents: ["worker"], status: "running", currentTool: "bash" };
 		const cases = [
 			{ expected: "1 agent running", job: { asyncId: "wf", asyncDir: "/tmp/wf", mode: "workflow", status: "running",

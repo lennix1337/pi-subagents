@@ -1,4 +1,3 @@
-// Separate caller process: deliberately no local workflow/controller state.
 import fs from "node:fs";
 import { createSubagentExecutor } from "../../src/runs/foreground/subagent-executor.ts";
 import { makeMinimalCtx, createEventBus } from "./helpers.ts";

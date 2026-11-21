@@ -11,7 +11,6 @@ describe("resolveGlobalNpmRootSync", () => {
 		try {
 			const appData = path.join(dir, "appdata");
 			const root = path.join(appData, "npm", "node_modules");
-			// PATH is empty: an `npm root -g` spawn cannot run here, so any answer must come from APPDATA.
 			const env = { APPDATA: appData, PATH: "" };
 			fs.mkdirSync(appData, { recursive: true });
 			fs.mkdirSync(root, { recursive: true });

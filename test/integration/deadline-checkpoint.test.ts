@@ -37,7 +37,6 @@ describe("async single-agent deadline checkpoint lifecycle", { skip: !available 
 					: { steps: [{ waitForPath: release, jsonl: [events.assistantMessage("current work complete")] }] }),
 				queuedMessageOutput: "Checkpoint handoff: changed files, tests, remaining work, commit state.",
 			});
-			// The overridden default would disarm the checkpoint entirely if call precedence broke.
 			const executor = makeAsyncExecutor([makeAgent("worker")], {
 				checkpointBeforeDeadlineMs: outcome === "handoff" ? 20_000 : 5_000,
 			});
@@ -57,8 +56,6 @@ describe("async single-agent deadline checkpoint lifecycle", { skip: !available 
 			assert.match(steers[0].text, /Deadline checkpoint from the runner/);
 			assert.match(steers[0].text, /Finish the current tool call only/);
 			assert.match(steers[0].text, /changed files, build\/test state, remaining work, and commit\/PR state/);
-			// Consume only after the runner has acknowledged the queued request. No
-			// assistant or terminal event precedes this synchronized boundary.
 			if (outcome === "handoff") fs.writeFileSync(release, "continue");
 			await waitForAsyncResultFile(id, 15_000);
 			const payload = await readAsyncPayload(id);
@@ -101,7 +98,6 @@ describe("async single-agent deadline checkpoint lifecycle", { skip: !available 
 		assert.ok(terminal.deadlineAt);
 		assert.ok(Date.now() < terminal.deadlineAt - 3_000, "child must finish before checkpoint is due");
 		await new Promise((resolve) => setTimeout(resolve, Math.max(0, terminal.deadlineAt! - Date.now()) + 300));
-		// Process-terminal bookkeeping may arrive later; no checkpoint steering may occur.
 		assert.deepEqual(journal(id).filter((event) => event.type.startsWith("subagent.steer.")), [], "no checkpoint steering after early completion");
 		assert.notEqual((await readAsyncPayload(id)).timedOut, true);
 		assert.ok(terminal.pid);

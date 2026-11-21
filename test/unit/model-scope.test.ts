@@ -20,7 +20,6 @@ describe("matchesScopePattern", () => {
 
 	it("matches a model-prefix wildcard", () => {
 		assert.equal(matchesScopePattern("openai/gpt-5-mini", "openai/gpt-5-*"), true);
-		// The dash in the pattern is literal, so the bare id without a trailing part does not match.
 		assert.equal(matchesScopePattern("openai/gpt-5", "openai/gpt-5-*"), false);
 		assert.equal(matchesScopePattern("openai/gpt-5", "openai/gpt-5*"), true);
 	});
@@ -89,7 +88,6 @@ describe("checkModelScope", () => {
 	});
 
 	it("defaults to inherited (warn) severity when source is omitted-ish via inherited", () => {
-		// Caller passes "inherited" for frontmatter/parent-inherited models.
 		assert.equal(checkModelScope("meta/llama-4", scope, "inherited")?.severity, "warn");
 	});
 

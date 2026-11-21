@@ -20,7 +20,7 @@ export function resolveWatchPath(
 	watchPath: string,
 	nativeRealpath: (filePath: string) => string = fs.realpathSync.native,
 ): string {
-	// libuv's Windows watcher cannot mix 8.3 registration paths with long event paths.
+	// external: libuv Windows watchers cannot mix 8.3 registration paths with long event paths.
 	try {
 		return nativeRealpath(watchPath);
 	} catch {
@@ -58,7 +58,6 @@ function resolveConfigDirNameFromPackageJson(entryPoint = process.argv[1], packa
 			dir = path.dirname(dir);
 		}
 	} catch {
-		// Package metadata lookup is best-effort; detached runners must not fail here.
 	}
 	return undefined;
 }
@@ -223,7 +222,6 @@ export function getLastActivity(outputFile: string | undefined): string {
 		if (ago < 60000) return `active ${Math.floor(ago / 1000)}s ago`;
 		return `active ${Math.floor(ago / 60000)}m ago`;
 	} catch {
-		// Last-activity text is best effort; missing files should omit the hint.
 		return "";
 	}
 }
@@ -341,7 +339,6 @@ function compactCompletedProgress(progress: AgentProgress): AgentProgress {
 	};
 }
 
-/** Summaries of the latest `limit` tool calls, in chronological order; older calls are never read. */
 function extractToolCallSummaries(messages: Message[] | undefined, limit = Infinity): ToolCallSummary[] {
 	const summaries: ToolCallSummary[] = [];
 	for (let i = (messages?.length ?? 0) - 1; i >= 0 && summaries.length < limit; i--) {
@@ -484,7 +481,6 @@ export function hasEmptyTerminalAssistantResponse(messages: Message[]): boolean 
 				&& lastAssistant.stopReason === "stop"
 				&& !lastAssistant.errorMessage
 				&& lastAssistant.content.length > 0
-				// Token accounting can be nonzero even when no response text was emitted.
 				&& lastAssistant.content.every((part) => part.type === "text" && part.text === "")));
 }
 
@@ -617,23 +613,18 @@ export function extractToolArgsPreview(args: Record<string, unknown>): string {
  */
 export function extractTextFromContent(content: unknown): string {
 	if (!content) return "";
-	// Handle string content directly
 	if (typeof content === "string") return content;
-	// Handle array content
 	if (!Array.isArray(content)) return "";
 	const texts: string[] = [];
 	for (const part of content) {
 		if (part && typeof part === "object") {
-			// Handle { type: "text", text: "..." }
 			if ("type" in part && part.type === "text" && "text" in part) {
 				texts.push(String(part.text));
 			}
-			// Handle { type: "tool_result", content: "..." }
 			else if ("type" in part && part.type === "tool_result" && "content" in part) {
 				const inner = extractTextFromContent(part.content);
 				if (inner) texts.push(inner);
 			}
-			// Handle { text: "..." } without type
 			else if ("text" in part) {
 				texts.push(String(part.text));
 			}
@@ -642,8 +633,5 @@ export function extractTextFromContent(content: unknown): string {
 	return texts.join("\n");
 }
 
-// ============================================================================
-// Concurrency Utilities
-// ============================================================================
 
 export { mapConcurrent } from "../runs/shared/parallel-utils.ts";

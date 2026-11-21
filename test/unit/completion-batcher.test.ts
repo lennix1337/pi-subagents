@@ -122,15 +122,12 @@ describe("createCompletionBatcher", () => {
 		});
 
 		batcher.push(item("a"));
-		// Keep resetting the debounce so it never fires on its own, while staying
-		// under the max-wait cap (cumulative 250ms < 300ms).
 		for (let step = 0; step < 5; step++) {
 			batcher.push(item(`late-${step}`));
 			clock.advance(50);
 		}
 		assert.deepEqual(emitted, []);
 
-		// Cross the max-wait cap (300ms from the first arrival).
 		clock.advance(50);
 		assert.deepEqual(emitted, [["a", "late-0", "late-1", "late-2", "late-3", "late-4"]]);
 		batcher.dispose();
@@ -153,7 +150,6 @@ describe("createCompletionBatcher", () => {
 		assert.deepEqual(emitted, [["a", "b"]]);
 		assert.equal(clock.pendingCount(), 0);
 
-		// A later timer fire must not re-emit.
 		clock.advance(1000);
 		assert.deepEqual(emitted, [["a", "b"]]);
 		batcher.dispose();
@@ -189,13 +185,10 @@ describe("createCompletionBatcher", () => {
 			now: clock.now,
 		});
 
-		// First group emits via debounce.
 		batcher.push(item("a"));
 		clock.advance(200);
 		assert.deepEqual(emitted, [["a"]]);
 
-		// A sibling finishing soon after joins a straggler group with the
-		// shorter debounce window.
 		clock.advance(100);
 		batcher.push(item("b"));
 		assert.deepEqual(emitted, [["a"]]);
@@ -218,7 +211,6 @@ describe("createCompletionBatcher", () => {
 		clock.advance(200);
 		assert.deepEqual(emitted, [["a"]]);
 
-		// Past the straggler window: the next arrival is a normal group again.
 		clock.advance(600);
 		batcher.push(item("b"));
 		clock.advance(50);

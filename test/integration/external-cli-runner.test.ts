@@ -47,8 +47,6 @@ async function settlesWithin(promise: Promise<unknown>, timeoutMs: number): Prom
 	}
 }
 
-// A test that fails before releasing its runner must not leave it running into the next test's
-// ownership check, so cleanup waits for every runner and stops one that does not exit.
 function trackRunner<T>(child: ChildProcess, closed: Promise<T>): Promise<T> {
 	trackProcess(child, closed);
 	processDrains.push(async () => {
@@ -60,7 +58,6 @@ function trackRunner<T>(child: ChildProcess, closed: Promise<T>): Promise<T> {
 	return closed;
 }
 
-/** Writes the files a test's external children wait on, at cleanup, if the test did not get to write them. */
 function releaseOnCleanup(...files: string[]): void {
 	processDrains.push(async () => {
 		for (const file of files) if (!fs.existsSync(file)) fs.writeFileSync(file, "");
@@ -87,7 +84,6 @@ function registerHelperDrain(release: () => void | Promise<void>, pidFile: strin
 	});
 }
 
-// A detached runner plus its external child can take well over 5 s to start on Windows CI.
 const RUNNER_TIMEOUT_MS = 30_000;
 
 async function waitForFile(file: string, timeoutMs = RUNNER_TIMEOUT_MS): Promise<void> {
@@ -129,7 +125,7 @@ async function waitForStatus(file: string, predicate: (status: AsyncStatus) => b
 			try {
 				const status = JSON.parse(fs.readFileSync(file, "utf-8")) as AsyncStatus;
 				if (predicate(status)) return status;
-			} catch { /* Atomic status publication may be between renames. */ }
+			} catch {  }
 		}
 		await new Promise((resolve) => setTimeout(resolve, 20));
 	}

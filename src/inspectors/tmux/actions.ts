@@ -72,7 +72,6 @@ function errorText(input: { code: TmuxErrorCode; message: string }): string {
 	return `tmux inspector error (${input.code}): ${input.message}`;
 }
 
-/** Pane option carrying this run's ownership marker; a pane without it is never ours to kill. */
 const OWNER_OPTION = "@pi-subagents-inspector";
 
 function ownerTag(runId: string, index?: number): string {
@@ -85,11 +84,11 @@ type PaneProbe =
 	| { state: "stale" }
 	| { state: "error"; error: { code: TmuxErrorCode; message: string } };
 
-/** Verify the pane is alive AND ours: list-panes fails on a gone pane, while display-message silently returns empty on tmux 3.3+; the marker survives pane-id reuse after a server restart. */
+// external: tmux 3.3+ can return empty output for display-message on a gone pane.
 async function probePane(client: TmuxClient, binding: TmuxInspectorBinding, signal?: AbortSignal): Promise<PaneProbe> {
 	const probe = await client.run(["list-panes", "-t", binding.paneId, "-F", `#{pane_id}|#{${OWNER_OPTION}}|#{pid}`], { timeoutMs: 5_000, signal });
 	if (!probe.ok) return probe.error.code === "PANE_GONE" ? { state: "gone" } : { state: "error", error: probe.error };
-	// A pane target resolves to its window, so list-panes reports every pane in it; read the target's line.
+	// external: tmux list-panes resolves a pane target to its window.
 	const line = probe.data.split(/\r?\n/).map((entry) => entry.trim()).find((entry) => entry.startsWith(`${binding.paneId}|`));
 	if (!line) return { state: "gone" };
 	const [tag, serverPid] = line.split("|").slice(1);
@@ -116,11 +115,9 @@ export async function openTmuxInspector(
 			}
 			return result(`tmux inspector pane ${existing.paneId} is already open for async run ${context.target.runId}. Ctrl-C inside the pane closes it.`);
 		}
-		// A gone or stale binding falls through to a fresh split; other failures must not open a duplicate.
 		if (probe.state === "error") return result(errorText(probe.error), true);
 	}
-	// The split activates the new pane; when focus is not requested, remember the
-	// active pane so it can be re-selected after the split.
+	// external: tmux split-window activates the new pane.
 	const originalPane = focus ? undefined : await client.run(["display-message", "-p", "#{pane_id}"], { timeoutMs: 5_000, signal: context.signal });
 	const split = await client.run([
 		"split-window", "-h", "-P", "-F", "#{pane_id}",
@@ -137,7 +134,6 @@ export async function openTmuxInspector(
 	if (originalPane?.ok && originalPane.data) {
 		await client.run(["select-pane", "-t", originalPane.data], { timeoutMs: 5_000, signal: context.signal });
 	}
-	// Stamp and cleanup run without the signal: aborting mid-stamp must not orphan an unstamped pane.
 	const stamp = await client.run(["set-option", "-p", "-t", id, OWNER_OPTION, ownerTag(context.target.runId, context.target.index)], { timeoutMs: 5_000 });
 	if (!stamp.ok) {
 		await client.run(["kill-pane", "-t", id], { timeoutMs: 5_000 });
@@ -160,7 +156,6 @@ export async function openTmuxInspector(
 	try {
 		writeAtomicJson(bindingPath(context.target.asyncDir, context.target.index), binding);
 	} catch (error) {
-		// Without a binding, status and close cannot find the pane, so remove it before reporting the failure.
 		await client.run(["kill-pane", "-t", id], { timeoutMs: 5_000 });
 		throw error;
 	}

@@ -48,7 +48,6 @@ describe("watchdog diff tool", () => {
 	});
 
 	it("has no baseline when git cannot be spawned at all", async () => {
-		// A NUL byte makes execFile throw synchronously, the same path as Windows spawn EPERM.
 		assert.equal(await startWatchdogDiffBaselineCapture(`${repo}\0`), undefined);
 	});
 

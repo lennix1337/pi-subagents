@@ -1,5 +1,3 @@
-// Derived from xz-dev's PR #2049 (910807bf). Fresh isolated stages, one pinned input snapshot.
-// node test/smoke/standalone-matrix.mjs /absolute/official-pi /fresh/artifacts
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -31,7 +29,6 @@ const inputs = ["index.ts", "package.json", "package-lock.json", "scripts/build-
 const frozen = Object.fromEntries(inputs.map((file) => [file, sha(path.join(source, file))]));
 fs.writeFileSync(path.join(root, "inputs.json"), JSON.stringify(frozen, null, 2));
 const assertFrozen = () => assert.deepEqual(Object.fromEntries(inputs.map((file) => [file, sha(path.join(source, file))])), frozen, "execution inputs changed during the gate");
-// Every mode must exercise the same candidate, so build and pack exactly once.
 const candidateDir = path.join(root, "candidate");
 fs.mkdirSync(candidateDir);
 const built = spawnSync(process.execPath, ["scripts/build-package.mjs"], { cwd: source, encoding: "utf8", timeout: 180000, maxBuffer: 10 * 1024 * 1024 });
@@ -44,7 +41,6 @@ const candidate = path.join(candidateDir, JSON.parse(packed.stdout)[0].filename)
 const packageSha = sha(candidate);
 const modes = ["single", "workflow", "shared-run", "parallel-stop", "targeted-controls", "steer", "interrupt", "stop", "child-stop", "child-timeout", "run-timeout", "tool-timeout", "missing-bootstrap", "persistence-failure", "authorization-failure", "sdk-init-failure", "bootstrap-errors", "revival"];
 const receipt = { release, complete: false, cases: [] };
-// Modes run one at a time: they are CPU-bound, and four concurrent modes missed the parent's 45s deadline.
 for (const mode of modes) {
 	assertFrozen();
 	const startedAt = Date.now();

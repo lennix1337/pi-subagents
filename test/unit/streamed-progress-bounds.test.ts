@@ -20,10 +20,8 @@ describe("streamed progress snapshot bounds", () => {
 		}));
 		const bounded = boundStreamedRecentTools(recentTools);
 		assert.equal(bounded.length, MAX_STREAMED_RECENT_TOOLS);
-		// most-recent retained (chronological)
 		assert.equal(bounded.at(-1)?.endMs, recentTools.at(-1)?.endMs);
 		assert.equal(bounded[0]?.endMs, recentTools.at(-MAX_STREAMED_RECENT_TOOLS)?.endMs);
-		// cloned, not aliased
 		bounded[0]!.args = "mutated";
 		assert.notEqual(recentTools.at(-MAX_STREAMED_RECENT_TOOLS)?.args, "mutated");
 	});
@@ -70,7 +68,6 @@ describe("streamed progress snapshot bounds", () => {
 		const expected = (calls: Array<ReturnType<typeof call>>) => calls.slice(-MAX_STREAMED_TOOL_CALLS)
 			.map((part) => ({ text: formatToolCall(part.name, part.arguments), expandedText: formatToolCall(part.name, part.arguments, true) }));
 		for (const total of [1, MAX_STREAMED_TOOL_CALLS - 1, MAX_STREAMED_TOOL_CALLS, MAX_STREAMED_TOOL_CALLS + 7]) {
-			// Three calls per assistant message so the cutoff can fall inside a message, with other roles and text parts interleaved.
 			const calls = Array.from({ length: total }, (_, i) => call(i));
 			const messages: unknown[] = [];
 			for (let i = 0; i < calls.length; i += 3) {
@@ -95,7 +92,6 @@ describe("streamed progress snapshot bounds", () => {
 	});
 
 	it("bounds a pathological running snapshot", () => {
-		// Simulates a long, deep nested fan-out: many tool calls + long output lines.
 		const recentTools = Array.from({ length: 5000 }, (_, i) => ({ tool: "read", args: `services/pkg/file-${i}.ts`, endMs: i }));
 		const recentOutput = Array.from({ length: 50 }, () => "y".repeat(60_000));
 		const snapshot = {

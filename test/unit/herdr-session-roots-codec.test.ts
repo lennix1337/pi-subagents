@@ -22,11 +22,6 @@ describe("session roots codec", () => {
 		assert.match(encoded, /^[A-Za-z0-9+/=]+$/);
 	});
 
-	// This is the actual regression: Windows PowerShell has no backslash-escape for
-	// embedded double quotes (only `` `" `` or `""`), so shellQuote's win32 branch
-	// (which escapes `"` as `\"`) corrupts any argument containing a literal `"` -
-	// exactly what `JSON.stringify(sessionRoots)` produces. Spawn real powershell.exe
-	// to prove the old approach breaks and the new approach survives.
 	describe("end-to-end through real powershell.exe", { skip: process.platform !== "win32" }, () => {
 		function echoArgvCommand(sessionRootsArg: string): string {
 			const script = "process.stdout.write(JSON.stringify(process.argv.slice(1)));";

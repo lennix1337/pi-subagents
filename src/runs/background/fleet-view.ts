@@ -489,14 +489,6 @@ function appendKnownArtifacts(lines: string[], input: { outputPaths: string[]; s
 	for (const artifact of artifacts) lines.push(`  ${artifact}`);
 }
 
-/**
- * Sanitizes each assembled line independently.
- *
- * Sanitizing the joined response would let a single binary fragment in child
- * output collapse the whole transcript, including run state, artifact paths, and
- * warnings, into the binary placeholder. Per-line sanitization keeps that damage
- * to the offending line.
- */
 function safeTranscriptLines(lines: string[]): string {
 	return lines.map((line) => safeTerminalText(line)).join("\n");
 }
@@ -507,15 +499,9 @@ function appendTranscriptBody(lines: string[], sourceLabel: string, sourceLines:
 		lines.push("  (no transcript lines available yet)");
 		return;
 	}
-	// Bound the rendered body, not the raw input: terminal escaping can expand it.
-	// Keep line prefixes (roles/tool names), then prefer whole recent lines. The
-	// byte budget includes indentation, separators and omission markers, but not
-	// the source label, run metadata, warnings or artifact paths above the body.
 	const body: string[] = [];
 	let bytes = 0;
 	for (let index = sourceLines.length - 1; index >= 0; index--) {
-		// Preserve assembled-line binary detection (including indentation). A
-		// binary placeholder replaces the whole line and must not be reindented.
 		const safe = safeTerminalText(`  ${sourceLines[index]!}`);
 		const lineLimit = MAX_TRANSCRIPT_LINE_CHARS + 2;
 		const line = safe.length <= lineLimit
@@ -570,8 +556,6 @@ export function formatAsyncRunTranscript(status: AsyncStatus, asyncDir: string, 
 		: uniqueStrings([runOutputPath]);
 	const sessionFile = selected.index !== undefined ? selected.step?.sessionFile : status.sessionFile;
 	const eventsPath = path.join(asyncDir, "events.jsonl");
-	// Synthesized output paths can name files that were never written. Keep the unfiltered paths
-	// below so a present-but-unreadable file still reports its read error.
 
 	const context = contextModeLabel(status.context ?? summarizeContextModes((status.steps ?? []).map((step) => step.context)));
 	const lines = [

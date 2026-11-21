@@ -15,7 +15,6 @@ test("executor doctor/status remain available when the selected SDK root is brok
 	fs.writeFileSync(path.join(host, "package.json"), JSON.stringify({ name: "embedded-host" }));
 	const entry = path.join(host, "sessiond.mjs");
 	fs.writeFileSync(entry, "throw new Error('host entry must not execute');\n");
-	// A working host dependency must not hide the broken explicit override.
 	const dependency = path.join(host, "node_modules", PI_CODING_AGENT_PACKAGE);
 	fs.mkdirSync(dependency, { recursive: true });
 	fs.writeFileSync(path.join(dependency, "package.json"), JSON.stringify({ name: PI_CODING_AGENT_PACKAGE }));
@@ -25,7 +24,6 @@ test("executor doctor/status remain available when the selected SDK root is brok
 		PI_SUBAGENTS_TEMP_ROOT: path.join(tmp, "runs"),
 		[PI_CODING_AGENT_PACKAGE_ROOT_ENV]: path.join(tmp, "absent-override"),
 	};
-	// A fresh process gives the executor a static dependency graph that has never resolved a working SDK.
 	const result = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", `
 		import assert from "node:assert/strict";
 		import childProcess from "node:child_process";

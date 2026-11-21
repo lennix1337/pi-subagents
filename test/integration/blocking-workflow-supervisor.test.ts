@@ -62,7 +62,6 @@ describe("supervisor asks in blocking workflows", { skip: !available }, () => {
 					controller.abort();
 					assert.equal((await execution).isError, true);
 					assert.equal(state.blockingWorkflowChildren?.size, 0, "abort must release every registration");
-					// Let stopped runners finish their publications before removing the test directories.
 					while (childIds.some(id => ["running", "queued"].includes(JSON.parse(fs.readFileSync(path.join(ASYNC_DIR, id, "status.json"), "utf8")).state)) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
 					return;
 				}

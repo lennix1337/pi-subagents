@@ -30,7 +30,7 @@ import type { RawDrainStatusObserver } from "../shared/readonly-drain-observatio
 import { childWatchdogProgressForModel } from "../../watchdog/child-status.ts";
 import { ownerSessionIds } from "../shared/run-ownership.ts";
 
-interface AsyncRunStepSummary {
+export interface AsyncRunStepSummary {
 	index: number;
 	childId?: string;
 	agent: string;
@@ -152,7 +152,7 @@ export interface AsyncRunSummary {
 	preflight?: WorkflowPreflight;
 }
 
-interface AsyncRunListOptions {
+export interface AsyncRunListOptions {
 	states?: Array<AsyncRunSummary["state"]>;
 	sessionId?: string;
 	limit?: number;
@@ -187,8 +187,6 @@ function isAsyncStatusIsolationError(asyncDir: string, error: unknown): boolean 
 		|| /^(workflowChildren|Invalid workflowChildren)/.test(message);
 }
 
-// Status path -> last logged signature. A corrupt run is re-scanned on every
-// status poll, so the line repeats only when the file or the outcome changes.
 const reportedCorruptStatus = new Map<string, string>();
 
 function isolateCorruptActiveRun(asyncDir: string, runId: string, error: unknown, now?: () => number): void {
@@ -220,7 +218,6 @@ function isolateCorruptActiveRun(asyncDir: string, runId: string, error: unknown
 		fileSignature = `${stat.size}:${stat.mtimeMs}`;
 	} catch (statError) {
 		if ((statError as NodeJS.ErrnoException).code !== "ENOENT") throw statError;
-		// A vanished file still gets the original diagnostic once.
 	}
 	const signature = `${fileSignature}\n${line}`;
 	if (reportedCorruptStatus.get(statusPath) === signature) return;
@@ -327,8 +324,6 @@ function statusToSummary(asyncDir: string, status: AsyncStatus & { cwd?: string 
 	const processTerminal = readProcessTerminal(asyncDir, { runId: status.runId, runnerProcessInstanceId: status.processTerminal?.runnerProcessInstanceId })
 		?? sanitizeProcessTerminal(status.processTerminal, { runId: status.runId, runnerProcessInstanceId: status.processTerminal?.runnerProcessInstanceId }, path.join(asyncDir, "status.json"));
 	const nestedProjectionAllowed = nestedWarnings.length === 0;
-	// Degrade to the status-stored snapshot when the persisted budget is unavailable (e.g. removed
-	// by OS temp cleanup) instead of failing the whole run list; admission paths stay strict.
 	let runFanoutBudget: AsyncStatus["runFanoutBudget"] = status.runFanoutBudget;
 	try {
 		const runFanoutBudgetDescriptor = readRunFanoutBudgetDescriptor(asyncDir);
@@ -342,8 +337,6 @@ function statusToSummary(asyncDir: string, status: AsyncStatus & { cwd?: string 
 	let nestedChildren: NestedRunSummary[] = [];
 	if (nestedProjectionAllowed && nestedRoute) {
 		try {
-			// The route is resolved by the caller via buildNestedRouteIndex, so this
-			// avoids a fresh scan of the nested-events directory per run.
 			nestedChildren = projectNestedEvents(nestedRoute)?.children ?? [];
 		} catch (error) {
 			nestedWarnings.push(`Nested status unavailable: ${getErrorMessage(error)}`);
@@ -559,11 +552,6 @@ export function listAsyncRuns(asyncDirRoot: string, options: AsyncRunListOptions
 
 	const allowedStates = options.states ? new Set(options.states) : undefined;
 	const runs: AsyncRunSummary[] = [];
-	// Route resolution for every run shares a single index built from the
-	// nested-events directory, so the per-run lookup is O(1) instead of scanning
-	// the directory once per run. The index is built lazily on first use, so
-	// load-time restoration (which only wants queued/running runs) skips it
-	// entirely when no active runs match.
 	let nestedRouteIndex: Map<string, NestedRoute> | undefined;
 	const resolveNestedRoute = (rootRunId: string): NestedRoute | undefined => {
 		if (!includeNested) return undefined;
@@ -575,7 +563,6 @@ export function listAsyncRuns(asyncDirRoot: string, options: AsyncRunListOptions
 		const asyncDir = path.join(asyncDirRoot, entry);
 		let status: (AsyncStatus & { cwd?: string }) | null;
 		try {
-			// Reconciliation can rewrite state; session-scoped discovery does not own foreign runs.
 			let owned = false;
 			if (owners) {
 				const stored = readStatus(asyncDir);
@@ -585,7 +572,6 @@ export function listAsyncRuns(asyncDirRoot: string, options: AsyncRunListOptions
 				}
 				owned = stored !== null;
 			}
-			// Only a run this session owns may adopt the caller's completion owner.
 			const reconciliation = options.reconcile === false
 				? undefined
 				: reconcileAsyncRun(asyncDir, { resultsDir: options.resultsDir, kill: options.kill, now: options.now, adoptCompletionOwnerId: owned ? options.adoptCompletionOwnerId : undefined }, observeStatus);
@@ -609,10 +595,6 @@ export function listAsyncRuns(asyncDirRoot: string, options: AsyncRunListOptions
 			}
 		}
 		if (status.displayDismissedAt !== undefined) continue;
-		// Filter before the nested-route lookup: the lookup builds an index over
-		// the nested-events directory, so deferring it for filtered-out runs keeps
-		// restoration at load from scanning that directory when no active runs
-		// match.
 		if (allowedStates && !allowedStates.has(status.state)) continue;
 		if (owners && !owners.has(status.sessionId)) continue;
 		const nestedWarnings: string[] = [];

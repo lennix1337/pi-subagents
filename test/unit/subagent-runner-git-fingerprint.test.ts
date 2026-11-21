@@ -6,7 +6,6 @@ const abort = new AbortController().signal;
 const pause = () => new Promise((resolve) => setTimeout(resolve, 10));
 const gitError = (message: string) => Object.assign(new Error(message), { code: 128, stderr: message });
 
-// Fake git reads: each takes real time, so overlapping reads show up as in-flight count 2.
 function fakeGit(reads: { head: () => Buffer; status: () => Buffer }) {
 	let inFlight = 0, maxInFlight = 0;
 	const run = async (args: string[]): Promise<Buffer> => {

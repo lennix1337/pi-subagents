@@ -9,11 +9,9 @@ import { isReusableWorkflowStopCause, WORKFLOW_STOP_CAUSE_OWNER_EXITED } from ".
 /** Custom message posted when an auto-resume launch did not start. */
 export const WORKFLOW_AUTO_RESUME_MESSAGE_TYPE = "subagent-auto-resume";
 
-/** Interrupted workflows older than this are left for a resume by hand. */
 const AUTO_RESUME_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const AUTO_RESUME_SCAN_LIMIT = 50;
 
-/** When the run was interrupted: the dead owner's last update, or the runtime replacement. */
 function interruptedAt(status: AsyncStatus): number | undefined {
 	return status.workflow?.stopCause === WORKFLOW_STOP_CAUSE_OWNER_EXITED ? status.workflow.ownerExitedAt : status.endedAt;
 }
@@ -28,7 +26,6 @@ export interface PendingWorkflowAutoResume {
 	state: "pending" | "started" | "cancelled";
 }
 
-// Shared by every runtime in the process: a reload's new runtime must see the old runtime's pending claims.
 const registryKey = Symbol.for("pi-subagents.workflow-auto-resume.v1");
 const registryGlobal = globalThis as typeof globalThis & { [registryKey]?: Set<PendingWorkflowAutoResume> };
 const pendingAutoResumes = registryGlobal[registryKey] ?? (registryGlobal[registryKey] = new Set<PendingWorkflowAutoResume>());
@@ -37,8 +34,6 @@ const pendingAutoResumes = registryGlobal[registryKey] ?? (registryGlobal[regist
 export function cancelPendingWorkflowAutoResumes(match: (entry: PendingWorkflowAutoResume) => boolean): void {
 	for (const entry of pendingAutoResumes) {
 		if (entry.state !== "pending" || !match(entry)) continue;
-		// It stays in the set, so the next scan of its session claims the run again under the same id and
-		// a notice that already said `Auto-resumed as <id>.` stays true.
 		entry.state = "cancelled";
 		try {
 			releaseWorkflowResumeClaim(entry.prepared.sourceAsyncDir, entry.prepared.newRunId);
@@ -94,7 +89,6 @@ export function planWorkflowAutoResumes(input: { asyncDirRoot: string; currentSe
 				planned.push(entry);
 				continue;
 			}
-			// Another claimant continues it; nothing to record.
 			if (preparation.code === "claim-busy" || preparation.code === "claim-resumed") continue;
 			recordWorkflowResumeRefusal(asyncDir, { reason: preparation.reason, byHand: preparation.byHand }, now);
 		} catch (error) {

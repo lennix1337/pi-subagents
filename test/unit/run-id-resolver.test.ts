@@ -315,7 +315,6 @@ describe("subagent run id resolver", () => {
 		updateActiveRunIndex(dir, "running", status.toolCallId);
 		fs.writeFileSync(path.join(dir, "status.json"), JSON.stringify(status));
 		fs.mkdirSync(path.join(root, TERMINAL_RUN_INDEX_DIR));
-		// A file at the alias namespace blocks only the optional alias publication.
 		fs.writeFileSync(path.join(root, TERMINAL_RUN_INDEX_DIR, "@tool-calls"), "blocked");
 		const errors: unknown[][] = [];
 		t.mock.method(console, "error", (...args) => { errors.push(args); });

@@ -5,7 +5,6 @@ import type { PlacementCommandResult, PlacementMachineAccess, PlacementSockets }
 
 const DEFAULT_TIMEOUT_MS = 15_000, DEFAULT_MAX_BUFFER = 256 * 1024;
 
-/** Sockets on this machine are already reachable: forwarding returns the path unchanged and closing is a no-op. */
 function localSockets(): PlacementSockets {
 	return {
 		async forwardRemoteSocket(socketPath) { if (!path.isAbsolute(socketPath)) throw new Error("Local socket path must be absolute."); return { socketPath, async close() {} }; },

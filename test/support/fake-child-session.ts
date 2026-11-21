@@ -1,13 +1,3 @@
-/**
- * Scripted in-process child sessions for tests.
- *
- * Foreground runs and the detached async runner create their children through
- * `ChildSessionFactory`. This factory replays the responses `createMockPi()`
- * queues, so one `mockPi.onCall(...)` feeds whichever launch path a test
- * exercises. A scripted `stdoutRaw` is parsed as JSON event lines so older
- * fixtures still replay; there is no stdout transport. `stderr` only names the
- * failure a non-zero `exitCode` raises.
- */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -123,7 +113,6 @@ function claimNextResponse(dir: string, haystack: string): FakeChildResponse {
 	return { output: "ok" };
 }
 
-/** Synthetic argv in the shape existing call assertions read; a child session receives no argv. */
 function fakeChildArgs(launch: ChildSessionLaunch, task: string): string[] {
 	const args: string[] = ["--mode", "json", "-p"];
 	if (launch.storage.kind === "file") args.push("--session", launch.storage.sessionFile);
@@ -198,13 +187,11 @@ function parseRawStdout(response: FakeChildResponse): unknown[] {
 		try {
 			entries.push(JSON.parse(line));
 		} catch {
-			// Non-JSON stdout is not an event for an in-process child.
 		}
 	}
 	return entries;
 }
 
-/** Model id without a `:thinking` suffix, as the child would report it. */
 function reportedModel(model: string | undefined): string | undefined {
 	if (!model) return undefined;
 	const colon = model.lastIndexOf(":");
@@ -235,7 +222,6 @@ export function createFakeChildSessions(queueDir: () => string): FakeChildSessio
 				fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
 				fs.writeFileSync(sessionFile, "", { flag: "a" });
 			} else if (launch.storage.kind === "dir") {
-				// A real session writes its file on the first message; the scripted child leaves the directory empty.
 				fs.mkdirSync(launch.storage.sessionDir, { recursive: true });
 			}
 			/** Steers are also appended to `steers.jsonl` in the queue dir so a test can observe a child hosted in another process. */
@@ -243,7 +229,6 @@ export function createFakeChildSessions(queueDir: () => string): FakeChildSessio
 				try {
 					fs.appendFileSync(path.join(queueDir(), "steers.jsonl"), `${JSON.stringify({ sessionId, text, mode })}\n`, "utf-8");
 				} catch {
-					// Observability for tests only.
 				}
 			};
 			const wakeQueuedWaiters = (): void => {
@@ -256,7 +241,6 @@ export function createFakeChildSessions(queueDir: () => string): FakeChildSessio
 						modes: queued.map((item) => item.mode),
 					})}\n`, "utf-8");
 				} catch {
-					// Observability for tests only.
 				}
 			};
 			const enqueue = (text: string, mode: "steer" | "followUp"): void => {
@@ -276,7 +260,6 @@ export function createFakeChildSessions(queueDir: () => string): FakeChildSessio
 				try {
 					fs.appendFileSync(path.join(queueDir(), "scripted-final.jsonl"), `${JSON.stringify({ sessionId })}\n`, "utf-8");
 				} catch {
-					// Observability for tests only.
 				}
 			};
 			const drainQueuedBoundary = async (response: FakeChildResponse, task: string): Promise<void> => {
@@ -310,15 +293,12 @@ export function createFakeChildSessions(queueDir: () => string): FakeChildSessio
 				for (const entry of entries) {
 					if (record.aborted) return;
 					const typed = entry as { type?: string; message?: { role?: string; content?: Array<{ type?: string; text?: string }>; errorMessage?: string; stopReason?: string } };
-					// Only the child's own replies carry its acceptance report; tool results are returned verbatim.
 					if (typed?.type === "message_end" && typed.message?.role !== "toolResult" && injectAcceptance) {
 						const textPart = typed.message?.content?.find?.((part) => part?.type === "text");
 						const providerError = Boolean(typed.message?.errorMessage || typed.message?.stopReason === "error");
 						if (providerError) sawProviderError = true;
-						// Native acceptance lives in system resources, not the compactable task.
 						if (!providerError && textPart && typeof textPart.text === "string" && (!sawProviderError || textPart.text.trim())) textPart.text = withAcceptanceReport(textPart.text, [launch.systemPrompt, launch.appendSystemPrompt, task].join("\n"));
 					}
-					// A real child's watchdog hook reports through the host's sink, not the session stream.
 					if (isChildWatchdogStatusEvent(entry)) launch.runtime.watchdogStatus?.(entry);
 					else emit(entry);
 					await Promise.resolve();
@@ -326,8 +306,6 @@ export function createFakeChildSessions(queueDir: () => string): FakeChildSessio
 			};
 			const waitForReleasePath = async (releasePath: string | undefined): Promise<void> => {
 				if (typeof releasePath !== "string") return;
-				// Release is a test-controlled event and abort short-circuits below; this bound only prevents an endless wait,
-				// so it must stay clear of pre-release phases that spawn several cold `node --experimental-strip-types` children.
 				const deadline = Date.now() + 120_000;
 				while (!fs.existsSync(releasePath)) {
 					if (record.aborted) return;

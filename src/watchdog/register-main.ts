@@ -17,7 +17,6 @@ import { createWatchdogWarningMessage } from "./warning-format.ts";
 interface RegisterMainWatchdogOptions {
 	runtime?: MainWatchdogRuntime;
 	review?: WatchdogReviewFunction;
-	/** config.enableSlashCommands: false leaves out /subagents-watchdog. */
 	slashCommand?: boolean;
 }
 

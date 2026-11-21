@@ -36,12 +36,10 @@ function sealPausedRun(asyncDir: string, status: AsyncStatus, resultsDir: string
 		return `process-terminal proof is ${proof?.state === "unknown" ? `unknown (${proof.reason})` : proof?.state ?? "missing"}`;
 	}
 	if (!status.sessionId) return "session identity is missing";
-	// The validated lookup skips unreadable or foreign files; those must be refused below, not replaced.
 	const existingResultPath = resultPayloadPathForSessionRun(resultsDir, status.sessionId, status.runId)
 		?? resultPayloadFileForSessionRun(resultsDir, status.sessionId, status.runId);
 	let existingResult: Record<string, unknown>;
 	if (!existingResultPath) {
-		// Delivery deletes the paused result, and an interrupted parent may never have received one; seal from status.
 		existingResult = {
 			id: status.runId,
 			mode: status.mode,
@@ -127,7 +125,6 @@ export function deliverAsyncRunStop(
 ): string | undefined {
 	const { status, resultsDir = DIRS.results, ...delivery } = input;
 	const pausedWholeRun = status.state === "paused" && delivery.childId === undefined && delivery.targetIndex === undefined;
-	// A paused run whose runner closed its inbox can only be sealed from exact exit proof below.
 	if (!(pausedWholeRun && fs.existsSync(stopInboxClosedPath(delivery.asyncDir)))) deliverStopRequest(delivery);
 	if (pausedWholeRun) return sealPausedRun(delivery.asyncDir, status, resultsDir);
 }
@@ -140,12 +137,10 @@ export function stopAsyncRun(
 	childId?: string,
 ): AgentToolResult<Details> | null {
 	const target = getAsyncStopTarget(state, runId, location);
-	// An async workflow runs in this process: it has no runner to read a stop request, so stop it through its controller.
 	const workflowRunId = target?.asyncId ?? runId;
 	const workflowController = childId === undefined && workflowRunId ? state.workflowControllers?.get(workflowRunId) : undefined;
 	const workflowAsyncDir = workflowController && workflowRunId ? target?.asyncDir ?? state.asyncJobs.get(workflowRunId)?.asyncDir : undefined;
 	const workflowStatus = workflowAsyncDir ? readStatus(workflowAsyncDir) : undefined;
-	// Controllers outlive a session switch; a workflow owned by another session falls through to the ownership check below.
 	const foreignWorkflow = Boolean(state.currentSessionId && workflowStatus && workflowStatus.sessionId !== state.currentSessionId);
 	if (workflowController && workflowRunId && !foreignWorkflow) {
 		if (workflowStatus) stopStoppableAsyncStatusChildren(workflowStatus, state.workflowChildStops?.get(workflowRunId), "Workflow stopped.");
@@ -154,7 +149,6 @@ export function stopAsyncRun(
 	}
 	if (!target) return null;
 	const status = reconcileAsyncRun(target.asyncDir, { kill }).status;
-	// A relaunched workflow stops the exact child run it re-attached from its relaunch chain, whichever session launched it.
 	if (state.currentSessionId && !ownsRun(state.currentSessionId, status?.sessionId) && location?.reattachedRunId !== target.asyncId) {
 		return {
 			content: [{ type: "text", text: `Async run '${target.asyncId}' was not found in the active session.` }],

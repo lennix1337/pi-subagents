@@ -14,7 +14,6 @@ import { formatAcceptancePrompt, resolveEffectiveAcceptance } from "../../src/ru
 import type { AgentConfig } from "../../src/agents/agents.ts";
 import { createStructuredOutputRuntime } from "../../src/runs/shared/structured-output.ts";
 
-// Uses the existing isolated SDK fixture; never install dependencies or call a provider.
 const sdkRoot = process.env.PI_SUBAGENTS_NATIVE_SDK;
 for (const host of ["foreground", "runner"] as const) {
 	for (const [systemPromptMode, structured] of [["append", false], ["replace", false], ["append", true], ["replace", true]] as const) {
@@ -53,7 +52,6 @@ for (const host of ["foreground", "runner"] as const) {
 				let tokens = 10;
 				if (summary) {
 					summaries++;
-					// Deliberately lossy model output: real SDK summary generation/rebuild remains intact.
 					delta = { content: "The marker was read. Finish the work." };
 				} else if (reads++ === 0) {
 					delta = { content: "Inspecting the marker for evidence. ".repeat(12), tool_calls: [{ index: 0, id: "read-once", type: "function", function: { name: "read", arguments: JSON.stringify({ path: "marker.txt" }) } }] };
@@ -99,7 +97,6 @@ for (const host of ["foreground", "runner"] as const) {
 					? await runSync(cwd, [agent], agent.name, task, { runId, acceptance: explicit, structuredOutput, waitToolEnabled: false, childSessionFactory: observedFactory })
 					: await runSingleStepInner({ ...agent, agent: agent.name, task, context: "fresh", effectiveAcceptance: acceptance, structuredOutput, waitToolEnabled: false }, { cwd, id: "compact-runner", flatIndex: 0, flatStepCount: 1, previousOutput: "", placeholder: "{previous}", outputFile: join(cwd, "output.log"), sessionEnabled: false, childSessions: observedFactory });
 				assert.equal(result.exitCode, 0, `${result.error}; ${JSON.stringify(events.filter((e) => e.type.includes("compact") || (e.type === "message_end" && e.message.role === "assistant" && e.message.stopReason === "error")))}`);
-				// runSync returns the result before its terminal observer's finally removes the record.
 				await setImmediate();
 				assert.equal(existsSync(ledgerPath), false, "foreground record is removed on completion");
 				assert.equal(result.acceptance?.status, "checked");

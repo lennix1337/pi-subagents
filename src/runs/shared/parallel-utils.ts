@@ -197,7 +197,6 @@ export async function mapConcurrent<T, R>(
 	limit: number,
 	fn: (item: T, i: number) => Promise<R>,
 	globalSemaphore?: Semaphore,
-	/** Invoked after every worker has stopped, including workers outliving an early rejection. */
 	onSchedulingSettled?: () => void,
 ): Promise<R[]> {
 	const safeLimit = Math.max(1, Math.floor(limit) || 1);
@@ -208,7 +207,6 @@ export async function mapConcurrent<T, R>(
 		try {
 			onSchedulingSettled?.();
 		} catch {
-			// Scheduling lifecycle cleanup must not replace the worker result.
 		}
 	};
 

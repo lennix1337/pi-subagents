@@ -9,7 +9,6 @@ import { formatHerdrMachineRunnerUnsupported, resolveMachinePlacement } from "..
 import { closeOwnedRexPane, connectRex, rexPaneHost, RexPlacedRunOwner } from "../../src/runs/shared/rex-pane-host.ts";
 import type { RexMachineReference } from "../../src/shared/types.ts";
 
-// A fake `rex` on disk: it logs its argv, prints <kind>.out when present, and exits with the next scripted code for each command kind.
 const FAKE_REX = `#!/bin/sh
 d="$FAKE_REX_DIR"; printf '%s\\n' "$*" >> "$d/calls"
 printf '%s\\n' "\${REX_SESSION:-unset} \${REX_BLOCK:-unset} \${REX_SERVER:-unset}" >> "$d/selectors"

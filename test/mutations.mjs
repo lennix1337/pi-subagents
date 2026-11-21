@@ -26,7 +26,6 @@ const cases = [
 	["provider-inherited-key", "src/agents/agents.ts", "Object.hasOwn(byProvider, provider)", "byProvider[provider] !== undefined", "property:", "property-provider-default-model"],
 ];
 
-// The copy holds what the tests load: builtin agent definitions are read from the package's agents/ directory.
 function disposableCopy() {
 	const dir = mkdtempSync(join(tmpdir(), "pi-subagents-mutant-"));
 	for (const entry of ["src", "test", "package.json", "agents"]) cpSync(join(root, entry), join(dir, entry), { recursive: true });
@@ -39,7 +38,6 @@ function runTest(dir, test, pattern) {
 }
 
 for (const [name, file, before, after, pattern, test] of cases) {
-	// Control: the unmutated copy must pass first, so a kill below comes from the mutant and not from the setup.
 	const control = disposableCopy();
 	try {
 		const baseline = runTest(control, test, pattern);

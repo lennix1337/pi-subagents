@@ -29,7 +29,6 @@ const RUN_TOMBSTONE_MARKERS_DIR = "async-retention-run-tombstones";
 const LOCK_STALE_MS = 24 * 60 * 60 * 1000;
 const RUN_MODES = new Set<AsyncStatus["mode"]>(["single", "parallel", "chain", "workflow"]);
 const TERMINAL_STATES = new Set<AsyncStatus["state"]>(["complete", "failed", "stopped", "rejected"]);
-// Mirrors TERMINAL_MISSION_STATUSES in src/missions/store.ts, which keeps it private.
 const TERMINAL_MISSION_STATUSES = new Set<MissionStatus>(["completed", "failed", "cancelled"]);
 const RESULT_TIMESTAMP_FIELDS = ["endedAt", "completedAt", "createdAt", "writtenAt", "expiresAt", "timestamp"] as const;
 
@@ -215,8 +214,6 @@ function missionObserverIndexExists(resultsDir: string, runId: string): boolean 
 	return fs.existsSync(path.join(resultsDir, "result-index", "observers", "mission", `${encodeIndexSegment(runId)}.json`));
 }
 
-// The retention window doubles as a terminal mission's grace period. Unreadable references and
-// pending syncs are kept because the watcher needs the run's binding to retry.
 function missionReferenceBlocksReclaim(runDir: string, resultsDir: string, runId: string): boolean {
 	if (missionObserverIndexExists(resultsDir, runId)) return true;
 	let binding: MissionLaunchBinding | undefined;
@@ -318,7 +315,6 @@ function runSkipReason(input: {
 	if (activeMarkerExists(input.asyncDirRoot, status.runId)) return "active-index";
 	if (!TERMINAL_STATES.has(status.state)) return "non-terminal";
 	if (status.mode === "workflow" || status.parentWorkflowRunId || status.workflowKey) return "workflow-reference";
-	// A revived workflow child is a link in its key's revival chain; deleting it would cut off later revivals.
 	if (fs.existsSync(path.join(runDir, REVIVAL_ORIGIN_FILE))) return "workflow-reference";
 	if (hasNestedReferences(status)) return "nested-reference";
 	if (missionReferenceBlocksReclaim(runDir, input.resultsDir, status.runId)) return "mission-reference";
@@ -349,7 +345,6 @@ function readCursor(root: string): RetentionCursor {
 let currentProcessStartIdentity: Promise<string | undefined> | undefined;
 
 function processStartIdentity(pid: number): Promise<string | undefined> {
-	// Foreign PIDs can be reused while this process lives, so resolve them afresh.
 	if (pid !== process.pid) return computeProcessStartIdentity(pid);
 	currentProcessStartIdentity ??= computeProcessStartIdentity(pid);
 	return currentProcessStartIdentity;
@@ -368,7 +363,6 @@ async function computeProcessStartIdentity(pid: number): Promise<string | undefi
 		}
 	}
 	if (process.platform === "win32") {
-		// PowerShell takes ~0.5 s to start; a synchronous spawn would freeze the TUI.
 		const started = await new Promise<string>((resolve) => {
 			execFile("powershell.exe", ["-NoProfile", "-Command", `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CreationDate`], { encoding: "utf-8", windowsHide: true, timeout: 5_000 }, (error, stdout) => {
 				resolve(error ? "" : stdout.trim());
@@ -775,9 +769,6 @@ export async function cleanupAsyncRetention(options: AsyncRetentionOptions): Pro
 			return finish();
 		}
 		const waitSubscriptionsDir = options.waitSubscriptionsDir ?? path.join(maintenanceRoot, "wait-subscriptions");
-		// This safety scan stays on the commit thread. Wait records are the active,
-		// swept subscription set. Each destructive action re-reads it to close the
-		// race with a newly armed wait.
 		const waitReferences = parseWaitRunIds(waitSubscriptionsDir);
 		if (!waitReferences.safe) {
 			increment(result.skipped, "wait-references-unknown");
@@ -937,6 +928,6 @@ export async function cleanupAsyncRetention(options: AsyncRetentionOptions): Pro
 		writeAtomicJson(path.join(maintenanceRoot, CURSOR_NAME), cursor);
 		return finish();
 	} finally {
-		try { releaseRetentionLock(lockDir, lockToken); } catch { /* a stale lock blocks the next pass safely */ }
+		try { releaseRetentionLock(lockDir, lockToken); } catch {  }
 	}
 }

@@ -115,7 +115,6 @@ describe("workflow launch params", () => {
 	});
 
 	it("marks only new async workflow children to preserve live supervisor-detach awaits", () => {
-		// Retained workflow children already use the async result-file await path.
 		assert.equal(prepareWorkflowLaunchParams(
 			{},
 			{ agent: "worker", task: "Run" },

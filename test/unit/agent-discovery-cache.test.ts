@@ -76,7 +76,6 @@ describe("agent discovery snapshots", () => {
 				record(args[0]); return Reflect.apply(readdir, mutableFs, args);
 			});
 			syncBuiltinESMExports();
-			// Prove namespace bindings observe the instrumentation before testing discovery.
 			fs.statSync(markers[0]); fs.readdirSync(markers[0]);
 			assert.equal(observed.length, 2);
 			observed.length = 0;
@@ -277,7 +276,6 @@ describe("agent discovery snapshots", () => {
 		});
 		fs.mkdirSync(path.join(project, ".pi", "chains"), { recursive: true });
 		fs.writeFileSync(path.join(project, ".pi", "chains", "project.chain.md"), "---\nname: project-chain\ndescription: Project chain\n---\n\n## probe\nInspect\n", "utf-8");
-		// The repository's own package.json can declare agents too.
 		writeJson(path.join(project, "package.json"), { name: "repo", "pi-subagents": { agents: ["./repo-agents"] } });
 		writeAgent(path.join(project, "repo-agents", "repo-agent.md"), "repo-agent", "Repository agent");
 
@@ -298,7 +296,6 @@ describe("agent discovery snapshots", () => {
 		assert.throws(() => discoverAgentSnapshot(project, "project", undefined, untrusted), /agentScope: "project" requires project trust/);
 		assert.equal(discoverAgents(project, "user", undefined, untrusted).agents.some((agent) => agent.name === "repo-agent"), false);
 
-		// Trusted lookups share the cached sources and still see the project.
 		const trusted = discoverAgentSnapshot(project, "both");
 		assert.equal(trusted.effective.agents.find((agent) => agent.name === "probe")?.model, "openai/astra");
 		assert.equal(trusted.effective.agents.some((agent) => agent.name === "project-only"), true);
@@ -323,7 +320,6 @@ describe("agent discovery snapshots", () => {
 			assert.throws(() => discoverAgents(project, "both"), /settings/u, "a trusted lookup still reports the broken file");
 			assert.equal(discoverAgents(project, "both", undefined, untrusted).agents.find((agent) => agent.name === "probe")?.model, "openai/luna");
 			assert.equal(discoverAgentSnapshot(project, "both", undefined, untrusted).effective.agents.some((agent) => agent.name === "probe"), true);
-			// Runtime-registered agents take their model settings from the same untrusted view.
 			const registration = registerAgent({ pi, name: "runtime-probe", definition: { description: "Runtime probe", systemPrompt: "Runtime." } });
 			try {
 				const snapshot = discoverAgentSnapshot(project, "both", undefined, { includeChains: false, projectTrusted: false });
@@ -334,7 +330,6 @@ describe("agent discovery snapshots", () => {
 			}
 		}
 
-		// A project's agentExcludeDirs cannot hide user agents either.
 		writeJson(projectSettings, { subagents: { agentExcludeDirs: [userAgents] } });
 		assert.equal(discoverAgents(project, "both").agents.some((agent) => agent.name === "probe"), false);
 		assert.equal(discoverAgents(project, "both", undefined, untrusted).agents.some((agent) => agent.name === "probe"), true);

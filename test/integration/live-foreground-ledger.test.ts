@@ -1,8 +1,3 @@
-/**
- * Integration test for the live foreground ledger written by runSync:
- * the record exists while the child runs, never holds the task prompt, and
- * is gone once the child ends.
- */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -34,7 +29,6 @@ describe("live foreground ledger during a single execution", { skip: !available 
 
 		const result = await running;
 		assert.equal(result.exitCode, 0);
-		// Cleanup runs on the completion chain, a few microtasks after the result is returned.
 		await new Promise((resolve) => setImmediate(resolve));
 		assert.equal(fs.existsSync(file), false, "the record is removed when the child ends");
 	});

@@ -1,6 +1,3 @@
-/**
- * Formatting utilities for display output
- */
 
 import * as fs from "node:fs";
 import * as path from "node:path";

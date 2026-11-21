@@ -1,4 +1,3 @@
-/** Native runner construction, separate from its executable entrypoint and attempt loop. */
 import * as path from "node:path";
 import { buildInProcessChildLaunch, type BuildInProcessChildLaunchInput, type InheritedChildRuntime } from "../shared/child-launch.ts";
 import { deriveForkPromptCacheKey } from "../shared/child-tool-plan.ts";
@@ -30,7 +29,6 @@ export function buildRunnerChildLaunch(step: RunnerSubagentStep, ctx: RunnerChil
 	childWatchdog?: BuildInProcessChildLaunchInput["childWatchdog"];
 	watchdogStatus: NonNullable<BuildInProcessChildLaunchInput["watchdogStatus"]>;
 }) {
-	// Resource-backed system instructions survive SDK split-turn compaction verbatim.
 	const acceptancePrompt = step.effectiveAcceptance
 		? formatAcceptancePrompt(step.effectiveAcceptance, { reportOptional: isAgentContract(step.agentContract), structuredOutput: Boolean(step.structuredOutput?.acceptanceReportPath) })
 		: "";
@@ -82,7 +80,6 @@ export function buildRunnerChildLaunch(step: RunnerSubagentStep, ctx: RunnerChil
 		permissionAuditPath: step.permissionRules && ctx.artifactsDir
 			? path.join(ctx.artifactsDir, "permission-audit", `${ctx.id}-${ctx.flatIndex}.jsonl`) : undefined,
 		childWatchdog: attempt.childWatchdog,
-		// registerChildWatchdog returns before reading the sink when unconfigured.
 		...(attempt.childWatchdog ? { watchdogStatus: attempt.watchdogStatus } : {}),
 		waitToolEnabled: step.waitToolEnabled,
 		waitToolDefaultTimeoutMs: step.waitToolDefaultTimeoutMs,

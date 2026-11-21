@@ -1,10 +1,3 @@
-/**
- * Drives one in-process child session for the detached async runner: creates
- * the session through the runner's `ChildSessionFactory`, mirrors its events
- * into `events.jsonl`, the transcript, and the step output log, applies
- * interrupt, timeout, stop, and steer requests, and folds the run into the
- * step result the runner finalizes.
- */
 import type { Message } from "@earendil-works/pi-ai";
 import type { ChildTranscriptWriter } from "../../shared/child-transcript.ts";
 import { SUBAGENT_STOPPED_MESSAGE, SUBAGENT_TIMED_OUT_MESSAGE, assistantMessageError, extractTextFromContent, extractToolArgsPreview, getFinalOutput, hasEmptyTerminalAssistantResponse } from "../../shared/utils.ts";
@@ -143,7 +136,6 @@ export interface RunChildSessionResult {
 	effects?: EffectsProjection;
 }
 
-/** Events the child emits while the model streams; not persisted into the diagnostic log. */
 function shouldPersistChildEvent(event: Record<string, unknown>): boolean {
 	return event.type !== "message_update";
 }
@@ -260,10 +252,7 @@ export function runChildSession(input: RunChildSessionInput): Promise<RunChildSe
 		const abortChild = (): void => {
 			if (settled || promptSettled) return;
 			startup.abort();
-			// MCP startup can now stop before a session is returned. The timer still bounds
-			// other creation work that does not observe the startup signal.
 			void session?.abort().catch(() => {
-				// The run settles through its prompt promise; abort failures are not separately actionable.
 			});
 			if (!abortSettleTimer) {
 				abortSettleTimer = setTimeout(() => {
@@ -323,8 +312,6 @@ export function runChildSession(input: RunChildSessionInput): Promise<RunChildSe
 			}, input.childWatchdog?.watchdogTailTimeoutMs ?? 120_000);
 			watchdogTailTimer.unref?.();
 		}
-		// If the child emits its terminal event but its run never settles (a hook
-		// is stuck), abort it after a short grace period and then finish without it.
 		const observeQueuedDrainHold = (): boolean => {
 			if (childSessionHasQueuedMessages(session)) queuedDrainHold = true;
 			return queuedDrainHold;
@@ -342,7 +329,7 @@ export function runChildSession(input: RunChildSessionInput): Promise<RunChildSe
 			if (promptSettled || finalDrainTimer || settled) return;
 			finalDrainTimer = setTimeout(() => {
 				if (settled || promptSettled) return;
-				// Pi runs auto-compaction after the final agent_end and only then emits agent_settled.
+				// external: Pi runs auto-compaction after final agent_end before agent_settled.
 				if (input.launch.capture.finalDrainHeld() || observeQueuedDrainHold() || compactionAfterFinalOpen) {
 					finalDrainTimer = undefined;
 					armFinalDrainTimer();
@@ -361,10 +348,6 @@ export function runChildSession(input: RunChildSessionInput): Promise<RunChildSe
 		}
 		const applyChildLifecycle = (action: ChildLifecycleAction, event?: { type?: string; willRetry?: unknown }): void => {
 			if (action === "cancel-drain") {
-				// A non-retrying agent_end closes the turn, so it cancels the drain that ends
-				// this run. When the assistant already stopped cleanly it is the last event
-				// the child emits, so re-arm the drain here and keep the terminal stop:
-				// nothing else will arm it, and clearing it would report a settle timeout.
 				if (event?.type === "agent_end" && event.willRetry !== true && cleanTerminalAssistantStopReceived) {
 					agentSettledReceived = false;
 					terminalAgentEndReceived = true;
@@ -545,7 +528,6 @@ export function runChildSession(input: RunChildSessionInput): Promise<RunChildSe
 				}
 				if (event.message.errorMessage) assistantError = assistantMessageError(event.message);
 				else if (hasToolCall && event.message.stopReason === "toolUse") {
-					// A recovered request can finish via a terminating tool, without a text stop.
 					assistantError = undefined;
 				}
 				const eventUsage = event.message.usage;
@@ -608,8 +590,6 @@ export function runChildSession(input: RunChildSessionInput): Promise<RunChildSe
 				: usage;
 			const closed = finish();
 			const completedOutput = getFinalOutput(messages);
-			// Text still streaming at a timeout or thrown session error never reached a
-			// completed message; keep it, labeled. The run still fails.
 			const partialCause: PartialOutputCause | undefined = timedOut
 				? "timeout"
 				: promptError !== undefined && !stopped && !interrupted ? "child error" : undefined;
@@ -620,10 +600,6 @@ export function runChildSession(input: RunChildSessionInput): Promise<RunChildSe
 			if (!finalError && promptErrorMessage !== undefined) {
 				finalError = promptErrorMessage;
 			}
-			// A child launched without the ambient extensions resolves a provider
-			// extension's model as "not found". Annotate only a creation/prompt failure
-			// that produced no turn; keep the core error and add the rule and the
-			// remedies that load the extension for this child.
 			if (promptErrorMessage !== undefined
 				&& finalError === promptErrorMessage
 				&& isChildModelResolutionFailure(promptErrorMessage)
@@ -734,7 +710,6 @@ export function runChildSession(input: RunChildSessionInput): Promise<RunChildSe
 				if (interrupted || timedOut || stopped) abortChild();
 				messageBaseline = created.messages.length;
 				await created.prompt(input.prompt);
-				// A structured child that finished normally without calling structured_output gets one more turn (#2997).
 				if (input.launch.session.runtime.structuredOutput
 					&& !structuredOutputToolInvoked
 					&& !settled

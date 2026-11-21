@@ -1,13 +1,9 @@
 #!/usr/bin/env node
-// Decides which CI jobs a change needs, so a docs or single-test change does not pay for
-// the whole cross-platform matrix. Any doubt (unknown diff, build or CI config, shared test
-// support, product source) runs everything that could be affected.
 import { execFileSync } from "node:child_process";
 import { appendFileSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-// Changes here can affect every job.
 const EVERYTHING = [
 	/^\.github\//,
 	/^package(-lock)?\.json$/,
@@ -16,10 +12,8 @@ const EVERYTHING = [
 	/^[^/]+\.(ts|mjs|js)$/,
 ];
 
-// Text no code reads unless a test names it.
 const PROSE = [/^[^/]+\.md$/, /^LICENSE$/, /^banner\.png$/, /^examples\//];
 
-// Platform jobs that cover one area; a product change outside it skips them.
 export const AREA_JOBS = {
 	calendar: [/calendar|schedul/],
 	worktree: [/worktree|parallel-handoff/],
@@ -80,7 +74,7 @@ function git(...args) {
 function changedFiles() {
 	const event = process.env.GITHUB_EVENT_NAME;
 	try {
-		// pull_request checks out the merge commit: its first parent is the base tip.
+		// external: GitHub pull_request checkout uses a merge commit whose first parent is the base.
 		if (event === "pull_request") return git("diff", "--name-only", "HEAD^1", "HEAD").split("\n").filter(Boolean);
 		const before = process.env.CI_BEFORE ?? "";
 		if (event === "push" && before && !/^0+$/.test(before)) {
@@ -88,7 +82,6 @@ function changedFiles() {
 			return git("diff", "--name-only", before, "HEAD").split("\n").filter(Boolean);
 		}
 	} catch {
-		// Unknown diff: run everything.
 	}
 	return null;
 }

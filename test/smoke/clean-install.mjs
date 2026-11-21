@@ -1,4 +1,3 @@
-// Run with Node >=22.19.0: node --experimental-strip-types test/smoke/clean-install.mjs [artifact-dir] [1.2.0]
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -24,7 +23,6 @@ const env = {
 	XDG_CACHE_HOME: path.join(root, "cache"), npm_config_cache: path.join(root, "npm-cache"),
 	NODE_COMPILE_CACHE: path.join(root, "node-cache"), JITI_FS_CACHE: "false", PI_OFFLINE: "1",
 };
-// Do not inherit loader/alias overrides or operator credentials into the child.
 for (const key of Object.keys(env)) {
 	if (/API_KEY|TOKEN|SECRET|PASSWORD/.test(key) || ["NODE_OPTIONS", "NODE_PATH", "JITI_ALIAS"].includes(key)) delete env[key];
 }
@@ -37,7 +35,6 @@ function run(name, command, args, workdir, extra = {}, success = true, timeout =
 	return result;
 }
 fs.writeFileSync(path.join(host, "package.json"), JSON.stringify({ private: true, dependencies: { "@earendil-works/pi-coding-agent": version } }));
-// Installing the Pi host from the registry has taken over four minutes on slow days; the job timeout still bounds it.
 run("host-install", "npm", ["install", "--no-audit", "--no-fund"], host, {}, true, 420000);
 run("build-package", process.execPath, ["scripts/build-package.mjs"], source);
 const packed = JSON.parse(run("pack", "npm", ["pack", "--json", "--pack-destination", root, path.join(source, "dist-pkg")], source).stdout)[0];
@@ -72,14 +69,12 @@ assert.deepEqual(resolved.missing, []);
 const tui = findHostPeerPackageDir(pi, "@earendil-works/pi-tui");
 assert.ok(tui.startsWith(host + path.sep), "TUI must come from the host install");
 assert.equal(resolved.aliases["@earendil-works/pi-tui"], resolvePackageSubpath(tui, "."));
-// Pi 1.2.0 dropped chord: alias it exactly when the real host install declares it.
 const hostDeclaresChord = Boolean(JSON.parse(fs.readFileSync(path.join(pi, "package.json"), "utf8")).dependencies?.["@earendil-works/chord"]);
 for (const specifier of ["@earendil-works/chord", "@earendil-works/chord/context"]) {
 	assert.equal(Boolean(resolved.aliases[specifier]), hostDeclaresChord, specifier);
 }
 assert.equal(resolved.aliases["@earendil-works/pi-client/unix"], undefined);
 fs.writeFileSync(path.join(root, "aliases.json"), JSON.stringify(resolved, null, 2));
-// Pi serves its own packages to extensions as virtual modules; the fixture stands in with jiti aliases to the host install.
 delete process.env.PI_SUBAGENT_CHILD;
 const entryLoader = createJiti(import.meta.url, {
 	moduleCache: false,
@@ -89,7 +84,6 @@ const entryLoader = createJiti(import.meta.url, {
 const entryStarted = performance.now();
 const [extensionEntry] = JSON.parse(fs.readFileSync(path.join(installed, "package.json"), "utf8")).pi.extensions;
 assert.equal(extensionEntry, "./bundle/index.js", "Pi must load the bundled extension entry");
-// A bundle module that imported its compiled copy would load that module's state a second time.
 const loadedUrls = [];
 registerHooks({ load(url, context, next) { loadedUrls.push(url); return next(url, context); } });
 const entry = await entryLoader.import(path.join(installed, extensionEntry));

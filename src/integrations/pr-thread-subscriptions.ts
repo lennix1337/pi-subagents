@@ -1,12 +1,3 @@
-/**
- * Consumer side of PR thread subscriptions.
- *
- * A child that owns a PR or branch subscribes to its events, so CI and conflict
- * notices reach that child instead of the parent. The watcher (pi-gitwatch) is
- * not required: without an event bus or a publisher, nothing is routed and the
- * parent keeps today's behaviour. Events are validated at this boundary; a
- * malformed payload is reported, never routed.
- */
 import { requestAsyncSteer } from "../runs/background/control-channel.ts";
 
 /** Pi event-bus channel the watcher publishes PR events on. */
@@ -15,7 +6,6 @@ export const PR_WATCH_EVENT_CHANNEL = "gitwatch.pr-event";
 export const PR_WATCH_EVENT_KINDS = ["ci-passed", "ci-failed", "conflict", "ready", "review", "merged", "closed"] as const;
 export type PrWatchEventKind = typeof PR_WATCH_EVENT_KINDS[number];
 
-/** A finished PR ends its subscriptions; the parent hears about it once more. */
 const TERMINAL_KINDS: ReadonlySet<PrWatchEventKind> = new Set<PrWatchEventKind>(["merged", "closed"]);
 
 export interface PrWatchEvent {

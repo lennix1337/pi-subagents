@@ -100,7 +100,6 @@ it("actual scheduled workflows discover delayed Darwin asks, clear terminal asks
 			const ask = f.ask(run.asyncId!);
 			const foreign = f.ask(run.asyncId!, randomUUID());
 			const target = { runId: run.asyncId!, agent: "worker", childIndex: 0 };
-			// First cycle proves discovery without any lookup; second also checks passive receipts.
 			if (cycle === 1) {
 				assert.deepEqual(f.channel.findPendingAsks(target), [ask.id]);
 				assert.equal(f.channel.pending.size, 0, "live lookup does not register or notify");
@@ -162,7 +161,6 @@ it("scheduled owner visibility preserves runtime UUID, same-file isolation and f
 		assert.ok(savedState.asyncJobs.has(saved.asyncId!));
 		await f.finish(); f.tick();
 
-		// The main owner remains unchanged during the other runtime's real scheduled launch.
 		const { run: other } = await f.launch(f.context(otherOwner));
 		assert.ok(other);
 		assert.equal(f.intervals.size, 0, "foreign scheduled registration does not supply current-owner demand");

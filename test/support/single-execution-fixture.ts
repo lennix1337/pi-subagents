@@ -1,13 +1,3 @@
-/**
- * Integration tests for single (sync) agent execution.
- *
- * Uses the local createMockPi() helper to simulate the pi CLI.
- * Tests the full spawn→parse→result pipeline in runSync without a real LLM.
- *
- * These tests require pi packages to be importable (they run inside a pi
- * environment or with pi packages installed). If unavailable, tests skip
- * gracefully.
- */
 
 import { before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -121,9 +111,7 @@ interface MockPiCallRecord {
 	effectiveArgs?: string[];
 	cwd?: string;
 	systemPrompts?: Array<{ mode?: string; path?: string; text?: string; error?: string }>;
-	/** In-process child session launch (foreground children). */
 	launch?: { cwd: string; storage: { kind: string; sessionFile?: string; sessionDir?: string }; model?: string; tools?: string[]; excludeTools?: string[]; extensionPaths: string[]; hooks: string[]; noSkills: boolean; noContextFiles: boolean };
-	/** Typed child runtime config the in-process hooks received. */
 	runtime?: Record<string, unknown> & { sessionName?: string; intercomSessionName?: string; orchestratorTarget?: string; runId?: string; agent?: string; childIndex?: number; fanoutChild?: boolean; nestedParent?: { parentRunId: string; parentChildIndex?: number; depth: number }; depth?: number; maxDepth?: number; waitTool?: { enabled: boolean }; inheritProjectContext?: boolean; inheritSkills?: boolean; toolBudget?: unknown };
 }
 
@@ -238,7 +226,6 @@ const utils = await tryImport<UtilsModule>("./src/shared/utils.ts");
 const executorMod = await tryImport<ExecutorModule>("./src/runs/foreground/subagent-executor.ts");
 const available = !!(execution && utils);
 
-// Direct execution fixtures bypass the executor that normally assigns run identity.
 const runSync = execution
 	? (...[cwd, agents, agentName, task, options]: Parameters<ExecutionModule["runSync"]>) =>
 		execution.runSync(cwd, agents, agentName, task, { ...options, runId: options.runId ?? randomUUID() })

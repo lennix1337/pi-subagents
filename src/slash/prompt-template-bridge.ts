@@ -45,7 +45,6 @@ interface PromptTemplateBridgeOptions<Ctx extends { cwd?: string }> {
 		ctx: Ctx,
 		onUpdate: (result: PromptTemplateBridgeResult) => void,
 	) => Promise<PromptTemplateBridgeResult>;
-	/** Concurrent-safe executor for structured delegation requests. */
 	executeStructured?: (
 		requestId: string,
 		params: DelegatedSubagentExecutionParams,
@@ -83,7 +82,6 @@ function sameRecentTools(
 	return left.every((tool, index) => tool.tool === right[index]?.tool && tool.args === right[index]?.args);
 }
 
-/** A cache-only or turn-only change with unchanged tokens/tool progress must still count as a change, not a heartbeat. */
 function sameUpdateUsage(
 	left: SubagentDelegationUpdate["usage"],
 	right: SubagentDelegationUpdate["usage"],
@@ -97,7 +95,6 @@ function sameUpdateUsage(
 		&& left.turns === right.turns;
 }
 
-/** Duration is a heartbeat clock, not delegation-visible progress; terminal usage remains authoritative. */
 function sameStructuredDelegationUpdateProgress(left: SubagentDelegationUpdate, right: SubagentDelegationUpdate): boolean {
 	return left.requestId === right.requestId
 		&& left.ownerRunId === right.ownerRunId
@@ -156,8 +153,6 @@ export function registerPromptTemplateDelegationBridge<Ctx extends { cwd?: strin
 		}
 		map.set(key, true);
 		if (map.size === 8_192) {
-			// Exact cancellation and terminal-attempt facts are security state, not an
-			// LRU cache. Once full, fail closed rather than evicting identity facts.
 			identitySaturated = true;
 		}
 	};

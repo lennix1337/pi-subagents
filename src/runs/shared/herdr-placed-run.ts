@@ -36,8 +36,6 @@ export async function boundedHerdrReconnect(identity: HerdrRunIdentity, lastEvid
 function safeRunId(value: string | undefined): string { const prefix = value?.replace(/[^A-Za-z0-9_-]/gu, "_").slice(0, 48) ?? "run"; return validateHerdrPiRunId(`${prefix}_${randomBytes(8).toString("hex")}`); }
 
 export function serializeHerdrPiLaunch(launch: ChildSessionLaunch): { args: string[]; resources: { agent: string; skills?: string[]; toolCeiling?: string[]; reads?: string[] | false } } {
-	// Every child is handed a local session file path; only one that already exists (a fork or a
-	// resumed transcript) asks the pane to restore history. A fresh child's path is never written.
 	if (launch.storage.kind === "file" && fs.existsSync(launch.storage.sessionFile)) throw new Error(PLACED_RESTORE_UNSUPPORTED);
 	if (launch.extensionPaths.length || launch.requiredExtensions?.length) throw new Error("Pane-native remote Pi cannot transfer local extension paths; install/configure pi-subagents on the remote machine.");
 	if (launch.processEnv && Object.values(launch.processEnv).some((value) => value !== undefined && value !== "__none__")) throw new Error("Pane-native remote Pi cannot transfer local bindings, MCP selections, or process environment.");
@@ -151,7 +149,6 @@ async function startPlacedPiSession<C extends PlacementSockets>(launch: ChildSes
 		const configured = await Promise.race([bridge.configure(policy.resources), bridge.failure]);
 		if (configured.nativeSessionId !== manifest.nativeSessionId || configured.agent !== policy.resources.agent) throw new Error("Remote Pi resource resolution identity mismatch.");
 		if (!Array.isArray(configured.tools) || (policy.resources.toolCeiling && configured.tools.some((tool) => !policy.resources.toolCeiling!.includes(String(tool))))) throw new Error("Remote Pi active-tool ceiling acknowledgement mismatch.");
-		// The remote Pi never receives the runtime contract, so required tools are checked here, against what it activated.
 		const missingRequired = (launch.runtime.requiredTools ?? []).filter((tool) => !(configured.tools as unknown[]).includes(tool));
 		if (missingRequired.length) throw new Error(`Remote Pi agent '${policy.resources.agent}' did not activate required tools: ${missingRequired.join(", ")}.`);
 		if (launch.model && configured.model !== launch.model.split(":")[0]) throw new Error(`Remote Pi model '${launch.model}' did not resolve to the requested provider/model.`);

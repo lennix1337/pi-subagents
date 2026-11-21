@@ -44,11 +44,6 @@ export function readChildCommandState(channelDir: string): ChildCommandState | u
 export function retainsChildCommand(channelDir: string, toolCallId: string): boolean {
 	return readChildCommandState(channelDir)?.commands.some((command) => command.toolCallId === toolCallId) === true;
 }
-/**
- * A command is live until its state says otherwise: running -> yielded -> cancel_requested, then exactly one of
- * completed | failed | cancelled. Reading liveness from `state` (not from `endedAt`, which is stamped a tick later)
- * keeps a cancel from overwriting a result that already settled.
- */
 const LIVE_COMMAND_STATES: ReadonlySet<ChildCommandSnapshot["state"]> = new Set(["running", "yielded", "cancel_requested"]);
 function active(job: CommandJob): boolean { return LIVE_COMMAND_STATES.has(job.snapshot.state); }
 function text(result: AgentToolResult<unknown>): string {
@@ -139,7 +134,6 @@ export function createChildCommandRuntime(channelDir: string) {
 					let yieldResult!: () => void;
 					const yielded = new Promise<void>((resolve) => { yieldResult = resolve; });
 					const job: CommandJob = { snapshot: { toolCallId, state: "running", startedAt: Date.now(), output: "" }, controller, yieldResult, settled: Promise.resolve() };
-					// Keep active commands and a bounded recent history; never retain full outputs.
 					const completed = [...jobs].filter(([, candidate]) => !active(candidate));
 					for (const [id] of completed.slice(0, Math.max(0, completed.length - RECENT_COMMANDS + 1))) jobs.delete(id);
 					jobs.set(toolCallId, job);
@@ -152,7 +146,7 @@ export function createChildCommandRuntime(channelDir: string) {
 						if (job.snapshot.state === "running") onUpdate?.(update);
 					}, ctx)).then((result) => {
 						job.snapshot.output = text(result);
-						// Pi 1.2 reports a non-zero exit as an isError result instead of throwing.
+						// external: Pi 1.2 reports non-zero exits as isError results instead of throwing.
 						job.snapshot.state = result.isError ? "failed" : "completed";
 						const fullOutputPath = (result.details as { fullOutputPath?: string } | undefined)?.fullOutputPath;
 						if (fullOutputPath) job.snapshot.fullOutputPath = fullOutputPath;

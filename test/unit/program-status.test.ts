@@ -43,7 +43,6 @@ function reporter(input: { jobs?: Job[]; pending?: Array<{ id: string; runId: st
 }
 
 describe("OSC 7501 program status", () => {
-	// Each active reporter holds a process SIGCONT listener until it is disposed.
 	afterEach(() => {
 		for (const instance of reporters.splice(0)) instance.dispose("quit");
 	});

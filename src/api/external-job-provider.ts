@@ -155,9 +155,6 @@ export function validateExternalJobResult(provider: string, value: unknown, fiel
 function validateProvider(value: unknown): ExternalJobProvider {
 	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("External-job provider must be an object.");
 	const provider = value as Record<string, unknown>;
-	// Tolerate extra provider fields (for example kind, wakeChannels, or future
-	// operations) so one evolving provider cannot poison registry reads for all
-	// providers. Payload validation stays strict.
 	const name = validateString(provider.name, "External-job provider name", MAX_PROVIDER_NAME_LENGTH);
 	for (const op of ["start", "status", "result", "reattach"] as const) {
 		if (typeof provider[op] !== "function") throw new Error(`External-job provider '${name}' must expose ${op}().`);

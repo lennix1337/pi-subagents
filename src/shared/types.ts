@@ -1,6 +1,3 @@
-/**
- * Type definitions for the subagent extension
- */
 
 import * as os from "node:os";
 import * as path from "node:path";
@@ -22,9 +19,6 @@ import type { RequiredChildExtensionSnapshot } from "./required-child-extensions
 import type { RecordedPid } from "../runs/background/stale-run-reconciler.ts";
 import type { WorkflowStopCause } from "../workflows/workflow-stop-cause.ts";
 
-// ============================================================================
-// Basic Types
-// ============================================================================
 
 export interface MaxOutputConfig {
 	bytes?: number;
@@ -950,9 +944,6 @@ export interface SubagentResultIntercomPayload {
 	parallelHandoff?: ParallelHandoffReference;
 }
 
-// ============================================================================
-// Progress Tracking
-// ============================================================================
 
 export interface ChildWatchdogWarningSummary extends Pick<WatchdogWarningDetails, "severity" | "importance" | "category" | "summary" | "evidence" | "recommendedAction" | "displayedAt"> {
 	/** True when a later assistant turn in the child followed the warning. */
@@ -1010,7 +1001,7 @@ export interface ToolCallSummary {
 	expandedText: string;
 }
 
-interface ProgressSummary {
+export interface ProgressSummary {
 	index?: number;
 	agent?: string;
 	/** Human-readable display name for the child's session, when derived at launch. */
@@ -1031,9 +1022,6 @@ interface ProgressSummary {
 	durationMs: number;
 }
 
-// ============================================================================
-// Results
-// ============================================================================
 
 export type AcceptanceLevel = "auto" | "none" | "attested" | "checked" | "verified";
 
@@ -1499,18 +1487,20 @@ export interface Details {
 		originalLines?: number;
 		artifactPath?: string;
 	};
-	// Chain metadata for observability
-	chainAgents?: string[];      // Agent names in order, e.g., ["scout", "planner"]
-	totalSteps?: number;         // Total steps in chain
-	currentStepIndex?: number;   // 0-indexed current step (for running chains)
+	/** Agent names in chain order. */
+	chainAgents?: string[];
+	/** Total steps in the chain. */
+	totalSteps?: number;
+	/** Zero-based current step for a running chain. */
+	currentStepIndex?: number;
 	workflowGraph?: WorkflowGraphSnapshot;
 	/** Validated, display-only fanout plan supplied with a workflow launch. */
 	preflight?: WorkflowPreflight;
 	preflightWarnings?: string[];
 	outputs?: ChainOutputMap;
-	// Aggregated child usage across all agents in the run
+	/** Aggregated child usage across all agents in the run. */
 	totalChildUsage?: Usage;
-	// Aggregated cost across all agents in the run
+	/** Aggregated cost across all agents in the run. */
 	totalCost?: CostSummary;
 	spawnBudget?: SpawnBudgetSnapshot;
 	runFanoutBudget?: RunFanoutBudgetSnapshot;
@@ -1589,9 +1579,6 @@ export interface Details {
 	};
 }
 
-// ============================================================================
-// Artifacts
-// ============================================================================
 
 export interface ArtifactPaths {
 	inputPath: string;
@@ -1614,9 +1601,6 @@ export interface ArtifactConfig {
 	cleanupDays: number;
 }
 
-// ============================================================================
-// Async Execution
-// ============================================================================
 
 export interface AsyncParallelGroupStatus {
 	start: number;
@@ -2446,17 +2430,11 @@ export interface HerdrProjectPaneSnapshot {
 	staleReason?: string;
 }
 
-// ============================================================================
-// Display
-// ============================================================================
 
 export type DisplayItem = 
 	| { type: "text"; text: string } 
 	| { type: "tool"; name: string; args: Record<string, unknown> };
 
-// ============================================================================
-// Error Handling
-// ============================================================================
 
 export interface ErrorInfo {
 	hasError: boolean;
@@ -2524,9 +2502,6 @@ export interface SubagentChildStatusEvent {
 	label?: string;
 }
 
-// ============================================================================
-// Execution Options
-// ============================================================================
 
 /** Live controls for one in-process foreground child session. */
 export interface ForegroundChildSessionControls {
@@ -2868,9 +2843,6 @@ export interface ExtensionConfig {
 	authorityPolicy?: AuthorityPolicyConfig;
 }
 
-// ============================================================================
-// Constants
-// ============================================================================
 
 export const DEFAULT_MAX_OUTPUT: Required<MaxOutputConfig> = {
 	bytes: 200 * 1024,
@@ -2922,7 +2894,6 @@ export function resolveTempScopeId(options?: {
 		const username = userInfo?.().username;
 		if (username) return `user-${sanitizeTempScopeSegment(username)}`;
 	} catch {
-		// Fall through to home-directory-based scoping.
 	}
 
 	const homedir = env.USERPROFILE ?? env.HOME;
@@ -2935,7 +2906,6 @@ export function resolveTempScopeId(options?: {
 		const fallbackHomedir = resolveHomedir?.();
 		if (fallbackHomedir) return `home-${sanitizeTempScopeSegment(fallbackHomedir)}`;
 	} catch {
-		// Fall through to the last-resort shared scope.
 	}
 
 	return "shared";
@@ -2961,8 +2931,6 @@ export const DIRS = {
 export const WIDGET_KEY = "subagent-async";
 export const SLASH_RESULT_TYPE = "subagent-slash-result";
 export const SLASH_TEXT_RESULT_TYPE = "subagent-slash-text-result";
-// Only reports carrying this marker leave model context. Reports stored before the marker existed
-// stay in context, so an update does not change an existing session's history or its prompt cache.
 export const SLASH_TEXT_VIEW_ONLY_DETAILS = { viewOnly: true } as const;
 export const SLASH_SUBAGENT_REQUEST_EVENT = "subagent:slash:request";
 export const SLASH_SUBAGENT_STARTED_EVENT = "subagent:slash:started";
@@ -3012,9 +2980,6 @@ export function wrapForkTask(task: string, preamble?: string | false): string {
 	return `${wrappedPrefix}${task}`;
 }
 
-// ============================================================================
-// Recursion Depth Guard
-// ============================================================================
 
 function normalizeNonNegativeInteger(value: unknown): number | undefined {
 	const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
@@ -3032,7 +2997,6 @@ export interface SubagentDepthContext {
 	maxDepth?: number;
 }
 
-/** Operator override for the top-level parent; children inherit their limit through their runtime config. */
 const SUBAGENT_MAX_DEPTH_ENV = "PI_SUBAGENT_MAX_DEPTH";
 
 export function resolveCurrentMaxSubagentDepth(configMaxDepth?: number, runtime?: SubagentDepthContext): number {
@@ -3047,7 +3011,6 @@ export function resolveChildMaxSubagentDepth(parentMaxDepth: number, agentMaxDep
 	return normalizedAgent === undefined ? normalizedParent : Math.min(normalizedParent, normalizedAgent);
 }
 
-/** Depth of the executor itself: 0 for a top-level parent, its own child depth otherwise. */
 function resolveCurrentSubagentDepth(runtime?: SubagentDepthContext): number {
 	const depth = runtime ? runtime.depth : 0;
 	return Number.isFinite(depth) ? depth : 0;
@@ -3092,9 +3055,6 @@ export function resolveMaxSubagentSpawnsPerRun(configMaxSpawns?: number): number
 		?? DEFAULT_MAX_SUBAGENT_SPAWNS_PER_RUN;
 }
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
 
 function formatBytes(bytes: number): string {
 	if (bytes < 1024) return `${bytes}B`;

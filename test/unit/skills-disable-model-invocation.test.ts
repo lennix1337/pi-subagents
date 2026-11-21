@@ -71,9 +71,6 @@ describe("disable-model-invocation filtering", () => {
 	});
 
 	it("buildSkillInjection filters hidden skills even when the caller resolves them by name", () => {
-		// Simulate the default-injection path: the caller resolves every discovered
-		// skill name (including hidden ones) and hands the full list to
-		// buildSkillInjection. Production filtering must drop the hidden entry.
 		makeProjectSkill(tempDir, "hidden-skill", "User-only skill body.", { disableModelInvocation: true });
 		makeProjectSkill(tempDir, "visible-skill", "Model-invocable body.");
 
@@ -95,12 +92,6 @@ describe("disable-model-invocation filtering", () => {
 	});
 
 	it("carries disableModelInvocation through name-level source precedence", () => {
-		// Two DIFFERENT files that share the skill name: a cwd-level settings
-		// skill (project-settings) and a .pi/skills project skill. Name-level
-		// dedup (chooseHigherPrioritySkill in getCachedSkills) keeps the higher-
-		// priority project entry; that entry must carry the flag read from its own
-		// file. This is the real path by which a flagged project skill wins over an
-		// unflagged same-named settings skill.
 		const settingsSkillDir = path.join(tempDir, "skills", "upgrade-skill");
 		writeSkill(settingsSkillDir, "Settings body.");
 		const settingsFile = path.join(tempDir, ".pi", "settings.json");

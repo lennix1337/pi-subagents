@@ -334,7 +334,6 @@ export function createChildExternalJobBridgeSweeper() {
 		for (const [runId, asyncDir] of runs) {
 			try {
 				const status = readStatus(asyncDir);
-				// The launch status has no runner metadata until the runner starts, so re-check on every sweep.
 				if (externalJobBridgeEligibility(status?.steps) !== "not-required") serviceExternalJobBridgeRequests(asyncDir);
 				if (status && !isActiveAsyncState(status.state)) runs.delete(runId);
 			} catch (error) {

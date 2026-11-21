@@ -20,7 +20,7 @@ interface PendingRequest { operation: "prompt" | "steer" | "follow-up" | "abort"
 interface BridgeContext {
 	isIdle(): boolean;
 	hasPendingMessages(): boolean;
-	/** The remote Pi's own project trust for the remote machine's files; absent on hosts older than Pi's trust concept. */
+	// external: Older Pi hosts do not expose project trust.
 	isProjectTrusted?(): boolean;
 	sessionManager?: { getSessionId?(): string; getSessionFile?(): string | undefined };
 	model?: { provider?: string; id?: string };
@@ -76,7 +76,7 @@ export default function registerHerdrPiBridge(pi: ExtensionAPI): void {
 		client.write(encodeHerdrPiFrame(record));
 	};
 	const sessionId = (ctx: BridgeContext) => ctx.sessionManager?.getSessionId?.();
-	// The active tool set lives on the Pi API, not on the event context.
+	// external: Pi exposes the active tool set on its API, not the event context.
 	const activeTools = (_ctx: BridgeContext) => pi.getActiveTools();
 
 	pi.registerTool({
@@ -117,8 +117,7 @@ export default function registerHerdrPiBridge(pi: ExtensionAPI): void {
 
 	const on = pi.on as unknown as (name: string, handler: (event: Record<string, unknown>, ctx: BridgeContext) => unknown) => void;
 	on("before_agent_start", (event) => {
-		// The remote Pi fills its append slot from the remote operator's APPEND_SYSTEM.md; it is not the child's
-		// prompt, as for local children. Cleared before event.systemPrompt renders from these options.
+		// external: Remote Pi uses the remote operator APPEND_SYSTEM.md in its append slot.
 		const options = event.systemPromptOptions as { appendSystemPrompt?: unknown } | undefined;
 		if (typeof options?.appendSystemPrompt === "string") options.appendSystemPrompt = "";
 		return resolvedSystemPrompt && resolvedContextPolicy ? { systemPrompt: `${rewriteSubagentPrompt(typeof event.systemPrompt === "string" ? event.systemPrompt : "", { inheritProjectContext: resolvedContextPolicy.inheritProjectContext, inheritGlobalContext: resolvedContextPolicy.inheritGlobalContext, inheritSkills: resolvedContextPolicy.inheritSkills })}\n\n<active_agent name=${JSON.stringify(resolvedContextPolicy.agent)}/>\n\n${resolvedSystemPrompt}` } : undefined;
@@ -153,8 +152,6 @@ export default function registerHerdrPiBridge(pi: ExtensionAPI): void {
 						const invalidSkills = resources.skills !== undefined && (!Array.isArray(resources.skills) || resources.skills.some((name) => typeof name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(name)));
 						const invalidReads = resources.reads !== undefined && resources.reads !== false && (!Array.isArray(resources.reads) || resources.reads.some((name) => typeof name !== "string"));
 						if (typeof resources.agent !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(resources.agent) || invalidSkills || invalidReads) throw new Error("Remote logical resource names are invalid.");
-						// The remote Pi's own trust governs the remote machine's project files; the local session's trust never grants it.
-						// Without a started session there is no trust context, so no project input is read.
 						if (!context) throw new Error("Remote Pi session has not started; project trust is unknown, so project resources were not read.");
 						const projectTrusted = context.isProjectTrusted?.();
 						const resolved = resolveRemoteHerdrResources(process.cwd(), { agent: resources.agent, ...(resources.skills ? { skills: resources.skills as string[] } : {}), ...(resources.toolCeiling ? { toolCeiling: resources.toolCeiling as string[] } : {}), ...(resources.reads !== undefined ? { reads: resources.reads as string[] | false } : {}) }, activeTools(context), projectTrusted); resolvedSystemPrompt = resolved.systemPrompt; resolvedContextPolicy = resolved;

@@ -197,7 +197,6 @@ export function parseGateInput(gate: unknown): { ok: true; gate: GateObjectInput
 	if (value.timeoutMs !== undefined && (!Number.isInteger(value.timeoutMs) || (value.timeoutMs as number) < 1)) return { ok: false, error: "gate.timeoutMs must be an integer >= 1." };
 	const parsed: GateObjectInput = { command: value.command.trim() };
 	if (value.output === "json") parsed.output = "json";
-	// SAFETY: schema was checked above to be a non-array object; timeoutMs to be an integer >= 1.
 	if (value.schema !== undefined) parsed.schema = value.schema as JsonSchemaObject;
 	if (value.timeoutMs !== undefined) parsed.timeoutMs = value.timeoutMs as number;
 	return { ok: true, gate: parsed };
@@ -753,10 +752,6 @@ function normalizeAcceptanceReportValue(value: unknown, pathLabel = ""): { value
 			case "validationOutput":
 			case "residualRisks":
 			case "reviewFindings": {
-				// Tolerate empty-string entries ("[\"\"]"): models write them for "no items"
-				// and a single empty entry must not reject the whole report. Drop them at
-				// parse time; non-string entries are kept so validateStringArrayField still
-				// flags structural garbage.
 				const items = typeof fieldValue === "string" ? [fieldValue] : fieldValue;
 				normalized[canonical] = Array.isArray(items)
 					? items.filter((item) => typeof item !== "string" || item.trim().length > 0)
@@ -818,7 +813,6 @@ function parseAcceptanceReportBody(body: string): { report?: AcceptanceReport; e
 interface AcceptanceReportParseResult {
 	report?: AcceptanceReport;
 	error?: string;
-	/** True when an acceptance-report signal was found but its envelope was invalid. */
 	malformed?: boolean;
 	sourcePath?: string;
 }
@@ -879,8 +873,6 @@ export function parseAcceptanceReport(output: string): AcceptanceReportParseResu
 			if (parsed.report) return { report: parsed.report };
 			if (parsed.error) return { error: `Failed to parse acceptance-report: ${parsed.error}`, malformed: parsed.malformed };
 		} catch {
-			// Ignore unrelated malformed generic JSON. A recognizable report shape
-			// returns exact validation errors above instead of being mistaken for prose.
 		}
 	}
 	const markerIndex = output.search(/ACCEPTANCE_REPORT\s*:/i);
@@ -924,9 +916,6 @@ function parseAcceptanceReportSources(
 	};
 	const [primary, secondary] = fileOutput?.authoritative ? [fromFile, fromText] : [fromText, fromFile];
 	const first = primary();
-	// A malformed report in the primary source is a defect to surface, not a
-	// miss to paper over with the secondary source; only a genuinely absent
-	// report falls through.
 	if (first.report || first.error !== ACCEPTANCE_REPORT_NOT_FOUND) return first;
 	return secondary();
 }
@@ -945,7 +934,6 @@ export function stripAcceptanceReport(output: string): string {
 		try {
 			if (parseGenericJsonAcceptanceReportBody(trailingFence.body).report) return output.slice(0, trailingFence.index).trimEnd();
 		} catch {
-			// Leave unrelated or malformed generic JSON fences visible.
 		}
 	}
 	return output
@@ -1255,13 +1243,6 @@ function isCachedVerifyResult(value: unknown): value is AcceptanceVerifyResult {
 
 const TYPED_VERIFY_OUTPUT_MAX_BYTES = 12_000;
 
-/**
- * A passing `output: "json"` command must print one JSON document on stdout.
- * The parsed value becomes the run's structured output; anything else turns
- * the passing run into a failed one so acceptance rejects rather than
- * silently dropping the verdict. Stdout is already bounded by trimOutput, so a
- * truncated document is detected by its marker instead of a parse guess.
- */
 async function applyTypedVerifyOutput(command: AcceptanceVerifyCommand, run: AcceptanceVerifyResult): Promise<void> {
 	if (run.status !== "passed") return;
 	const stdout = run.stdout ?? "";
@@ -1303,8 +1284,6 @@ async function runMemoizedVerifyCommand(command: AcceptanceVerifyCommand, defaul
 	} catch {
 		workspaceState = undefined;
 	}
-	// Typed gates read inputs (a report file, a log) that can change without
-	// the tracked tree changing, so their verdicts are never reused.
 	if (!workspaceState || !options.artifactsDir || !options.runId || command.output === "json") {
 		return runVerifyCommand(command, defaultCwd, options);
 	}
@@ -1329,7 +1308,6 @@ async function runMemoizedVerifyCommand(command: AcceptanceVerifyCommand, defaul
 			return { ...cached.result, id: command.id, command: command.command, cwd, artifactPath, cacheKey, memoized: true, envKeys, envHash, workspaceState };
 		}
 	} catch {
-		// A cache miss or unreadable artifact must not prevent host verification.
 	}
 	const result = await runVerifyCommand(command, defaultCwd, options);
 	const evidenced: AcceptanceVerifyResult = { ...result, artifactPath, cacheKey, memoized: false, envKeys, envHash, workspaceState };
@@ -1473,7 +1451,7 @@ function runVerifyCommand(command: AcceptanceVerifyCommand, defaultCwd: string, 
 	});
 }
 
-export async function evaluateAcceptance(input: {
+export interface EvaluateAcceptanceInput {
 	acceptance: ResolvedAcceptanceConfig;
 	output: string;
 	cwd: string;
@@ -1495,7 +1473,9 @@ export async function evaluateAcceptance(input: {
 	artifactsDir?: string;
 	runId?: string;
 	watchdog?: ChildWatchdogProgress;
-}): Promise<AcceptanceLedger> {
+}
+
+export async function evaluateAcceptance(input: EvaluateAcceptanceInput): Promise<AcceptanceLedger> {
 	const acceptance = input.acceptance;
 	const initialStatus = acceptance.level === "none" ? "not-required" : "claimed";
 	const ledger: AcceptanceLedger = {

@@ -165,7 +165,6 @@ it("prints what happens next to an interrupted workflow right after its run id, 
 	const root = mkdtempSync(join(tmpdir(), "notify-resume-line-"));
 	try {
 		const interrupted = (asyncDir: string) => ({ agent: "workflow", mode: "workflow", runId: "wf-auto", success: false, state: "stopped", summary: "Workflow stopped.", asyncDir, workflow: { stopCause: "runtime-replaced" } });
-		// The line is read from the run only for a workflow that a runtime replacement or a Pi exit stopped.
 		const claimed = join(root, "wf-auto");
 		mkdirSync(claimed);
 		claimWorkflowResume(claimed, { newRunId: "wf-auto-next", trigger: "auto" });
@@ -196,7 +195,6 @@ it("prints what happens next to an interrupted workflow right after its run id, 
 			assert.ok(!parsed?.resultPreview.includes(line), parsed?.resultPreview);
 			assert.equal(formatSingleCompletion(parsed!).split("\n").filter((entry) => entry === line).length, 1);
 		}
-		// A line the model wrote is output, not the resume line.
 		const modelText = parseSubagentNotifyContent("Background task completed: **worker**\n\nResumed as nothing.\n\nWorkflow run: wf-x\nChild runs: a=1");
 		assert.equal(modelText?.resumeNotice, undefined);
 		assert.match(modelText?.resultPreview ?? "", /Resumed as nothing\./);
@@ -231,8 +229,6 @@ function createPi(currentSessionId = "session-1", registerOptions: RegisterSubag
 		},
 	};
 
-	// Formatting-focused tests run with batching disabled so single completions
-	// emit synchronously. Batching behavior is covered by the dedicated suite below.
 	const notifier = registerSubagentNotify(pi as never, { currentSessionId, completionOwnerId: COMPLETION_OWNER_ID }, {
 		batchConfig: { enabled: false },
 		sendRegistry: createCompletionSendRegistry(),
@@ -762,13 +758,10 @@ describe("registerSubagentNotify", () => {
 		events.emit(SUBAGENT_ASYNC_COMPLETE_EVENT, completionResult({ id: "ok-1", agent: "ok-1", summary: "ok-1 done" }));
 		events.emit(SUBAGENT_ASYNC_COMPLETE_EVENT, completionResult({ id: "fail-1", agent: "fail-1", success: false, summary: "boom", exitCode: 1 }));
 
-		// The failure must arrive immediately, and the held success must be
-		// flushed ahead of it rather than waiting on the debounce timer.
 		assert.equal(sent.length, 2);
 		assert.match((sent[0]!.message as { content: string }).content, /Background task completed: \*\*ok-1\*\*/);
 		assert.match((sent[1]!.message as { content: string }).content, /Background task failed: \*\*fail-1\*\*/);
 
-		// No deferred emission should arrive later.
 		clock.advance(1000);
 		assert.equal(sent.length, 2);
 	});
@@ -1266,8 +1259,6 @@ describe("completion formatting helpers", () => {
 });
 
 describe("scheduled completions", () => {
-	// A schedule fires with nobody watching, so its completion has to be visible to
-	// the operator and attributable by the agent that receives it.
 	const scheduledResult = {
 		id: "run-1",
 		source: "async" as const,
@@ -1441,7 +1432,6 @@ describe("completion notice output size", () => {
 			const artifact = join(root, "worker_output.md");
 			const partial = formatPartialOutput(longOutput("partial"), "timeout");
 			const timeout = "Subagent timed out after 300000ms.";
-			// As the runner does: the artifact holds the partial text, and the published output adds the recovery summary.
 			writeFileSync(artifact, formatOutputArtifactContent({ output: partial, error: timeout }));
 			const recovery = buildTimeoutRecoverySummary({
 				termination: "timed-out",

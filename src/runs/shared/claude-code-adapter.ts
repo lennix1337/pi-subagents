@@ -50,11 +50,6 @@ export const CLAUDE_CODE_ENV_ALLOWLIST = [
 	"SSL_CERT_DIR",
 ] as const;
 
-/**
- * Claude Code exposes a five-value `--effort` scale. Pi's thinking vocabulary is
- * wider, so the extra levels collapse onto the nearest supported value and `off`
- * means "pass no flag at all".
- */
 const CLAUDE_CODE_EFFORT_BY_THINKING: Record<ThinkingLevel, string | undefined> = {
 	off: undefined,
 	minimal: "low",
@@ -65,12 +60,6 @@ const CLAUDE_CODE_EFFORT_BY_THINKING: Record<ThinkingLevel, string | undefined> 
 	max: "max",
 };
 
-/**
- * Claude Code model ids: aliases, `claude-*` ids, and Bedrock/Vertex prefixes.
- * `:` stays legal because Bedrock inference profiles and ARNs contain it, so the
- * thinking suffix is split off before this pattern is applied rather than
- * excluded by it.
- */
 const CLAUDE_CODE_MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 
 const INVALID_CLAUDE_CODE_MODEL = "expected an alias such as \"opus\" or a model id such as \"claude-opus-5.5\"";
@@ -88,10 +77,6 @@ export interface ClaudeCodeAgentModel {
 	modelSource?: { type?: string; model?: string };
 }
 
-/**
- * The model an agent pins for itself. `subagents.defaultModel` is a Pi child
- * model, so it is a default for Pi children only and never becomes `--model`.
- */
 function agentPinnedModel(agent: ClaudeCodeAgentModel | undefined): string | undefined {
 	const model = typeof agent?.model === "string" ? agent.model : undefined;
 	if (!model) return undefined;
@@ -99,16 +84,11 @@ function agentPinnedModel(agent: ClaudeCodeAgentModel | undefined): string | und
 	return model;
 }
 
-/**
- * A launch that asks only for a level keeps the agent's pinned model, so
- * `model: ":high"` means the same thing as frontmatter `thinking: high`.
- */
 function combineClaudeCodeModel(launch: string | undefined, pinned: string | undefined): string | undefined {
 	if (launch === undefined) return pinned;
 	const { baseModel, thinkingSuffix } = splitKnownThinkingSuffix(launch);
 	if (baseModel) return launch;
 	if (!launch) return launch;
-	// An empty base means the request was a bare level: run it on the agent's model.
 	const pinnedBase = pinned ? splitKnownThinkingSuffix(pinned).baseModel : "";
 	return pinnedBase && thinkingSuffix ? `${pinnedBase}${thinkingSuffix}` : launch;
 }
@@ -161,8 +141,6 @@ export function resolveClaudeCodeOverride(input: {
 		level = thinking;
 	}
 	if (level) {
-		// A level can arrive without a model, so it goes to the shared check as the
-		// suffix form that check already understands.
 		assertThinkingWithinCeiling({ model: `:${level}`, ceiling: input.thinkingCeiling, agent: input.agentName, runId: input.runId });
 		const effort = CLAUDE_CODE_EFFORT_BY_THINKING[level as ThinkingLevel];
 		if (effort) args.push("--effort", effort);
@@ -258,8 +236,6 @@ export function resolveClaudeCodeLaunch(input: {
 		"--no-session-persistence",
 		"--disable-slash-commands",
 		"--no-chrome",
-		// Session options go last: preflight builds versionArgs/helpArgs from `prefix`
-		// only, so these tokens never reach the --version/--help probes.
 		...(input.overrideArgs ?? []),
 	];
 	return {
@@ -271,12 +247,7 @@ export function resolveClaudeCodeLaunch(input: {
 			versionArgs: [...prefix, "--version"],
 			helpArgs: [...prefix, "--help"],
 			validate(result) {
-				// Claude Code now publishes both semver (`2.1.259 (Claude Code)`) and
-				// calendar/platform (`2026.4.24 macos-arm64 (2026-04-27)`) versions.
-				// The fixed launch flags are validated from --help below, so only require a
-				// recognizable release identifier here rather than one display format. The
-				// per-launch --model/--effort tokens are not part of this probe; a CLI that
-				// does not know them reports that itself on the launch.
+				// external: Claude Code publishes both semver and calendar/platform version formats.
 				if (!/^(?:\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)? \(Claude Code\)|\d{4}\.\d{1,2}\.\d{1,2} [A-Za-z0-9._-]+ \(\d{4}-\d{2}-\d{2}\))$/.test(result.version)) throw new Error(`Unsupported Claude Code version response: ${JSON.stringify(result.version)}.`);
 				for (const required of ["Claude Code - starts an interactive session", "--print", "--input-format", "stream-json", "--verbose", "--permission-mode", writer ? "acceptEdits" : "plan", "--tools", "--strict-mcp-config", "--mcp-config", "--setting-sources", "--no-session-persistence", "--disable-slash-commands", "--no-chrome"]) {
 					if (!result.help.includes(required)) throw new Error(`Claude Code help does not document required option ${JSON.stringify(required)}.`);

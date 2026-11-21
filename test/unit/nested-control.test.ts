@@ -106,7 +106,6 @@ function stateWithNestedRoute(route: ReturnType<typeof createNestedRoute>): Suba
 	return state;
 }
 
-/** The child runtime config of a fanout child launched under `route` by `parentRunId`. */
 function fanoutChildRuntime(route: ReturnType<typeof createNestedRoute>, parentRunId = route.rootRunId): ChildRuntimeConfig {
 	return {
 		fanoutChild: true,
@@ -567,7 +566,6 @@ describe("nested control routing", () => {
 					.execute("resume", { action: "resume", id: runId, message: "continue" }, new AbortController().signal, undefined, ctx(root, successorSessionFile));
 			};
 
-			// Past the trust check, revival stops at the missing recovery descriptor.
 			assert.match(text(await resume("replaced")), /missing its required recovery identity/);
 			assert.match(text(await resume("unrelated")), /outside trusted nested session roots/);
 		} finally {
@@ -793,7 +791,6 @@ describe("nested control routing", () => {
 			};
 			const run = (params: Record<string, unknown>) => tool!.execute("registration", params, new AbortController().signal, undefined, ctx);
 
-			// A tool error throws from the registered tool, as Pi expects.
 			await assert.rejects(run({ action: "create", config: { name: "blocked", description: "Blocked" } }), /Action 'create' is not available from child-safe subagent fanout mode\./);
 			await assert.rejects(run({ action: "refine.show", agent: "worker" }), /requires project trust\. This session declined trust, so /);
 		} finally {
@@ -974,14 +971,12 @@ function externalJobStep(overrides: { providerJobId?: string; state?: string; ex
 
 interface NestedRunOptions {
 	steps?: unknown[];
-	/** Status file content verbatim; `null` writes no status file. */
 	statusText?: string | null;
 	status?: Record<string, unknown>;
 	summary?: Record<string, unknown>;
 }
 
 function writeNestedRun(route: ReturnType<typeof createNestedRoute>, runId: string, options: NestedRunOptions = {}): string {
-	// A follow-up runner starts in the source run's cwd, so record one that per-test teardown never removes.
 	const cwd = os.tmpdir();
 	const asyncDir = path.join(TEMP_ROOT_DIR, "nested-subagent-runs", route.rootRunId, runId);
 	fs.mkdirSync(asyncDir, { recursive: true });
@@ -1031,7 +1026,6 @@ describe("nested external-job follow-up", () => {
 		return executor.execute("resume", { action: "resume", id: runId, message: "The QA failure was a missing test.", ...params }, new AbortController().signal, undefined, ctx(root));
 	}
 
-	/** Services the follow-up run's bridge until its runner has finished and exited, so teardown never races its writes. */
 	async function runFollowUp(followUpDir: string): Promise<void> {
 		const followUpId = path.basename(followUpDir);
 		cleanup.push(followUpDir, path.join(RESULTS_DIR, `${followUpId}.json`), nestedResultsPath(route.rootRunId, followUpId));

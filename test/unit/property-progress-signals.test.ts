@@ -3,10 +3,6 @@ import { describe, it } from "node:test";
 import { DEFAULT_PROGRESS_POLICY, classifyProgress, type ProgressObservation, type ProgressToolCall } from "../../src/watchdog/progress/progress-signals.ts";
 import { PROPERTY_CASES, intBetween, pick, seededRandom, type Rng } from "../support/seeded-random.ts";
 
-// Property tests for the loop rules of the progress classifier. The model is a plain restatement of the
-// rules over the call history: two calls are the same call when their tool and full-argument digest match
-// (display previews only when a call has no digest), a loop is a run of at least the policy's length, and
-// the rules fire in precedence order: runner gone, identical calls, failed calls, CI re-runs, then healthy.
 
 const POLICY = DEFAULT_PROGRESS_POLICY;
 const NOW = 1_000_000_000;
@@ -19,7 +15,6 @@ const RERUN = /\bgh\s+(?:run|workflow)\s+rerun\s+(\d+)/;
 type Mode = "keyed" | "legacy";
 type Expectation = { verdict: string; signal: string; reason?: string; count?: number };
 
-// A keyed history: every call has a digest and its preview is noise. A legacy history: no digest.
 function randomHistory(next: Rng, mode: Mode, withRerun: boolean): ProgressToolCall[] {
 	const previews = withRerun ? RERUN_PREVIEWS : PLAIN_PREVIEWS;
 	const length = intBetween(next, 0, 12);

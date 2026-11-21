@@ -246,8 +246,6 @@ export function cleanupOldArtifacts(dir: string, maxAgeDays: number): void {
 				fs.unlinkSync(filePath);
 			}
 		} catch {
-			// Artifact cleanup is best-effort housekeeping. Skip files that disappear
-			// or become unreadable while scanning so one bad entry does not block the rest.
 		}
 	}
 
@@ -264,8 +262,6 @@ export function cleanupAllArtifactDirs(maxAgeDays: number): void {
 	try {
 		dirs = fs.readdirSync(sessionsBase);
 	} catch {
-		// Session artifact cleanup is best-effort. If the sessions root cannot be read,
-		// skip cleanup instead of failing extension startup.
 		return;
 	}
 
@@ -274,8 +270,6 @@ export function cleanupAllArtifactDirs(maxAgeDays: number): void {
 		try {
 			cleanupOldArtifacts(artifactsDir, maxAgeDays);
 		} catch {
-			// Session cleanup is best-effort. Keep going so one unreadable session dir
-			// does not block cleanup for the rest.
 		}
 	}
 }

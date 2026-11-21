@@ -68,8 +68,6 @@ export function resolveHttpIdleTimeoutMs(options: { agentDir: string; cwd: strin
 		if (!read.present) continue;
 		const timeoutMs = parseHttpIdleTimeoutMs(read.value);
 		if (timeoutMs === undefined) {
-			// Pi rejects the merged value outright; a malformed override must not
-			// silently fall through to a different scope's setting.
 			warnings.push(`invalid httpIdleTimeoutMs in ${candidate.file}: ${String(read.value)}`);
 			return { timeoutMs: DEFAULT_HTTP_IDLE_TIMEOUT_MS, source: "default", warning: warnings.join("; ") };
 		}
@@ -88,11 +86,10 @@ export function runnerHttpDispatcherOptions(timeoutMs: number): {
 } {
 	return {
 		allowH2: false,
-		// Keep HTTP origins on CONNECT tunnels, matching Pi's dispatcher.
 		proxyTunnel: true,
 		headersTimeout: timeoutMs,
 		bodyTimeout: timeoutMs,
-		// Match Pi's dispatcher: Node's 250ms default ends valid connection attempts on high-latency routes.
+		// external: Node defaults to a 250ms connection attempt timeout.
 		connect: { autoSelectFamilyAttemptTimeout: 2_000 },
 	};
 }
@@ -107,12 +104,11 @@ export function runnerHttpDispatcherOptions(timeoutMs: number): {
  */
 export function installRunnerHttpDispatcher(options: { agentDir: string; cwd: string }): void {
 	try {
-		// SAFETY: require loads the pinned direct dependency described by these types.
 		const undici = createRequire(import.meta.url)("undici") as typeof import("undici");
 		const idle = resolveHttpIdleTimeoutMs(options);
 		if (idle.warning) console.error(`[pi-subagents] httpIdleTimeoutMs: ${idle.warning}; using ${idle.timeoutMs}ms`);
 		const dispatcher = new undici.EnvHttpProxyAgent(runnerHttpDispatcherOptions(idle.timeoutMs));
-		// Fetch rejects stream errors; the listener prevents an unhandled EventEmitter error.
+		// external: Fetch rejects stream errors; an error listener prevents an unhandled EventEmitter error.
 		EventEmitter.prototype.on.call(dispatcher, "error", () => {});
 		undici.setGlobalDispatcher(dispatcher);
 		undici.install();

@@ -8,7 +8,6 @@ const branch = (...content: unknown[]) => ({ getBranch: () => [{ type: "message"
 describe("reply workflow block", () => {
 	it("returns the one tagged block from the reply that issued the call, exactly as written", () => {
 		const script = "const note = `\n```js\n`;\n  return runs.run('main', { agent: 'worker' });";
-		// The first fence only quotes the tag, so it is skipped; the tagged fence may use javascript and trailing spaces.
 		const text = ["Plan:", "```md", "```js workflow", "```", "```javascript workflow  ", script, "```", "Done."].join("\n");
 		assert.deepEqual(readReplyWorkflowScript(branch({ type: "text", text }, call("call-1")), "call-1"), { script });
 	});

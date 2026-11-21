@@ -6,7 +6,6 @@ import { test } from "node:test";
 import { resolveRetainedWorktreeCwd } from "../../src/runs/shared/parallel-handoff.ts";
 
 test("retained cwd treats a Windows short-name alias as the same directory", { skip: process.platform !== "win32" }, (t) => {
-	// Existing system directory is read-only input; every write stays in a disposable root.
 	const programFiles = process.env.ProgramFiles;
 	if (!programFiles) return t.skip("ProgramFiles is unavailable");
 	const shortName = path.join(path.parse(programFiles).root, "PROGRA~1");

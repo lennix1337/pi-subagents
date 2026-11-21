@@ -1,11 +1,3 @@
-/**
- * Dispatch-path tests for the Claude Code model and thinking override.
- *
- * These drive the real step builder and the real launch validation, so they
- * prove the request reaches the adapter instead of only that the token helper
- * returns the expected array. They assert on built steps; a real launch is
- * covered by `test/integration/claude-code-dispatch.test.ts`.
- */
 
 import assert from "node:assert/strict";
 import * as path from "node:path";
@@ -102,7 +94,6 @@ describe("Claude Code override dispatch", () => {
 		});
 		assert.equal(firstArgs(build([{ agent: "claude-code", task: "Review" }], [fromSettings])), undefined);
 
-		// A frontmatter model the operator wrote still reaches the CLI.
 		const pinned = agent("claude-code", { model: "claude-opus-5.5", modelSource: { type: "subagents.defaultModel", scope: "user", path: "/tmp/settings.json", model } });
 		assert.deepEqual(firstArgs(build([{ agent: "claude-code", task: "Review" }], [pinned])), ["--model", "claude-opus-5.5"]);
 	});
@@ -110,12 +101,9 @@ describe("Claude Code override dispatch", () => {
 	it("honors an explicit thinking clear instead of the agent default", () => {
 		const withDefault = agent("claude-code", { thinking: "high" });
 		assert.deepEqual(firstArgs(build([{ agent: "claude-code", task: "Review" }], [withDefault])), ["--effort", "high"]);
-		// An explicit clear must not fall back to the level it cleared. Chain steps
-		// carry no thinking field, so the per-step override is the channel.
 		assert.equal(firstArgs(build([{ agent: "claude-code", task: "Review" }], [withDefault], { thinkingOverridesByFlatIndex: [false] })), undefined);
 		assert.deepEqual(firstArgs(build([{ agent: "claude-code", task: "Review" }], [withDefault], { thinkingOverridesByFlatIndex: ["low"] })), ["--effort", "low"]);
 
-		// The same precedence drives the single path.
 		assert.equal(resolveClaudeCodeThinking(false, "high"), undefined);
 		assert.equal(resolveClaudeCodeThinking(undefined, "high"), "high");
 		assert.equal(resolveClaudeCodeThinking("low", "high"), "low");
@@ -127,7 +115,6 @@ describe("Claude Code override dispatch", () => {
 		assert.ok("error" in built);
 		assert.match(built.error, /Thinking level 'max' exceeds configured maximum 'low'/);
 
-		// The boundary compares the requested level, not the effort it maps to.
 		const boundary = build([{ agent: "claude-code", task: "Review", model: "sonnet:minimal" }], [agent("claude-code", { maxThinking: "minimal" })]);
 		assert.deepEqual(firstArgs(boundary), ["--model", "sonnet", "--effort", "low"]);
 	});

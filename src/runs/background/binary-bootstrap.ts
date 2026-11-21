@@ -32,15 +32,13 @@ export default async function runBinaryBootstrap(): Promise<never> {
 		try {
 			fs.unlinkSync(configPath);
 		} catch {
-			// Temp-config cleanup is best effort, as in the Node entrypoint.
 		}
-		// Pi applies httpIdleTimeoutMs to its dispatcher only after extension
-		// factories return; this factory never does, so install the runner's own.
+		// external: Pi applies httpIdleTimeoutMs only after extension factories return.
 		installRunnerHttpDispatcher({ agentDir: getAgentDir(), cwd: process.cwd() });
 		await runConfiguredSubagent(config, {
 			loadPiCodingAgent: async () => sdk,
 			loadExecutionModule: async () => {
-				// Native Bun imports bypass Pi's Jiti virtual peers in the compiled host.
+				// external: Native Bun imports bypass Pi Jiti virtual peers in compiled hosts.
 				const jiti = createJiti(import.meta.url, {
 					tryNative: false,
 					moduleCache: false,

@@ -64,10 +64,7 @@ const publishedPackage = { type: sourcePackage.type };
 for (const field of copyFields) {
 	if (sourcePackage[field] !== undefined) publishedPackage[field] = sourcePackage[field];
 }
-// The extension entry and every subpath export load from one bundled module graph (#2980).
-// Loading ~240 separate modules costs seconds on Windows; shared chunks keep one copy of module state.
-// The compiled files stay in the package for child processes, and each bundled module keeps the
-// import.meta.url of its compiled file, so paths to agents, prompts, runners and package.json do not change.
+// external: loading hundreds of separate modules costs seconds on Windows.
 const bundleEntries = Object.entries(sourcePackage.exports).map(([name, target]) => {
 	if (typeof target !== "string" || !target.endsWith(".ts")) throw new Error(`Unsupported package export ${name}: ${String(target)}`);
 	return { name, target, out: name === "." ? "index" : name.slice(2) };

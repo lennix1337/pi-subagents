@@ -30,7 +30,6 @@ export function snapshotRequiredChildExtensions(value: unknown, label = "Require
 	const ids = new Set<string>();
 	const paths = new Set<string>();
 	return Object.freeze(value.map((entry, index) => {
-		// The flag comes from registration, so only serialized snapshots (not registration input) may carry it.
 		if (!entry || typeof entry !== "object" || Array.isArray(entry) || Object.keys(entry).some((key) => key !== "id" && key !== "path" && (canonicalizeFiles || key !== "requireForAllRunners"))) throw new Error(`${label} entry ${index} requires only id and path.`);
 		const id = "id" in entry ? entry.id : undefined;
 		const rawPath = "path" in entry ? entry.path : undefined;

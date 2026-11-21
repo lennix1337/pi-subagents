@@ -173,7 +173,6 @@ function createNativeSupervisorHarness(sessionId: string) {
 	return { channel, tools, sent };
 }
 
-/** Starts a run whose events.jsonl holds one native supervisor attention record. Requires mock timers. */
 function startSupervisorAttentionRun(asyncRoot: string, runId: string, timers: { tick(ms: number): void }) {
 	const runDir = path.join(asyncRoot, runId);
 	writeRunningAsyncStatus(runDir, runId, "session-grace");
@@ -187,7 +186,7 @@ function startSupervisorAttentionRun(asyncRoot: string, runId: string, timers: {
 	const recorder = createEventRecorder();
 	const tracker = createTracker(recorder.pi, createState() as never, asyncRoot, { supervisorRequestState: () => answered ? "resolved" : "pending" });
 	tracker.handleStarted({ id: runId, asyncDir: runDir, agent: "worker", sessionId: "session-grace" });
-	timers.tick(25); // the tracker's event-refresh debounce
+	timers.tick(25);
 	assert.deepEqual(recorder.events.map((entry) => [entry.channel, (entry.data as { noticeDeferred?: boolean }).noticeDeferred]), [[SUBAGENT_CONTROL_EVENT, true]], "status consumers see the request immediately, marked deferred");
 	return { tracker, answer: () => { answered = true; }, events: recorder.events };
 }
@@ -736,7 +735,6 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 			state.currentSessionId = "session-workflow";
 			const tracker = createTracker(createEventRecorder().pi, state as never, asyncRoot, { pollIntervalMs: 60_000 });
 			tracker.restoreActiveJobs();
-			// The tracker's own status refresh, not the restore projection, feeds the widget lane.
 			writeWorkflow(3000, { agent: "scout", status: "running", async: true, runId: "child-run", model: "launch/model" });
 			await waitForCondition(() => state.asyncJobs.get("workflow-run")?.steps?.[0]?.model === "launch/model", "workflow lane refresh", 1000);
 			assert.equal(state.asyncJobs.get("workflow-run")?.steps?.[0]?.thinking, "low");

@@ -20,9 +20,6 @@ const DEFAULT_INTERCOM_TARGET_PREFIX = "subagent-chat";
 export const PI_INTERCOM_SESSION_ID_ENV = "PI_INTERCOM_SESSION_ID";
 export const INTERCOM_BRIDGE_MARKER = "Intercom orchestration channel:";
 const ORCHESTRATOR_TARGET_PLACEHOLDER = "{orchestratorTarget}";
-// The default template must stay session-independent: the child reads the
-// supervisor target from its runtime config, and a prompt that names the
-// parent session would make the launch digest vary per session (#2127).
 const DEFAULT_INTERCOM_BRIDGE_TEMPLATE = `The inherited thread is reference-only. Do not continue that conversation or send questions, status updates, or completion handoffs to the supervisor in normal assistant text.
 
 Use contact_supervisor first. It resolves the supervisor session and run metadata automatically.
@@ -81,7 +78,6 @@ export interface IntercomBridgeDiagnostic {
 
 interface ResolveIntercomBridgeInput {
 	config: ExtensionConfig["intercomBridge"];
-	/** Per-run config replaces the global config when supplied. */
 	override?: IntercomBridgeConfig;
 	context: "fresh" | "fork" | undefined;
 	orchestratorTarget?: string;
@@ -90,16 +86,12 @@ interface ResolveIntercomBridgeInput {
 	agentDir?: string;
 }
 
-// Inside a child, callers pass the child's intercom route instead of its session
-// name: the name is a readable label and need not be unique.
 export function resolveIntercomSessionTarget(sessionName: string | undefined, sessionId: string, intercomSessionId = process.env[PI_INTERCOM_SESSION_ID_ENV]): string {
 	const trimmedName = sessionName?.trim();
 	if (trimmedName) return trimmedName;
 	const fallbackSessionId = intercomSessionId?.trim() || sessionId;
 	const normalizedSessionId = fallbackSessionId.startsWith("session-") ? fallbackSessionId.slice("session-".length) : fallbackSessionId;
-	// NOTE: keep slice length in sync with pi-intercom's resolveIntercomPresenceName
-	// (index.ts: DEFAULT_UNNAMED_SESSION_ALIAS_PREFIX + slice(0, 18)); mismatched lengths
-	// make fallback orchestrator targets unresolvable ("Session not found").
+	// external: pi-intercom fallback presence names use the first 18 session ID characters.
 	return `${DEFAULT_INTERCOM_TARGET_PREFIX}-${normalizedSessionId.slice(0, 18)}`;
 }
 

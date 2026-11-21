@@ -1434,7 +1434,6 @@ describe("active runs whose async runner died", () => {
 		return fs.readFileSync(path.join(scheduleDir(h, id), "events.jsonl"), "utf-8").trim().split("\n").map((line) => JSON.parse(line));
 	}
 
-	// The first fire attaches a running workflow whose status names the given runner PID.
 	async function attach(h: Harness, id: string, pid: number, create: Record<string, unknown> = { every: "1h" }): Promise<{ runId: string; asyncDir: string }> {
 		const created = await h.manager.handleToolCall({ action: "schedule.create", id, workflowScript: script, ...create }, h.ctx);
 		assert.equal(created.isError, undefined, text(created));
@@ -1569,7 +1568,6 @@ describe("active runs whose async runner died", () => {
 		await attach(h, "locked", DEAD_PID);
 		h.manager.stop();
 		h.clock.now += 60_000;
-		// Another process holds the history.json lease, so recording the released run times out.
 		const lease = path.join(fs.realpathSync(scheduleDir(h, "locked")), "history.json.write-lock");
 		fs.mkdirSync(lease);
 		fs.writeFileSync(path.join(lease, "owner.json"), JSON.stringify({ token: "other-session", pid: process.pid, hostname: os.hostname() }));
@@ -1629,7 +1627,6 @@ describe("active runs whose async runner died", () => {
 	it("leaves another session's newer claim alone when it released the dead run first", async () => {
 		let h: Harness;
 		const otherSessionClaims = (pid: number) => {
-			// Session A releases the dead run and claims this occurrence while this fire reconciles it.
 			const file = path.join(scheduleDir(h, "shared"), "schedule.json");
 			fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, "utf-8")), activeRunId: "run-a" }), "utf-8");
 			fs.writeFileSync(path.join(scheduleDir(h, "shared"), "active.lock"), "run-a", "utf-8");

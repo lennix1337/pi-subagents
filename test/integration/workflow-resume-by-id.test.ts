@@ -1,4 +1,3 @@
-/** subagent({ action: "resume", id }) with no message relaunches a stopped workflow from its saved launch. */
 
 import assert from "node:assert/strict";
 import fsDefault, * as fs from "node:fs";
@@ -14,7 +13,6 @@ import { makeAgent, makeMinimalCtx } from "../support/helpers.ts";
 import { available, createSubagentExecutor, installSingleExecutionHooks, makeExecutor, mockPi, tempDir } from "../support/single-execution-fixture.ts";
 
 const terminalStates = ["complete", "failed", "partial", "paused", "stopped", "rejected"];
-// SAFETY: the executor writes these status.json files from AsyncStatus values.
 const readStatusFile = (runId: string) => JSON.parse(fs.readFileSync(path.join(DIRS.async, runId, "status.json"), "utf-8")) as AsyncStatus;
 const text = (result: { content: Array<{ type: string; text?: string }> }) => result.content[0]?.text ?? "";
 
@@ -121,7 +119,6 @@ describe("resuming a stopped workflow by id", { skip: !available || !createSubag
 		assert.equal(text(foreign), `Cannot resume workflow '${sourceId}': it was started in another session; reopen that session to resume it.`);
 		assert.deepEqual(snapshot(), before, "nothing was written into the other session's run");
 
-		// After /new in the same Pi process the new session owns the runs of the one it replaced.
 		const successor = `session-${nonce}-successor`;
 		recordSessionReplacement(successor, ownerSession);
 		mockPi.onCall({ matchArgIncludes: `Stage two ${nonce}`, output: "stage two done" });
@@ -140,7 +137,6 @@ describe("resuming a stopped workflow by id", { skip: !available || !createSubag
 		const sourceId = await launch({ workflowScript: script }, sessionId);
 		await replaceWhen(sourceId, stageStarted("stage2"));
 
-		// The relaunch takes the claim, then fails to create its storage.
 		const originalMkdirSync = fsDefault.mkdirSync;
 		t.mock.method(fsDefault, "mkdirSync", ((target: fs.PathLike, options?: fs.MakeDirectoryOptions) => {
 			if (path.resolve(String(target)) === path.resolve(DIRS.results)) throw new Error("no space left");
@@ -174,7 +170,6 @@ describe("resuming a stopped workflow by id", { skip: !available || !createSubag
 		const sourceId = await launch({ workflowScript: script }, sessionId);
 		await replaceWhen(sourceId, stageStarted("stage2"));
 
-		// Another workflow holds the session's only slot.
 		mockPi.onCall({ matchArgIncludes: `Blocker ${nonce}`, waitForPath: release, output: "blocker done" });
 		const blockerId = await launch({ workflowScript: `await runs.run("block", { agent: "echo", task: "Blocker ${nonce}" });` }, sessionId);
 		await waitFor(blockerId, stageStarted("block"));

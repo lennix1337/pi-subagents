@@ -60,7 +60,6 @@ interface AbandonedRunnerEvidence {
 	abandonedSlotReleaseAfterMs: number;
 }
 
-/** A workflow's own status PID is the parent Pi host, so workflow evidence names its dead child runners instead. */
 interface AbandonedWorkflowEvidence {
 	releasedBy: "abandoned-timeout";
 	processProof: "unknown";
@@ -222,7 +221,6 @@ function appendAbandonedReleaseEvent(asyncDir: string, owner: ActiveAsyncCapacit
 			...evidence,
 		})}\n`, "utf-8");
 	} catch {
-		// Capacity release must not fail because its diagnostic event cannot be written.
 	}
 }
 
@@ -248,17 +246,12 @@ function runnerReleaseVerdict(owner: ActiveAsyncCapacityOwner, status: AsyncStat
 		: abandonedRunnerReleaseVerdict(status, proof?.state ?? "missing", options);
 }
 
-/**
- * A top-level runner slot is reclaimed only for a failed run. A workflow child may be in any terminal state:
- * a stop or a completion whose launcher is gone leaves its proof unresolved just as a failure does.
- */
 function abandonedRunnerReleaseVerdict(status: AsyncStatus, proofState: string, options: CapacityOptions, anyTerminalState = false): { state: "retained"; reason: string } | { state: "releasable"; reason: string; evidence: AbandonedRunnerEvidence } {
 	const proofReason = `process-terminal proof is ${proofState}`;
 	const thresholdMs = resolveAbandonedSlotReleaseAfterMs(options.abandonedSlotReleaseAfterMs);
 	if (thresholdMs === false) return { state: "retained", reason: `${proofReason}; abandoned-timeout policy is disabled` };
 	if (anyTerminalState ? !terminalState(status.state) : status.state !== "failed") return { state: "retained", reason: `${proofReason}; abandoned-timeout policy requires a ${anyTerminalState ? "terminal" : "failed"} run, not ${status.state}` };
 	if (typeof status.pid !== "number" || !Number.isInteger(status.pid) || status.pid < 1) return { state: "retained", reason: `${proofReason}; runner PID is missing or invalid` };
-	// A PID from another namespace can look dead here while the runner is alive.
 	const observedScope = (options.pidNamespaceScope ?? currentPidNamespaceScope)();
 	if (status.pidNamespaceScope !== undefined && status.pidNamespaceScope !== observedScope) return { state: "retained", reason: `${proofReason}; runner PID namespace differs from this process, so liveness is unknown` };
 	const liveness = checkRecordedPidLiveness({ pid: status.pid, pidNamespaceScope: status.pidNamespaceScope, bootId: status.bootId }, {
@@ -298,7 +291,6 @@ function workflowReleaseVerdict(owner: ActiveAsyncCapacityOwner, status: AsyncSt
 	return abandonedWorkflowReleaseVerdict(owner, status, evidence.reason, options);
 }
 
-/** Every unresolved async child must itself pass the abandoned runner policy; any other unresolved child keeps the slot. */
 function abandonedWorkflowReleaseVerdict(owner: ActiveAsyncCapacityOwner, status: AsyncStatus, proofReason: string, options: CapacityOptions): ActiveAsyncCapacityReleaseVerdict {
 	const thresholdMs = resolveAbandonedSlotReleaseAfterMs(options.abandonedSlotReleaseAfterMs);
 	if (thresholdMs === false) return { state: "retained", reason: `${proofReason}; abandoned-timeout policy is disabled` };
@@ -416,8 +408,6 @@ function createSlot(poolDir: string, owner: ActiveAsyncCapacityOwner): boolean {
 		if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
 		throw error;
 	}
-	// If owner persistence fails, the corrupt occupied directory remains and
-	// fails closed instead of becoming available to another admission.
 	fs.writeFileSync(path.join(destination, "owner.json"), `${JSON.stringify(owner, null, 2)}\n`, { encoding: "utf-8", mode: 0o600 });
 	return true;
 }
@@ -433,8 +423,6 @@ function handleFor(owner: ActiveAsyncCapacityOwner, limit: number, options: Capa
 				const current = matchingOwner(dir, owner);
 				if (!current) return false;
 				const next = { ...current, runnerProcessInstanceId, runnerStartedAt: options.now?.() ?? Date.now() };
-				// Mark memory first so pre-proceed cleanup can distinguish a failed durable
-				// bind from an unrelated unstarted reservation.
 				Object.assign(owner, next);
 				writeOwner(path.join(dir, "owner.json"), next);
 				return true;

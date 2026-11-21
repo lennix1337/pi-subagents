@@ -223,15 +223,12 @@ it("keeps coverage across a non-structural refresh when the async widget paints 
 		const [alpha] = materialize(h);
 		h.activate(); h.roster();
 		assert.match(h.asyncText(), /Workflow children shown in Fleet roster/);
-		// Elapsed seconds and tokens change the roster render key every tick without changing structure.
-		// A fixed clock keeps the prepaint and the roster paint on the same elapsed second.
 		const later = realNow() + 5_000;
 		Date.now = () => later;
 		alpha.totalTokens = { input: 30, output: 8, total: 38 };
 		const before = h.coverageCalls;
 		h.fleet.refresh();
 		assert.equal(h.coverageCalls, before + 1, "prepaint computes coverage synchronously");
-		// TUI order: aboveEditor async widget renders before the belowEditor roster.
 		assert.match(h.asyncText(), /Workflow children shown in Fleet roster/, "async widget must not flash its full tree");
 		assert.doesNotMatch(h.asyncText(), /alpha-worker/);
 		assert.match(h.roster(), /alpha-worker/);

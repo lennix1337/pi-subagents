@@ -9,7 +9,6 @@ import { runSingleStepInner } from "../../src/runs/background/subagent-runner.ts
 import { MCP_RUNTIME_SNAPSHOT_EVENT, MCP_RUNTIME_SNAPSHOT_VERSION, type McpHostToolInfo, type McpRuntimeSnapshotHost } from "../../src/runs/shared/mcp-direct-tool-allowlist.ts";
 import { createFakeChildSessions } from "../support/fake-child-session.ts";
 
-/** A parent whose pi-mcp-adapter answers snapshot requests for one runtime-only server. */
 function runtimeSnapshotHost(serverName: string): McpRuntimeSnapshotHost {
 	return {
 		events: {
@@ -21,7 +20,6 @@ function runtimeSnapshotHost(serverName: string): McpRuntimeSnapshotHost {
 	};
 }
 
-/** A parent whose /mcp is owned by `mcpOwner` and whose tool registry holds `tools`. */
 function mcpHost(mcpOwner: string, tools: McpHostToolInfo[]): McpRuntimeSnapshotHost {
 	return {
 		events: { emit() {} },

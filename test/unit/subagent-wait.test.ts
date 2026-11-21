@@ -15,8 +15,6 @@ import type { AsyncStatus, SubagentState } from "../../src/shared/types.ts";
 function writeStatus(asyncRoot: string, runId: string, state: AsyncStatus["state"], extra: object = {}): void {
 	const dir = path.join(asyncRoot, runId);
 	fs.mkdirSync(dir, { recursive: true });
-	// Use a recent timestamp so the stale-run reconciler doesn't mark a live
-	// "running" fixture as failed for having a stale heartbeat.
 	const nowMs = Date.now();
 	fs.writeFileSync(
 		path.join(dir, "status.json"),
@@ -90,8 +88,6 @@ function baseDeps(root: string, state: SubagentState, overrides: Partial<Subagen
 		state,
 		asyncDirRoot: path.join(root, "runs"),
 		resultsDir: path.join(root, "results"),
-		// Never probe real PIDs in tests — treat every recorded pid as alive so
-		// reconciliation doesn't flip a "running" fixture to failed.
 		kill: () => true,
 		pollIntervalMs: 250,
 		...overrides,
@@ -281,8 +277,6 @@ describe("bg_wait tool", () => {
 			writeStatus(asyncRoot, "run-a", "running", { sessionId: "sess-1", pid: 999999 });
 			writeStatus(asyncRoot, "run-b", "queued", { sessionId: "sess-1", pid: 999998 });
 
-			// Flip one run terminal on the first poll, the other on the second — so
-			// all:true must keep waiting past the first completion.
 			let polls = 0;
 			const sleep = async () => {
 				polls += 1;
@@ -499,7 +493,6 @@ describe("bg_wait tool", () => {
 			assert.equal(child?.runId, "a1b2c3d4");
 			assert.equal(child?.artifactPaths?.metadataPath, "/tmp/a1b2c3d4_reviewer_0_meta.json");
 			assert.equal("output" in (child ?? {}), false);
-			// The result file is the watcher's to consume; the wait must not delete it.
 			assert.equal(fs.existsSync(path.join(resultsDir, "run-a.json")), true);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
@@ -632,7 +625,6 @@ describe("bg_wait tool", () => {
 			const result = await waitForSubagents({ all: true }, undefined, baseDeps(root, state, {
 				sleep: async () => {
 					writeStatus(asyncRoot, "run-b", "complete", { sessionId: "sess-1" });
-					// Simulates the watcher: payload recorded, file consumed and deleted.
 					recordWaitCompletion(state, "run-b", {
 						runId: "run-b",
 						sessionId: "sess-1",
@@ -660,11 +652,9 @@ describe("bg_wait tool", () => {
 		try {
 			const asyncRoot = path.join(root, "runs");
 			const state = makeState("sess-1");
-			// Two runs, all:true so it would normally block until both finish.
 			writeStatus(asyncRoot, "run-a", "running", { sessionId: "sess-1", pid: 999999 });
 			writeStatus(asyncRoot, "run-b", "running", { sessionId: "sess-1", pid: 999998 });
 
-			// Neither completes; run-a flags needs_attention (blocked for a decision).
 			let polls = 0;
 			const sleep = async () => {
 				polls += 1;
@@ -972,7 +962,6 @@ describe("bg_wait tool", () => {
 			writeStatus(asyncRoot, "run-b", "running", { sessionId: "sess-1", pid: 999998 });
 			writeStatus(asyncRoot, "run-c", "running", { sessionId: "sess-1", pid: 999997 });
 
-			// Only run-a finishes; b and c stay running forever.
 			let polls = 0;
 			const sleep = async () => {
 				polls += 1;
@@ -985,7 +974,6 @@ describe("bg_wait tool", () => {
 			assert.match(text, /1 of 3 run\(s\) finished/);
 			assert.match(text, /1 complete/);
 			assert.match(text, /2 run\(s\) still in flight/);
-			// Must not have blocked on b and c: a bounded number of polls.
 			assert.ok(polls <= 2, `first-completion should return promptly, polled ${polls}`);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
@@ -997,7 +985,6 @@ describe("bg_wait tool", () => {
 		try {
 			const asyncRoot = path.join(root, "runs");
 			const state = makeState("sess-1");
-			// A run from another session must be ignored.
 			writeStatus(asyncRoot, "run-other", "running", { sessionId: "sess-2", pid: 999999 });
 			const result = await waitForSubagents({}, undefined, baseDeps(root, state));
 			assert.equal(result.isError, undefined);
@@ -1340,7 +1327,7 @@ describe("bg_wait tool", () => {
 				JSON.stringify({ version: 1, recordType: "message", sourceEventType: "initial_prompt", role: "user", text: "large delegated task", ts }),
 				JSON.stringify({ version: 1, recordType: "message", sourceEventType: "message_end", role: "assistant", text: "I found the relevant renderer path.", ts: ts + 1 }),
 				JSON.stringify({ version: 1, recordType: "tool_start", toolName: "edit", argsPreview: "{ path: src/render.ts }", ts: ts + 2 }),
-				"{\"recordType\":\"message\"", // Simulate a concurrent partial append.
+				"{\"recordType\":\"message\"",
 			].join("\n"), "utf-8");
 
 			const state = makeState("sess-1");
@@ -1521,7 +1508,6 @@ describe("bg_wait tool", () => {
 			let polls = 0;
 			const sleep = async () => {
 				polls += 1;
-				// Only alpha finishes; beta stays running but we're not waiting on it.
 				if (polls === 1) writeStatus(asyncRoot, "run-alpha", "complete", { sessionId: "sess-1" });
 			};
 
@@ -1640,7 +1626,6 @@ describe("bg_wait tool", () => {
 			const state = makeState("sess-1");
 			writeStatus(asyncRoot, "run-stuck", "running", { sessionId: "sess-1", pid: 999999 });
 
-			// Virtual clock that jumps past the timeout on the first sleep.
 			let clock = 0;
 			const now = () => clock;
 			const sleep = async (ms: number) => {
@@ -1736,7 +1721,6 @@ describe("bg_wait tool", () => {
 			const state = makeState("sess-1");
 			writeStatus(asyncRoot, "run-a", "running", { sessionId: "sess-1", pid: 999999 });
 
-			// Fake bus. Emitting on a wake channel should end wait's sleep early.
 			const handlers = new Map<string, Array<(d: unknown) => void>>();
 			const events = {
 				on(channel: string, handler: (d: unknown) => void) {
@@ -1795,7 +1779,6 @@ describe("bg_wait tool", () => {
 				polls += 1;
 				if (polls === 1) writeStatus(asyncRoot, "run-a", "complete", { sessionId: "sess-1" });
 			};
-			// No `events` in deps → pure poll path.
 			const result = await waitForSubagents({ all: true }, undefined, baseDeps(root, state, { sleep }));
 			assert.equal(result.isError, undefined);
 			assert.match(textOf(result), /done/i);

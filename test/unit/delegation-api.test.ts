@@ -276,11 +276,10 @@ describe("public subagent delegation contract", () => {
 				} });
 				send();
 				send(history);
-				send({ ...history, lastError: { ...lastError } }); // equal copied snapshot is a heartbeat
+				send({ ...history, lastError: { ...lastError } });
 				send({ ...history, retry });
 				send({ ...history, retry: { ...retry, phase: "in_flight" } });
 				send({ ...history, errorCount: 2 });
-				// Mutating an internal adapter input must not mutate prior public snapshots.
 				lastError.at = 999;
 				retry.delayMs = 999;
 				return { details: { results: [{ agent: "reviewer", exitCode: 0, finalOutput: "done", providerDiagnostics: { ...history, errorCount: 2, retry } }] } };
@@ -403,7 +402,6 @@ describe("public subagent delegation contract", () => {
 					turnCount: 1,
 				};
 				onUpdate({ details: { mode: "single", runId: "run-usage", results: [{ agent: "reviewer", model: "openai/gpt-5" }], progress: [base] } });
-				// Exact duplicate: tokens/tool progress and usage counters are unchanged, so this is a heartbeat.
 				onUpdate({ details: { mode: "single", runId: "run-usage", results: [{ agent: "reviewer", model: "openai/gpt-5" }], progress: [{ ...base }] } });
 				onUpdate({ details: { mode: "single", runId: "run-usage", results: [{ agent: "reviewer", model: "openai/gpt-5" }], progress: [{ ...base, cacheRead: 4 }] } });
 				onUpdate({ details: { mode: "single", runId: "run-usage", results: [{ agent: "reviewer", model: "openai/gpt-5" }], progress: [{ ...base, cacheRead: 4, cacheWrite: 2 }] } });

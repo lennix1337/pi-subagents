@@ -1,8 +1,3 @@
-/**
- * Child tool plan: which builtin tools, MCP tools, runtime hooks, and extension
- * files a child launch gets, and how that resolution is reported. Both the
- * foreground path and the async runner build their session launch from this.
- */
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -47,7 +42,7 @@ const SUBAGENT_RUNTIME_EXTENSION_PATHS = new Set([
 export function isSubagentRuntimeExtensionPath(extensionPath: string): boolean {
 	return SUBAGENT_RUNTIME_EXTENSION_PATHS.has(path.normalize(extensionPath));
 }
-// Priority tier is an OpenAI-Codex request field; other providers reject or ignore it.
+// external: Priority tier is an OpenAI-Codex request field; other providers reject or ignore it.
 const FAST_MODE_PROVIDER_PREFIX = "openai-codex/";
 const OPENAI_PROMPT_CACHE_KEY_MAX_LENGTH = 64;
 export function deriveForkPromptCacheKey(parentSessionId: string | undefined): string | undefined {
@@ -200,12 +195,11 @@ export function formatRuntimeSnapshotMcpServersError(agentName: string | undefin
 	return `${subject} selects MCP tools from servers that exist only in pi-mcp-adapter's runtime snapshot (${serverNames.join(", ")}). MCP servers from the runtime snapshot cannot be provided to in-process children; MCP tools must come from an ambient adapter extension in a background child (\`async: true\`), so add the server to the adapter's configuration file instead.`;
 }
 
-/** Same rule as Pi's `isToolModifier`: a `+name` or `-name` entry edits Pi's default tool selection. */
+// external: Pi interprets +name and -name entries as tool-selection modifiers.
 function isPiToolModifier(entry: string): boolean {
 	return entry.startsWith("+") || entry.startsWith("-");
 }
 
-/** Path-like entries load extensions instead of naming tools, so Pi never reads them as modifiers. */
 function isToolExtensionPath(entry: string): boolean {
 	return entry.includes("/") || entry.endsWith(".ts") || entry.endsWith(".js");
 }
@@ -262,7 +256,6 @@ export function projectLaunchResolvedChildExtensions(
 export function resolvePermissionSystemExtension(): string | undefined {
 	const agentDir = getAgentDir();
 	const candidates = [
-		// npm-scoped package (most common)
 		path.join(
 			agentDir,
 			"npm",
@@ -270,7 +263,6 @@ export function resolvePermissionSystemExtension(): string | undefined {
 			"@gotgenes",
 			"pi-permission-system",
 		),
-		// direct extension directory (some layouts)
 		path.join(agentDir, "extensions", "pi-permission-system"),
 	];
 	const errors: Error[] = [];
@@ -369,7 +361,6 @@ export function resolvePiLaunchToolPlan(
 	const mcpResolution = capabilityCeiling?.denyExtensions
 		? { selections: [], unresolvedSelectors: [] }
 		: input.builtinMcpTools
-			// The runner applies the same ceilings again; filtering is idempotent.
 			? { selections: input.builtinMcpTools, unresolvedSelectors: [], builtin: true as const }
 			: resolveMcpDirectToolResolution(input.mcpDirectTools, input.cwd, input.runtimeSnapshotHost);
 	if (mcpResolution.runtimeServerNames?.length) {
@@ -405,12 +396,6 @@ export function resolvePiLaunchToolPlan(
 			...internalTools,
 		]),
 	];
-	// Upward contact stays in the --tools allowlist but is not a strict
-	// requirement: children register contact_supervisor at runtime through
-	// the native supervisor channel (or pi-intercom). The pre-0.50 bridge always
-	// appended intercom alongside contact_supervisor, so that exact pairing is
-	// legacy plumbing, not a user demand for an external intercom provider;
-	// a lone intercom entry stays strictly required (#1207).
 	const legacySupervisorPairing = effectiveDeclaredBuiltinTools.includes("contact_supervisor");
 	const requiredChildTools = explicitToolAllowlist
 		? [
@@ -428,7 +413,6 @@ export function resolvePiLaunchToolPlan(
 			: undefined;
 	if (input.fast && capabilityCeiling?.denyExtensions) throw new Error("fast mode requires a child runtime extension, but this launch denies extensions.");
 	const fastModeExtensions = resolveFastModeExtension({ fast: input.fast, model: input.model, agentName: input.agentName });
-	// Resolved per launch: an in-place package update can swap a sibling's .ts for .js.
 	const runtimeExtensions = [
 		resolveRuntimeModulePath(RUNTIME_EXTENSION_DIR, "subagent-prompt-runtime"),
 		...fastModeExtensions,
@@ -439,7 +423,6 @@ export function resolvePiLaunchToolPlan(
 		capabilityCeiling?.denyExtensions === true ||
 		input.extensions !== undefined;
 	const warnings: string[] = [];
-	// An explicit empty list disables ambient extensions, including model providers.
 	if (capabilityCeiling?.denyExtensions !== true && Array.isArray(input.extensions) && input.extensions.length === 0) {
 		const agentLabel = input.agentName ? ` for agent '${input.agentName}'` : "";
 		warnings.push(
@@ -464,7 +447,6 @@ export function resolvePiLaunchToolPlan(
 					...(input.subagentOnlyExtensions ?? []),
 				]),
 			];
-	// Host-required paths have final precedence and cannot be removed by agent defaults or overrides.
 	const extensionArgs = [...new Set([...ordinaryExtensionArgs, ...requiredExtensions.map(({ path }) => path)])];
 	const requestedToolNames =
 		input.tools !== undefined
@@ -539,7 +521,6 @@ export function resolvePiLaunchToolPlan(
 	};
 }
 
-// Capability ceilings persisted before #1685 may still name hyphenated MCP server prefixes with underscores.
 function countLegacyUnderscoreMcpToolNames(selections: readonly ResolvedMcpDirectToolSelection[]): Map<string, number> {
 	const counts = new Map<string, number>();
 	for (const selection of selections) {

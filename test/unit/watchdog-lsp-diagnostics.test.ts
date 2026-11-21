@@ -110,7 +110,6 @@ describe("watchdog LSP diagnostics", () => {
 				cwd: temp,
 				root: temp,
 				changedPaths: ["src/file.ts"],
-				// The malformed frame fails the request as soon as it arrives; the budget only stops a slow fake-server boot from reading as `timeout`.
 				config: { enabled: true, timeoutMs: 15_000, maxFiles: 10, maxDiagnostics: 10 },
 			});
 

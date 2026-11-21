@@ -1,16 +1,3 @@
-/**
- * Subagent Tool
- *
- * Full-featured subagent with sync and async modes.
- * - Sync (default): Streams output, renders markdown, tracks usage
- * - Async: Background execution, emits events when done
- *
- * Public execution mode: workflow (workflow: true reply block, script path, or named resource)
- * Toggle: async parameter (default: true; set asyncByDefault:false in config.json to opt out)
- *
- * Config file: ~/.pi/agent/extensions/subagent/config.json
- *   { "asyncByDefault": true, "defaultSubagentContext": "fork", "forkContext": { "mode": "pruned", "model": "provider/model" }, "forceTopLevelAsync": true, "maxSubagentDepth": 1, "intercomBridge": { "mode": "always", "instructionFile": "./intercom-bridge.md" }, "worktreeSetupHook": "./scripts/setup-worktree.mjs" }
- */
 
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
@@ -116,7 +103,6 @@ import {
 import { showUpgradeNotice } from "./upgrade-notice.ts";
 
 const SLOW_RELOAD_PHASE_MS = 250;
-// Long enough for Pi to finish starting; loading the executor blocks the event loop for tens of ms.
 const MODULE_PRELOAD_DELAY_MS = 1_000;
 const COMPACTION_RESUME_POLL_MS = 50;
 const COMPACTION_RESUME_DEADLINE_MS = 10_000;
@@ -170,13 +156,6 @@ function formatWorkflowPreflightCall(input: unknown): string {
 	}
 }
 
-/**
- * Derive subagent session base directory from parent session file.
- * If parent session is ~/.pi/agent/sessions/abc123.jsonl,
- * returns ~/.pi/agent/sessions/abc123/ as the base.
- * Callers add runId to create the actual session root: abc123/{runId}/
- * Falls back to a unique temp directory if no parent session.
- */
 function getSubagentSessionRoot(parentSessionFile: string | null): string {
 	if (parentSessionFile) {
 		const baseName = path.basename(parentSessionFile, ".jsonl");
@@ -259,9 +238,6 @@ export function projectActiveHerdrRuns(state: SubagentState): HerdrStatusRun[] {
 		foregroundChildrenByWorkflow.set(control.parentWorkflowRunId, existing);
 	}
 
-	// Keep each async child under its own ID: completion and attention events
-	// address that ID directly. The workflow row accounts only for foreground
-	// children; its own coordinator and step summaries are not leaf agents.
 	return [...state.asyncJobs.values()]
 		.filter((job) => active(job.status))
 		.map((job) => {
@@ -304,7 +280,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	const asyncByDefault = resolveAsyncByDefault(config);
 	const fleetViewEnabled = config.fleetView !== false;
 	const slashCommandsEnabled = config.enableSlashCommands !== false;
-	// The detach shortcut is registered with the slash commands; a card must not advertise it when it is not.
 	const foregroundDetachShortcut = slashCommandsEnabled ? config.foregroundDetachShortcut : undefined;
 	const fleetViewPlacement = resolveFleetViewPlacement(config.fleetViewPlacement);
 	const asyncWidgetEnabled = config.asyncWidget !== false;
@@ -360,11 +335,9 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		}, run);
 	};
 
-	// Every notice that wakes the parent goes through parentWake; the watchdog wakes only inside a run.
 	const parentWake = createParentWake(pi);
 	const wakingPi = { events: pi.events, sendMessage: parentWake.sendMessage, isHeld: parentWake.isHeld, on: pi.on, appendEntry: (customType: string, data?: unknown) => pi.appendEntry(customType, data) };
 	const supervisorChannel = createNativeSupervisorChannel(pi, state, {
-		// Owner states are created only by scheduled execution, which loads the executor first.
 		getCurrentOwnerStates: () => executor?.getCurrentSupervisorOwnerStates() ?? [],
 		parentWake,
 	});
@@ -373,10 +346,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	registerProgressWatchdog(pi, { getAsyncDirRoot: () => DIRS.async });
 	const resultDeliveryOwnership = createResultDeliveryOwnership(state);
 	const completionNotifier = registerSubagentNotify(wakingPi, state, { batchConfig: config.completionBatch, ownership: resultDeliveryOwnership });
-	// Ended async runs whose result has not reached the notifier yet.
 	const owedResultRunIds = new Set<string>();
-	// Tracked runs whose result was already delivered, so a later terminal
-	// transition (the tracker can see the end after the result) holds nothing.
 	const deliveredRunIds = new Set<string>();
 	const holdOwedResult = (job: AsyncJobState) => {
 		if (!job.parentWorkflowRunId && !deliveredRunIds.has(job.asyncId) && job.sessionId
@@ -447,7 +417,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			refreshAdvertisedAgents();
 		}).catch((error) => {
 			if (generation !== advertisementGeneration) return;
-			// Settle without an unhandled rejection if no turn follows session_start.
 			console.error("Failed to refresh advertised agents:", error);
 			return { error };
 		});
@@ -471,7 +440,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			...all.user,
 			...all.project,
 		];
-		// Runtime agents take model settings from the scope discovery actually used.
 		const merged = mergeRuntimeAgents(pi, discovered, configuredAgents, { cwd, scope: discovered.scope, preferredModelProvider, projectTrusted: options.projectTrusted });
 		if (discovered.maxThinking === undefined) return merged;
 		return {
@@ -481,7 +449,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	};
 	const programStatus = registerProgramStatusReporter({
 		enabled: config.programStatus !== false,
-		// Fleet history keeps recent finished runs after the widget drops them.
 		getJobs: () => new Map([...(state.fleetJobs ?? []), ...state.asyncJobs]).values(),
 		getPendingRequests: () => supervisorChannel.pending.values(),
 	});
@@ -575,7 +542,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			try {
 				refreshAdvertisedAgents();
 			} catch (error) {
-				// The mutation already persisted. Withdraw stale guidance, not its result.
 				console.error("Failed to refresh advertised agents; catalog withdrawn until refresh:", error);
 			}
 		},
@@ -595,15 +561,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		});
 		return executorPromise;
 	};
-	// Loading these on first use could happen days after startup, when pi-subagents may have
-	// changed on disk and the new files would import stale cached copies of modules loaded at
-	// startup. Load them shortly after a session starts instead, off Pi's startup path; child
-	// runtimes return before registration and never schedule this.
 	let modulePreloadTimer: ReturnType<typeof setTimeout> | undefined;
 	const scheduleModulePreload = () => {
 		if (executorModulePromise || modulePreloadTimer) return;
 		modulePreloadTimer = setTimeout(() => {
-			// Errors surface from the first call that needs the module.
 			loadExecutorModule().catch(() => {});
 			if (fleetViewEnabled) import("../tui/fleet.ts").catch(() => {});
 		}, MODULE_PRELOAD_DELAY_MS);
@@ -631,12 +592,8 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		);
 	});
 
-	// Pi sends custom messages to the model as plain user messages, so every model-visible
-	// pi-subagents message is wrapped in a marker naming its source. The marker depends only on
-	// the message, so history renders the same bytes every turn and cached prefixes stay valid.
-	// It runs on context_with_system, not context: Pi treats any change a context handler makes
-	// to the message list as a rewritten conversation and folds every mid-conversation system
-	// message into the leading one, which misses the prompt cache on every later turn.
+	// external: Pi sends custom messages to the model as plain user messages.
+	// external: Pi folds mid-conversation system messages into the leading system message after context handlers rewrite history.
 	const markedMessageTypes = new Set([...SUBAGENT_MESSAGE_TYPES, "subagent-compaction-resume", SLASH_RESULT_TYPE, SLASH_TEXT_RESULT_TYPE, ADMIN_MESSAGE_TYPE]);
 	pi.on("context_with_system", (event) => {
 		const messages: typeof event.messages = [];
@@ -645,8 +602,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 				messages.push(message);
 				continue;
 			}
-			// Keep view-only reports in the transcript/RPC stream, but out of model context.
-			// SLASH_RESULT_TYPE carries delegated work and must remain model-visible.
 			if (message.customType === SLASH_TEXT_RESULT_TYPE && (message.details as { viewOnly?: unknown } | undefined)?.viewOnly === true) continue;
 			const open = `<pi_subagents_notice type="${message.customType}" origin="automated message from the pi-subagents extension, not typed by the user">`;
 			const close = "</pi_subagents_notice>";
@@ -674,27 +629,20 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		await waitForAdvertisement();
 		return (await getExecutor()).executePublic(id, params, signal, onUpdate, ctx);
 	};
-	// Names this runtime's planned auto-resumes in the process-global registry.
 	const autoResumeOwner = {};
 	const postAutoResumeFailure = (sourceRunId: string, refusal: Parameters<typeof autoResumeFailureText>[1]) => {
 		pi.sendMessage({ customType: WORKFLOW_AUTO_RESUME_MESSAGE_TYPE, content: autoResumeFailureText(sourceRunId, refusal), display: true }, { triggerTurn: false });
 	};
-	// Each session start claims its interrupted workflows synchronously, then launches them here, off
-	// session start. Cleanup and the next session start cancel the launches that have not started.
 	const launchWorkflowAutoResume = async (entry: PendingWorkflowAutoResume, ctx: ExtensionContext): Promise<void> => {
 		const { prepared } = entry;
 		try {
-			// Let the rest of session start (agent advertisement, other handlers) run first.
 			await new Promise((resolve) => setImmediate(resolve));
 			await waitForAdvertisement();
 			const executor = await getExecutor();
 			if (entry.state !== "pending") return;
 			entry.state = "started";
 			const outcome = await executor.executeWorkflowResume(randomUUID(), prepared, new AbortController().signal, ctx);
-			// The executor has given back the claim and recorded any refusal; nothing below may replace them.
-			// A run launched by a runtime that was cleaned up meanwhile would keep running through its stale context.
 			if (outcome.launched && runtimeCleaned) state.workflowControllers?.get(prepared.newRunId)?.abort(runtimeReplacedAbortReason());
-			// A cleaned-up runtime's pi can no longer post; the refusal stays in the run for its notice.
 			if (outcome.launched || runtimeCleaned) return;
 			try {
 				postAutoResumeFailure(prepared.sourceRunId, outcome.refusal);
@@ -702,7 +650,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 				console.error(`Failed to post the auto-resume failure of workflow ${prepared.sourceRunId}:`, error);
 			}
 		} catch (error) {
-			// A cancelled launch already gave its claim back.
 			if (entry.state === "cancelled") return;
 			const message = error instanceof Error ? error.message : String(error);
 			console.error(`Failed to auto-resume workflow ${prepared.sourceRunId}:`, error);
@@ -802,16 +749,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	};
 
 	registerPinnedTool(pi, tool);
-	// Declared with the same definition children use, so a fork's tool list equals this session's.
 	registerPinnedTool(pi, topLevelSupervisorTool());
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		await waitForAdvertisement();
 		const sessionId = state.currentSessionId ?? resolveCurrentSessionId(ctx.sessionManager);
-		// Structured sections let Pi append a transcript delta instead of replacing the
-		// cached system prompt. Set the section on every turn it applies: Pi rebuilds the
-		// options each turn, and an unset turn records a removal.
-		// Active runs are listed even when only subagents_enable is selected, e.g. runs re-adopted after a resume.
+		// external: Pi rebuilds system prompt options on every turn.
 		const activeRuns = config.activeRunsPrompt === true ? buildActiveRunsSection(state.asyncJobs.values(), sessionId) : undefined;
 		if (activeRuns) event.systemPromptOptions.sections.active_subagents = activeRuns;
 		if (!event.systemPromptOptions.selectedTools.includes("subagent")) return;
@@ -823,19 +766,14 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 
 	pi.on("agent_end", async (_event, ctx) => {
 		try {
-			// The run is still active here, so its signal tells a user stop (Esc) apart from a finished or failed run.
-			// Pi skips agent_before_settle after an abort. Background runs keep going, but they must not restart the parent.
+			// external: Pi skips agent_before_settle after abort.
 			if (ctx.hasUI && ctx.signal?.aborted) {
 				parentWake.userAborted();
 				const active = activeAsyncJobCount();
 				if (active > 0) ctx.ui.notify(`${active} background subagent run${active === 1 ? " is" : "s are"} still active${slashCommandsEnabled ? " · /subagents-stop" : ""}`, "info");
 			}
-			// A headless host may dispose the session as soon as this turn settles, so hand
-			// finished results to Pi now; Pi runs the queued completion turn after agent_end.
-			// A failed drain rejects without this step so its deadline stays exact.
 			if (!ctx.hasUI) await drainOutstandingWork({ state, events: pi.events, hasPendingSupervisorRequest: supervisorChannel.hasPendingRequests }).then(resultWatcher.deliverPendingResults);
 		} finally {
-			// Deliver notices after a failed drain without suppressing its rejection.
 			const ownerSessionId = state.currentSessionId;
 			if (ownerSessionId) {
 				goalTurnId += 1;
@@ -892,8 +830,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	};
 	const asyncCompleteHandler = (payload: unknown) => {
 		handleComplete(payload);
-		// Detached-workflow reconciliation publishes the result, then ends the job
-		// with this event; the next status refresh sees it already terminal.
 		const job = state.asyncJobs.get((payload as { id?: string } | null)?.id ?? "");
 		if (job && job.status !== "queued" && job.status !== "running"
 			&& fs.existsSync(resultFilePath(DIRS.results, job.asyncId))) holdOwedResult(job);
@@ -903,7 +839,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		fleetStatus?.refresh();
 	};
 	const eventUnsubscribes = [
-		// OptChat asks with Pi's session id; currentSessionId is the session file path whenever one exists.
 		registerSelfReloadGuard(pi.events, () => state.supervisorOwnerSessionId ?? null, () => hasLiveSubagentWork(state) || (state.workflowControllers?.size ?? 0) > 0 || supervisorChannel.hasPendingRequests()),
 		registerRuntimeAgentEventListener(pi),
 		registerInspectorEventListener(pi),
@@ -942,7 +877,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 				cleanupOldArtifacts(getArtifactsDir(sessionFile), artifactCleanupDays);
 			}
 		} catch {
-			// Cleanup failures should not block session lifecycle events.
 		}
 	};
 
@@ -976,7 +910,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		state.baseCwd = ctx.cwd;
 		goalTurnId = 0;
 		state.currentSessionId = resolveCurrentSessionId(ctx.sessionManager);
-		// Pi passes previousSessionFile only for new/resume/fork, after tearing that session down in this process.
+		// external: Pi supplies previousSessionFile only for new, resume and fork after teardown.
 		if (previousSessionFile) recordSessionReplacement(state.currentSessionId, previousSessionFile);
 		state.supervisorOwnerSessionId = ctx.sessionManager.getSessionId() || null;
 		transitionResultDelivery();
@@ -997,8 +931,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		};
 		const projectPaneOwnerRoot = path.resolve(ctx.cwd);
 		restoreHerdrProjectPaneSnapshots(state, [...new Set([...(state.herdrProjectPanes?.keys() ?? []), ...listHerdrProjectPaneRoots(projectPaneOwnerRoot), projectPaneOwnerRoot])]);
-		// Root hosts may contain independent sessions, so a process-global parent
-		// identity is unsafe. Dedicated child runners retain their launch-owned value.
 		if (!process.env[SUBAGENT_CHILD_ENV]) {
 			delete process.env[SUBAGENT_PARENT_SESSION_ENV];
 		}
@@ -1018,7 +950,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		resetJobs(ctx);
 		logSlowPhase("reset-jobs", phaseStartedAt);
 		phaseStartedAt = Date.now();
-		// Runs other sessions in this folder left when their Pi died, from what this restore reads anyway.
 		const interruptedElsewhere = ctx.hasUI ? createInterruptedElsewhereCollector({ currentSessionId: state.currentSessionId, cwd: ctx.cwd, now: Date.now() }) : undefined;
 		restoreForegroundRunHistory(state, { resultsDir: DIRS.results, observeForeign: interruptedElsewhere?.observeForegroundRun });
 		logSlowPhase("foreground-history", phaseStartedAt);
@@ -1026,14 +957,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		restoreActiveJobs(ctx, interruptedElsewhere?.observeStatus);
 		logSlowPhase("active-job-restore", phaseStartedAt);
 		phaseStartedAt = Date.now();
-		// Read-only and UI-only: never sent to the model, so prompts and history are unchanged.
 		if (interruptedElsewhere) for (const line of interruptedElsewhere.lines()) ctx.ui.notify(line, "info");
 		logSlowPhase("cross-session-notice", phaseStartedAt);
-		// Before any stored result is delivered, so the interrupted run's notice can name its resume.
 		phaseStartedAt = Date.now();
-		// Launches an earlier session start of this runtime planned and has not started belong to that session.
 		cancelPendingWorkflowAutoResumes((entry) => entry.owner === autoResumeOwner);
-		// Not in a one-shot print run: its turn would then wait on the resumed workflow at settle.
 		if (recovering && ctx.hasUI && config.autoResume !== false) {
 			for (const entry of planWorkflowAutoResumes({ asyncDirRoot: DIRS.async, currentSessionId: state.currentSessionId, now: Date.now(), owner: autoResumeOwner })) {
 				void launchWorkflowAutoResume(entry, ctx);
@@ -1065,13 +992,10 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		cleanup(shutdownReason) {
 			if (runtimeCleaned) return;
 			runtimeCleaned = true;
-			// Synchronously, so a reload's new runtime finds these runs unclaimed when it scans.
 			cancelPendingWorkflowAutoResumes((entry) => entry.owner === autoResumeOwner);
 			programStatus.dispose(shutdownReason);
 			releaseHostSessionLiveness();
 			releaseHostSessionLiveness = () => {};
-			// Detached foreground children run in this runtime's memory, and the next runtime
-			// cannot see or control them, so stop each one and record it as stopped.
 			for (const control of state.foregroundControls.values()) {
 				try {
 					control.stopForRuntimeReplacement?.();
@@ -1079,8 +1003,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 					console.error(`Failed to stop detached foreground run ${control.runId}:`, error);
 				}
 			}
-			// Workflow continuations retain their launch context; abort them before
-			// teardown so a reload cannot launch through a stale context.
 			for (const controller of state.workflowControllers?.values() ?? []) {
 				if (!controller.signal.aborted) controller.abort(runtimeReplacedAbortReason());
 			}
@@ -1112,7 +1034,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 				try {
 					unsubscribe();
 				} catch {
-					// Best effort cleanup during shutdown or reload.
 				}
 			}
 			disposeSlashCommands.dispose();
@@ -1163,7 +1084,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			try {
 				previousRuntime.cleanup();
 			} catch {
-				// Best effort cleanup for stale resources from the replaced runtime.
 			}
 		}
 	};
@@ -1180,8 +1100,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("message_start", (event) => {
-		// Pi also compacts between turns of a running loop, with no agent_start after it. A message
-		// starts only once that compaction has finished and its status indicator is cleared.
+		// external: Pi can compact between turns without a subsequent agent_start.
 		resumeWidgetsAfterCompaction();
 		completionNotifier.messageStarted(event.message);
 	});
@@ -1195,9 +1114,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		if (event.reason !== "manual") suspendWidgetsForCompaction();
 	});
 
-	// Pi emits session_compact before it clears its compaction state. sendMessage's run path has no
-	// compaction guard (only prompt() refuses), so wait for the parent to go idle before the resume notice
-	// starts a run. A run that starts first cancels the pending resume.
+	// external: Pi emits session_compact before clearing its compaction state.
 	pi.on("session_compact", (event) => {
 		if (event.reason !== "manual" || isHousekeepingCompaction(event)) return;
 		if (activeAsyncJobCount() === 0 || !withLastUiContext(() => true)) return;
@@ -1212,7 +1129,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 				if (Date.now() < deadline) compactionResumeTimer = setTimeout(resumeWhenIdle, COMPACTION_RESUME_POLL_MS);
 				return;
 			}
-			// Pi's compact() aborts a live run first, which set the user-abort hold; this resume is deliberate.
+			// external: Pi compact() aborts a live run first.
 			parentWake.releaseHold();
 			parentWake.sendMessage(
 				{
@@ -1272,13 +1189,11 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		await herdrStatusBridge.flush();
 	});
 
-	// Child processes and Herdr panes never load this module; in-process children have no UI.
 	pi.on("session_start", (_event, ctx) => void showUpgradeNotice(ctx).catch((error) => console.error("Failed to show the pi-subagents upgrade notice:", error)));
 	pi.on("session_start", (_event, ctx) => beginAdvertisement(ctx));
 
 	registerSubagentToolActivation(pi, {
 		mode: config.toolActivation,
-		// The channel's session_start poll already declared the reply tool for these; the replay must not drop it.
 		hasPendingSupervisorRequest: () => [...supervisorChannel.pending.values()].some((request) => request.expectsReply),
 		advertisedPrompt: async () => {
 			await waitForAdvertisement();

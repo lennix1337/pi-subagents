@@ -63,7 +63,6 @@ function recordRemoval(entry: WorktreeCleanupPlanEntry): void {
 export async function applyReviewedCleanupPlan(input: {
 	repo: string; planId: string; authorized: boolean; signal?: AbortSignal;
 	foregroundRunOwnership?: BuildWorktreeCleanupPlanInput["foregroundRunOwnership"];
-	/** Internal retention seam: shrink the reviewed batch while holding the repository lock. */
 	select?: (plan: WorktreeCleanupPlan) => Set<string>;
 }): Promise<{ receipt: CleanupReceipt; receiptPath: string; reused: boolean }> {
 	if (!input.authorized) throw new Error("Worktree cleanup requires discardWorktree authorization.");
@@ -76,11 +75,8 @@ export async function applyReviewedCleanupPlan(input: {
 		catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 			assertContainedRealPath(plan.repoRoot, receiptPath);
-			// A claimed plan is never destructively replayed, even after interruption.
 			const receipt = JSON.parse(fs.readFileSync(receiptPath, "utf-8")) as CleanupReceipt;
 			if (receipt.version !== 1 || receipt.planId !== plan.planId || receipt.repoRoot !== plan.repoRoot || receipt.contentHash !== plan.contentHash || !Array.isArray(receipt.entries) || !["applying", "complete", "partial"].includes(receipt.state)) throw new Error("Claimed cleanup plan has an invalid receipt; inspect it before creating a fresh plan.");
-			// Reconcile only a journaled attempt whose directory and Git registration
-			// are both gone. A recreated path is never changed or removed on replay.
 			for (const entry of plan.entries.filter((entry) => receipt.state !== "complete" && entry.decision === "remove" && receipt.entries.some((item) => (item?.state === "removing" || item?.state === "removed") && item.path === entry.path && item.branch === entry.branch))) {
 				await new Promise<void>((resolve) => setImmediate(resolve));
 				input.signal?.throwIfAborted();
@@ -122,12 +118,12 @@ export async function applyReviewedCleanupPlan(input: {
 							input.signal?.throwIfAborted();
 							const journalEntry: CleanupReceipt["entries"][number] = { path: entry.path, branch: entry.branch, state: "removing", reason: "removal prepared; outcome not yet recorded" };
 							receipt.entries.push(journalEntry);
-							writePrivateAtomicJson(receiptPath, receipt); // Admit the attempt before Git can remove anything.
+							writePrivateAtomicJson(receiptPath, receipt);
 							const removed = spawnSync("git", ["-C", plan.repoRoot, "worktree", "remove", "--", entry.path], { encoding: "utf-8", windowsHide: true });
 							if (removed.status !== 0) throw new Error(removed.error?.message || removed.stderr.trim() || "git worktree remove failed");
 							journalEntry.state = "removed";
 							journalEntry.reason = "worktree removed; local branch retained";
-							writePrivateAtomicJson(receiptPath, receipt); // Evidence precedes secondary manifest bookkeeping.
+							writePrivateAtomicJson(receiptPath, receipt);
 							recordRemoval(entry);
 						});
 					} catch (error) {

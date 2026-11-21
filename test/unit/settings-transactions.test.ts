@@ -9,7 +9,6 @@ import { fileURLToPath } from "node:url";
 const fixture = fileURLToPath(new URL("../fixtures/settings-race-writer.mjs", import.meta.url));
 
 function writer(root: string, project: string, target: string, role: string, operation: string, agentDir: string) {
-	// Each process gets its own temp root: settings coordination must not depend on sharing one.
 	const tempRoot = fs.mkdtempSync(path.join(root, `temp-${role}-`));
 	const child = fork(fixture, [project, target, root, role, operation], {
 		execArgv: ["--experimental-strip-types"],
@@ -35,7 +34,6 @@ function writer(root: string, project: string, target: string, role: string, ope
 	return { child, done, message };
 }
 
-/** Pause the first writer mid-save, start the second, and release the first once the second reaches the lease or finishes. */
 async function race(options: { first: string; second: string; fileAlias?: boolean }): Promise<any> {
 	const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "settings-race-")));
 	const project = path.join(root, "project");

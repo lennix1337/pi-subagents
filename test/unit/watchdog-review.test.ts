@@ -346,7 +346,6 @@ describe("main watchdog review adapter", () => {
 			await createMainWatchdogReview(ctx, { streamFn: second.streamFn })(request(disabled, []));
 			assert.doesNotMatch(getCurrentSystemPrompt(second.calls[0]!.context.messages), /Standing instructions/);
 
-			// A session that declined project trust does not feed the project's WATCHDOG.md to the reviewer; the user's file still applies.
 			const declined = createStreamFn([fauxAssistantMessage("done", { stopReason: "stop" })]);
 			await createMainWatchdogReview({ ...ctx, isProjectTrusted: () => false }, { streamFn: declined.streamFn })(request(enabledConfig(), []));
 			const declinedPrompt = getCurrentSystemPrompt(declined.calls[0]!.context.messages);

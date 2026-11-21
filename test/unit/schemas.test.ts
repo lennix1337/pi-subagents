@@ -153,9 +153,7 @@ function getPropertySchema(schema: JsonSchemaNode | undefined, path: string[]): 
 }
 
 let schemas: Record<string, JsonSchemaNode> = {};
-// Full flat property schemas: RPC validation and model `options` validation both use these definitions.
 let SubagentParams: SubagentParamsSchema | undefined;
-// What the model-facing tool sends to the provider: execution fields plus one opaque options object.
 let ProviderParams: JsonSchemaNode | undefined;
 let createProviderSchema: ((disabled?: unknown) => JsonSchemaNode) | undefined;
 let SubagentWaitParams: JsonSchemaNode | undefined;
@@ -176,7 +174,6 @@ try {
 	CompileSchema = compileModule.Compile;
 } catch (error) {
 	if (missingPackageName(error) !== "typebox") throw error;
-	// The structural schema assertions below do not need the optional compiler package.
 }
 
 describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not available" : undefined }, () => {
@@ -525,7 +522,6 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 
 	it("does not emit provider-rejected schema shapes", () => {
 		const rejectedPaths: string[] = [];
-		// Strict tool-schema validators reject `deprecated` with HTTP 400 (#2713).
 		const rejectedKeywords = ["allOf", "const", "if", "then", "not", "deprecated"];
 
 		for (const [name, schema] of Object.entries(schemas)) {
@@ -545,7 +541,7 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 				if (Object.hasOwn(node, "anyOf") && Object.hasOwn(node, "type")) {
 					rejectedPaths.push(`${current.path}.type+anyOf`);
 				}
-				// llama.cpp grammar conversion rejects patterns not anchored with both ^ and $.
+				// external: llama.cpp grammar conversion rejects patterns not anchored with both ^ and $.
 				// oxlint-disable-next-line anti-slop/no-runtime-typeof -- Inspecting JSON Schema pattern representation is the portability contract under test.
 				if (typeof node.pattern === "string" && !(node.pattern.startsWith("^") && node.pattern.endsWith("$"))) {
 					rejectedPaths.push(`${current.path}.pattern`);
@@ -615,7 +611,6 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.ok(SubagentParams, "SubagentParams schema should exist");
 		assert.ok(CompileSchema, "TypeBox compiler should exist");
 		const validator = CompileSchema(SubagentParams);
-		// Transport accepts both booleans; semantic boundaries still reject unsupported true.
 		for (const field of ["acceptance", "mission", "thinking"]) {
 			assert.deepEqual(anyOfBranches(SubagentParams.properties[field]).find((branch) => branch.type === "boolean"), { type: "boolean" });
 			assert.equal(validator.Check({ [field]: false }), true);

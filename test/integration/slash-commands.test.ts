@@ -640,7 +640,6 @@ describe("slash command custom message delivery", { skip: !available ? "slash-co
 			writeRun(chainRunId, ["scout", "worker"]);
 			writeMetadata(chainRunId, "scout", 0, { input: 10, output: 2, cacheRead: 0, cacheWrite: 0, cost: 0.1, turns: 1 });
 			writeMetadata(chainRunId, "worker", 1, { input: 40, output: 8, cacheRead: 0, cacheWrite: 0, cost: 0.4, turns: 3 });
-			// A still-running child has no metadata yet and is not "unavailable".
 			writeRun(runningRunId, ["reviewer"], "running");
 
 			const sent: unknown[] = [];
@@ -655,7 +654,6 @@ describe("slash command custom message delivery", { skip: !available ? "slash-co
 				{ type: "message", message: { role: "toolResult", toolName: "subagent", details: { mode: "single", runId: singleRunId, asyncId: singleRunId, results: [] } } },
 				{ type: "message", message: { role: "toolResult", toolName: "subagent", details: { mode: "chain", runId: chainRunId, asyncId: chainRunId, results: [] } } },
 				{ type: "message", message: { role: "toolResult", toolName: "subagent", details: { mode: "single", runId: runningRunId, asyncId: runningRunId, results: [] } } },
-				// The chain's bg_wait completion must not be counted again from artifacts.
 				{ type: "message", message: { role: "toolResult", toolName: "bg_wait", details: { mode: "single", results: [], completions: [{ runId: chainRunId, mode: "chain", results: [
 					{ agent: "scout", usage: { input: 10, output: 2, cacheRead: 0, cacheWrite: 0, cost: 0.1, turns: 1 } },
 					{ agent: "worker", usage: { input: 40, output: 8, cacheRead: 0, cacheWrite: 0, cost: 0.4, turns: 3 } },
@@ -865,7 +863,6 @@ describe("slash command custom message delivery", { skip: !available ? "slash-co
 				const selector = (factory as (tui: unknown, theme: unknown, keybindings: unknown, done: (result: unknown) => void) => { handleInput(data: string): void; render(width: number): string[] })(
 					{ requestRender() {} }, { fg: (_name: string, text: string) => text, bold: (text: string) => text }, {}, resolve);
 				rows = selector.render(120);
-				// Enter twice: select the first row, then confirm.
 				selector.handleInput("\r");
 				confirm = selector.render(120);
 				selector.handleInput("\r");
@@ -1440,7 +1437,6 @@ Inspect
 		};
 
 		registerSlashCommands!(pi, createState(process.cwd()));
-		// The test process never loads Pi's app keybindings, like RPC mode.
 		await commands.get("run")!.handler("scout inspect this", createCommandContext({
 			hasUI: true,
 			setStatus: (_key, text) => {

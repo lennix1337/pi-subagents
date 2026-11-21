@@ -12,6 +12,5 @@ export function readInstalledPackageVersion(): string {
 	return parsed.version;
 }
 
-// Node keeps an imported module for the life of the process, so this stays the
-// version first loaded even after an in-place update and /reload.
+// external: Node caches imported modules for the lifetime of the process.
 export const loadedPackageVersion = readInstalledPackageVersion();

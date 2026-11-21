@@ -62,7 +62,6 @@ function releaseToolCallAliases(asyncDir: string): void {
 			fs.rmSync(aliasMarker, { force: true });
 			removeEmptyAncestors(path.dirname(aliasMarker), root);
 		} catch {
-			// Alias cleanup must not affect the authoritative active-run marker.
 		}
 	}
 }
@@ -87,8 +86,6 @@ export function updateActiveRunIndex(asyncDir: string, state: AsyncStatus["state
 				fs.mkdirSync(path.dirname(toolCallMarker), { recursive: true });
 				fs.writeFileSync(toolCallMarker, "", { flag: "a" });
 			} catch (error) {
-				// Tool-call aliases are optional. The authoritative active-run marker
-				// must keep the launch discoverable even when alias indexing fails.
 				console.error(`Failed to write async active-run tool-call index for '${asyncDir}':`, error);
 			}
 		}

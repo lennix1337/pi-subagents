@@ -37,7 +37,7 @@ import { OWNING_SESSION_COMPLETION_OWNER } from "../../shared/completion-owner.t
 import type { ResultDeliveryOwnership } from "./result-delivery-ownership.ts";
 import { isSettledAsyncRunState } from "../shared/async-run-state.ts";
 
-interface AsyncJobTrackerOptions {
+export interface AsyncJobTrackerOptions {
 	completionRetentionMs?: number;
 	/** Slow safety sweep for liveness repair when filesystem events are missed. */
 	pollIntervalMs?: number;
@@ -66,7 +66,6 @@ const MAX_RECENT_FLEET_JOBS = 20;
 const DEFAULT_LIVENESS_INTERVAL_MS = 5000;
 const EVENT_REFRESH_DEBOUNCE_MS = 25;
 const WATCH_ATTACHMENT_RETRY_MS = 100;
-/** A native supervisor request is already its own parent turn; its attention notice only escalates an unanswered one. */
 const SUPERVISOR_NOTICE_GRACE_MS = 60_000;
 
 type ControlRecord = { event: ControlEvent; channels: string[]; childIntercomTarget?: string; noticeText?: string; intercom?: { to?: string; message?: string } };
@@ -102,8 +101,6 @@ export function createAsyncJobTracker(pi: Pick<ExtensionAPI, "events">, state: S
 	let widgetRerenderTimer: ReturnType<typeof setTimeout> | undefined;
 	const runningJobIds = new Set<string>();
 	const externalJobBridgeRuns = new Set<string>();
-	// Early native failure is visible before its publisher finishes. Retain only
-	// that scoped observation, using the existing liveness sweep to renew delivery.
 	const terminalPublications = new Map<string, { instanceId: string; pending: true } | { pending: false }>();
 	const supervisorNoticeTimers = new Map<string, { asyncId: string; timer: ReturnType<typeof setTimeout> }>();
 	let rootWatcher: fs.FSWatcher | undefined;
@@ -363,7 +360,6 @@ export function createAsyncJobTracker(pi: Pick<ExtensionAPI, "events">, state: S
 				if ((parsed as { type?: unknown }).type !== "subagent.control") return;
 				const candidate = parsed as Partial<ControlRecord>;
 				if (!candidate.event || !Array.isArray(candidate.channels)) return;
-				// SAFETY: event is present and channels is an array; every other ControlRecord field is optional.
 				const record = candidate as ControlRecord;
 				const supervisorRequest = record.event.type === "needs_attention" && record.event.reason === "supervisor_request" && options.supervisorRequestState !== undefined;
 				if (supervisorRequest && readSupervisorRequestState(record.event, job.asyncDir) === "resolved") return;
@@ -374,9 +370,7 @@ export function createAsyncJobTracker(pi: Pick<ExtensionAPI, "events">, state: S
 					childIntercomTarget: record.childIntercomTarget,
 					noticeText: record.noticeText ?? formatControlNoticeMessage(record.event, record.childIntercomTarget),
 				};
-				// External intercom asks have no native lifecycle to re-check, so they keep the immediate notice.
 				if (supervisorRequest && record.event.currentTool !== "intercom") {
-					// Status and waits still react now; the parent notice and intercom copy wait for the grace period.
 					if (record.channels.includes("event")) pi.events.emit(SUBAGENT_CONTROL_EVENT, { ...payload, noticeDeferred: true });
 					scheduleSupervisorNotice(job.asyncId, record, payload);
 					return;
@@ -494,7 +488,6 @@ export function createAsyncJobTracker(pi: Pick<ExtensionAPI, "events">, state: S
 			if (!bridgeAlreadyRequired) {
 				const bridgeEligibility = externalJobBridgeEligibility(status?.steps);
 				if (bridgeEligibility === "required") externalJobBridgeRuns.add(job.asyncId);
-				// Missing or ambiguous status retains the legacy sweep for recovery races.
 				if (bridgeEligibility !== "not-required") {
 					bridgeSweepAttempted = true;
 					serviceExternalJobBridgeRequests(job.asyncDir);
@@ -569,7 +562,6 @@ export function createAsyncJobTracker(pi: Pick<ExtensionAPI, "events">, state: S
 					if (!publication && status.mode !== "workflow" && status.processTerminal?.state === "pending"
 						&& status.runId === job.asyncId && status.completionOwnerId
 						&& ((status.sessionId === state.currentSessionId && status.completionOwnerId === state.completionOwnerId)
-							// Also covers a session inherited after /new or /resume: deliveryOwnerId checks run ownership.
 							|| (typeof status.sessionId === "string"
 								&& options.deliveryOwnerId?.(status.sessionId, status.completionOwnerId, status.completionOwnerProcess, status.parentWorkflowRunId) === OWNING_SESSION_COMPLETION_OWNER))) {
 						publication = { instanceId: status.processTerminal.runnerProcessInstanceId, pending: true };
@@ -577,8 +569,6 @@ export function createAsyncJobTracker(pi: Pick<ExtensionAPI, "events">, state: S
 					}
 					const wasPending = publication?.pending;
 					if (publication?.pending) {
-						// Reconciliation resolves pending as well as public payloads. The
-						// watcher already discovers exact tracked run IDs without promotion.
 						const published = reconciliation.resultPath && fs.existsSync(reconciliation.resultPath);
 						const closed = !published && readProcessTerminal(job.asyncDir, {
 							runId: job.asyncId, runnerProcessInstanceId: publication.instanceId,
@@ -588,7 +578,6 @@ export function createAsyncJobTracker(pi: Pick<ExtensionAPI, "events">, state: S
 							terminalPublications.set(job.asyncId, publication);
 						} else cancelCleanup(job.asyncId);
 					}
-					// Scan on close too: publication may have raced the payload check.
 					if (!isTerminalJobStatus(previousStatus) || (wasPending && !publication?.pending)) options.onJobTerminal?.(job);
 					rememberFleetJob(state, job);
 					if (!publication?.pending && !nestedRefreshFailed && !hasLiveNestedDescendants(job.nestedChildren) && (previousStatus !== job.status || !state.cleanupTimers.has(job.asyncId))) {
@@ -709,7 +698,6 @@ export function createAsyncJobTracker(pi: Pick<ExtensionAPI, "events">, state: S
 			});
 			rootWatcher.unref?.();
 		} catch {
-			// The liveness sweep retries if the async root is not available yet.
 		}
 	};
 
@@ -815,8 +803,6 @@ export function createAsyncJobTracker(pi: Pick<ExtensionAPI, "events">, state: S
 				job.asyncDir = result.asyncDir;
 				watchJob(job);
 			}
-			// Delivery can precede the first terminal status refresh. Remember its
-			// settlement even when no pending publication has been observed yet.
 			terminalPublications.set(asyncId, { pending: false });
 			try {
 				updateAsyncJobNestedProjection(job);
@@ -869,7 +855,6 @@ export function createAsyncJobTracker(pi: Pick<ExtensionAPI, "events">, state: S
 		if (!state.currentSessionId) return;
 		let runs: AsyncRunSummary[];
 		try {
-			// A workflow whose Pi exited is repaired here, in the session that owns it, which then delivers its notice.
 			runs = listAsyncRuns(asyncDirRoot, { states: ["queued", "running"], sessionId: state.currentSessionId, resultsDir, kill: options.kill, now: options.now, adoptCompletionOwnerId: state.completionOwnerId }, observeStatus);
 		} catch (error) {
 			console.error(`Failed to restore active async jobs from '${asyncDirRoot}':`, error);

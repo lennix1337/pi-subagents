@@ -101,7 +101,6 @@ describe("active async capacity", () => {
 	it("counts corrupt slot metadata as occupied", () => {
 		const rootDir = tempRoot();
 		try {
-			// Create a valid occupied slot, then corrupt only its owner metadata.
 			const handle = acquireActiveAsyncCapacity({ sessionId: "session-corrupt", limit: 1, runId: "run-a", kind: "runner", asyncDir: path.join(rootDir, "run-a") }, { rootDir });
 			assert.ok(handle);
 			fs.writeFileSync(path.join(rootDir, handle.owner.ownerSessionKey, "slot-0", "owner.json"), "not json");
@@ -537,7 +536,6 @@ describe("active async capacity", () => {
 			{ name: "workflow ended recently", children: [abandoned], endedAt: 9_500, releases: false },
 			{ name: "child active recently", children: [{ ...abandoned, lastActivityAt: 9_500 }], releases: false },
 			{ name: "stopped and complete children", children: [{ ...abandoned, state: "stopped" }, { ...abandoned, state: "complete" }], releases: true },
-			// A stopped result repaired after its launcher was gone (#2863).
 			{ name: "observer-unavailable stopped child", children: [abandoned, { ...abandoned, state: "stopped", processTerminal: { version: 1, state: "unknown", runId: "child-1", runnerProcessInstanceId: "observer-unavailable", reason: "observer-unavailable" } }], releases: true },
 			{ name: "paused child", children: [{ ...abandoned, state: "paused" }], releases: false },
 			{ name: "stopped child runner alive", children: [{ ...abandoned, state: "stopped", pid: "alive" }], releases: false },

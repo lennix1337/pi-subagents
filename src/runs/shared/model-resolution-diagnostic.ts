@@ -6,12 +6,6 @@ export interface ChildModelResolutionDiagnostic {
 	capabilityCeiling?: { denyExtensions: boolean; sources?: readonly string[] };
 }
 
-/**
- * Pi core's model-resolution failure text. `resolveCliModel` reports an
- * unknown provider or model and cannot know which extension would have
- * registered it, so these two shapes are the ones that mean "the child's
- * model registry was missing a provider", not "the provider is unhealthy".
- */
 const MODEL_RESOLUTION_FAILURE_PATTERNS = [
 	/^Model .+ not found\b/i,
 	/^Unknown provider "/i,
@@ -23,13 +17,6 @@ export function isChildModelResolutionFailure(error: string | undefined): boolea
 	return MODEL_RESOLUTION_FAILURE_PATTERNS.some((pattern) => pattern.test(text));
 }
 
-/**
- * A `capabilityCeiling.denyExtensions` launch loads no extension at all:
- * ambient, listed, and MCP provider extensions are all suppressed, so neither
- * `async: true` nor a frontmatter list can register the provider. Saying only
- * the ambient-extension rule would direct the operator at remedies the ceiling
- * discards.
- */
 function capabilityCeilingDeniesExtensions(diagnostic: ChildModelResolutionDiagnostic): boolean {
 	return diagnostic.capabilityCeiling?.denyExtensions === true;
 }

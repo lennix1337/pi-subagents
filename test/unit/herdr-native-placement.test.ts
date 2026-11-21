@@ -194,7 +194,6 @@ describe("pane-native Herdr placement public contracts", { skip: process.platfor
 
 	it("preserves canonical contact_supervisor progress and structured-interview semantics", { skip: process.platform === "win32" }, async () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-herdr-supervisor-")); const old = { mode: process.env[HERDR_PI_MODE_ENV], run: process.env[HERDR_PI_RUN_ENV], dir: process.env[HERDR_PI_RUNTIME_DIR_ENV] }; process.env[HERDR_PI_MODE_ENV] = "1"; process.env[HERDR_PI_RUN_ENV] = "run_supervisor1"; process.env[HERDR_PI_RUNTIME_DIR_ENV] = dir; const handlers = new Map<string, Function>(); let tool: any; let command: any; let socket: net.Socket | undefined;
-		// The active tool set lives on the Pi API; the event context does not carry it.
 		let activeTools = ["read", "bash"]; const pi = { registerTool(value: unknown) { tool = value; }, registerCommand(_name: string, value: unknown) { command = value; }, on(name: string, handler: Function) { handlers.set(name, handler); }, getActiveTools: () => [...activeTools], setActiveTools(value: string[]) { activeTools = [...value]; } };
 		try { registerHerdrPiBridge(pi as never); const ctx = { sessionManager: { getSessionId: () => "native", getSessionFile: () => "/remote/session" }, model: { provider: "p", id: "m" }, isIdle: () => true, hasPendingMessages: () => false }; handlers.get("session_start")?.({}, ctx); socket = net.createConnection(path.join(dir, "bridge.sock")); const decoder = new HerdrPiFrameDecoder(); const frames: any[] = []; socket.on("data", (chunk) => frames.push(...decoder.push(chunk))); await new Promise<void>((resolve) => socket!.once("connect", resolve)); socket.write(encodeHerdrPiFrame({ protocol: 1, runId: "run_supervisor1", type: "configure", requestId: "cfg", resources: { agent: "worker", toolCeiling: ["read"] } })); await new Promise((resolve) => setTimeout(resolve, 30)); assert.deepEqual(frames.find((frame) => frame.type === "ready")?.tools, ["read", "bash"]); assert.deepEqual(frames.find((frame) => frame.type === "configured")?.tools, ["read"]);
 			const progressPromise = tool.execute("tc1", { reason: "progress_update", message: "halfway" }); await new Promise((resolve) => setTimeout(resolve, 10)); const progressRequest = frames.find((frame) => frame.type === "supervisor-request" && frame.reason === "progress_update"); assert.equal(progressRequest?.expectsReply, false); socket.write(encodeHerdrPiFrame({ protocol: 1, runId: "run_supervisor1", type: "supervisor-delivered", requestId: progressRequest.requestId })); const progress = await progressPromise; assert.equal(progress.details.delivered, true);
@@ -204,7 +203,7 @@ describe("pane-native Herdr placement public contracts", { skip: process.platfor
 
 	for (const reason of ["need_decision", "interview_request", "successful_reply"] as const) {
 		it(`preserves ${reason} through the shared Herdr/Rex supervisor file relay and bridge`, { timeout: 10_000 }, async () => {
-			// Short prefix: the bridge socket lives under this dir, and macOS caps Unix socket paths at 104 bytes.
+			// external: macOS caps Unix socket paths at 104 bytes.
 			const dir = fs.mkdtempSync(path.join(os.tmpdir(), "psr-"));
 			const bridgeDir = path.join(dir, "bridge"), supervisorDir = path.join(dir, "supervisor");
 			fs.mkdirSync(bridgeDir);
@@ -231,7 +230,6 @@ describe("pane-native Herdr placement public contracts", { skip: process.platfor
 				const requested = new Promise<{ requestId: string }>((resolve) => {
 					bridge!.listeners.add((frame) => { if (frame.type === "supervisor-request") resolve(frame as { requestId: string }); });
 				});
-				// Attach both handlers before sending a response, including the expected tool rejection.
 				const outcome = tool.execute("ask", { reason: reason === "interview_request" ? reason : "need_decision", message: "Choose an approach" })
 					.then((value: any) => ({ value }), (error: Error) => ({ error }));
 				const { requestId } = await requested;
@@ -265,7 +263,6 @@ describe("pane-native Herdr placement public contracts", { skip: process.platfor
 			registerHerdrPiBridge(pi as never); handlers.get("session_start")?.({}, { sessionManager: { getSessionId: () => "native", getSessionFile: () => "/remote/session" }, model: { provider: "p", id: "m" }, isIdle: () => true, hasPendingMessages: () => false });
 			socket = net.createConnection(path.join(dir, "bridge.sock")); const decoder = new HerdrPiFrameDecoder(); const frames: any[] = []; socket.on("data", (chunk) => frames.push(...decoder.push(chunk))); await new Promise<void>((resolve) => socket!.once("connect", resolve));
 			socket.write(encodeHerdrPiFrame({ protocol: 1, runId: "run_append01", type: "configure", requestId: "cfg", resources: { agent: "worker", toolCeiling: ["read"] } })); await new Promise((resolve) => setTimeout(resolve, 30)); assert.ok(frames.some((frame) => frame.type === "configured"));
-			// As Pi's runner builds it: systemPrompt renders from the mutable systemPromptOptions.
 			const systemPromptOptions = { appendSystemPrompt: "REMOTE_OPERATOR_APPEND" };
 			const event = { systemPromptOptions, get systemPrompt() { return `base${systemPromptOptions.appendSystemPrompt ? `\n<addendum>${systemPromptOptions.appendSystemPrompt}</addendum>` : ""}`; } };
 			const result = handlers.get("before_agent_start")?.(event, {});

@@ -22,7 +22,6 @@ test("executeAsyncSingle preloads all peer aliases before the selected runner lo
 		"@earendil-works/pi-ai": ["./compat", "./oauth", "./providers/all"],
 		"typebox": [".", "./compile", "./value"],
 	};
-	// Use real package manifests/targets, as in host-peer-runtime-imports.test.ts.
 	function writeHostPackage(pkg: string) {
 		const dir = pkg === "@earendil-works/pi-coding-agent" ? host : path.join(host, "node_modules", pkg);
 		fs.mkdirSync(dir, { recursive: true });
@@ -38,14 +37,10 @@ test("executeAsyncSingle preloads all peer aliases before the selected runner lo
 	const originalArgv1 = process.argv[1];
 	try {
 		for (const pkg of Object.keys(hostExports)) writeHostPackage(pkg);
-		// Production discovers the host from the Pi entrypoint at module load.
 		process.argv[1] = expectedAliases["@earendil-works/pi-coding-agent"];
-		// helpers -> mock-pi -> child-session -> readonly evidence -> child hooks
-		// also loads async-execution. Set the host before importing that graph.
 		const { makeAgent } = await import("../support/helpers.ts");
 		const { executeAsyncSingle } = await import("../../src/runs/background/async-execution.ts");
 		const spawn = t.mock.method(childProcess, "spawn", () => {
-			// Stop at the only external I/O seam: no fake pid or detached lifecycle.
 			throw new Error("spawn boundary captured");
 		});
 		nodeModule.syncBuiltinESMExports();

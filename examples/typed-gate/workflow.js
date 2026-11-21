@@ -1,9 +1,3 @@
-// Run from this directory:
-//   subagent({ workflow: "./workflow.js", options: { agentScope: "both" } })
-//
-// Shape 1: a typed gate grades the reviewer's report the moment the child finishes.
-// Shape 2: the classifier agent is a typed step the workflow fans out and branches on.
-
 const review = await runs.run("review", {
   agent: "reviewer",
   task: "Review src/ for correctness. Read-only. Write the full review to the output path.",

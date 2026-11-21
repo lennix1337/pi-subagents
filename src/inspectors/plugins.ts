@@ -6,8 +6,6 @@ import { createTmuxInspectorPlugin } from "./tmux/plugin.ts";
 import type { InspectorPlugin } from "./types.ts";
 
 type InspectorOwner = Pick<ExtensionAPI, "events">;
-// Keyed by event bus: a runtime that claims a registration can be replaced by a duplicate
-// pi-subagents runtime on the same bus, and the registration must survive that takeover.
 const registries = new WeakMap<InspectorOwner["events"], { plugins: Map<string, InspectorPlugin>; owners: number }>();
 
 /** Built-ins retain host preference; external providers follow registration order. */
@@ -28,7 +26,6 @@ export function registerInspectorEventListener(pi: InspectorOwner): () => void {
 	/* oxlint-disable anti-slop/no-runtime-typeof -- This listener validates the untyped event-bus boundary, including callable provider methods. */
 	const unsubscribe = pi.events.on(INSPECTOR_REGISTER_EVENT, (rawRequest) => {
 		if (!rawRequest || typeof rawRequest !== "object" || Array.isArray(rawRequest)) return;
-		// SAFETY: The envelope is an object; its version and plugin are validated below before storing callbacks.
 		const request = rawRequest as Partial<InspectorRegistrationRequest>;
 		if (request.result !== undefined) return;
 		try {

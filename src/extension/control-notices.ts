@@ -44,9 +44,7 @@ export function handleSubagentControlNotice(input: {
 	if (!input.details?.event || input.details.event.type === "active_long_running") return;
 	if (input.details.noticeDeferred) return;
 	if (input.details.source === "foreground") {
-		// A foreground tool blocks Pi from displaying this message. The run can
-		// finish before Pi flushes it, and queued messages cannot be withdrawn.
-		// Foreground control remains available through the live tool and fleet state.
+		// external: Pi cannot display a queued message while a foreground tool blocks.
 		return;
 	}
 	deliverControlNotice(input);

@@ -47,7 +47,6 @@ describe("progress signals", () => {
 	});
 
 	it("does not flag calls that share a display preview but differ in full arguments", () => {
-		// GX18 #830: six genexus_lifecycle validate calls on different targets all preview as "action=validate".
 		const calls = Array.from({ length: 6 }, (_, index) => {
 			const args = { action: "validate", target: `Obj${index}` };
 			return { tool: "genexus_lifecycle", args: extractToolArgsPreview(args), argsKey: toolArgsKey(args) };

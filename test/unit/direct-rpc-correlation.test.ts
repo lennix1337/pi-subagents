@@ -47,8 +47,6 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 	}
 }
 
-// A new OS process has no live jobs, status cache, or launch response. It only
-// receives the original tool-call alias and reads the existing persisted indexes.
 function freshLookup(id: string, sessionId = "session-123", view?: "transcript") {
 	const script = `
 		import { resolveSubagentRunId } from ${JSON.stringify(new URL("../../src/runs/background/run-id-resolver.ts", import.meta.url).href)};
@@ -96,10 +94,9 @@ describe("direct RPC correlation", () => {
 			eventToolCallId = event.toolCallId;
 			initialToolCallId = status(event.id).toolCallId;
 		});
-		// Do not subscribe to the response channel: the caller loses its receipt.
 		runtime.events.emit(SUBAGENT_RPC_REQUEST_EVENT, { version: 1, requestId, method: "spawn", params: { agent: "worker", task: "Do the bounded work", context: "fresh", acceptance: false } });
 		await waitFor(() => runId !== undefined);
-		const id = runId!; // independent lifecycle observation, not recovery input
+		const id = runId!;
 		try {
 			await waitFor(() => mockPi.callCount() === 1 && status(id).steps?.[0]?.status === "running");
 			assert.equal(status(id).state, "running");
@@ -133,7 +130,6 @@ describe("direct RPC correlation", () => {
 		const result = JSON.parse(fs.readFileSync(path.join(DIRS.results, `${id}.json`), "utf8"));
 		assert.equal(result.toolCallId, toolCallId);
 		assert.equal(result.results[0].output, "worker completed once");
-		// Prove terminal result indexing independently of retained status/active indexes.
 		fs.rmSync(path.join(DIRS.async, id), { recursive: true });
 		assertIdentity(id, toolCallId);
 		assert.equal(fs.statSync(sideEffect).mtimeMs, sideEffectTime, "recovery does not repeat the worker write");

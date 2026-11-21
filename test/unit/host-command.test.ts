@@ -130,7 +130,6 @@ describe("workflow host commands", () => {
 	it("keeps the timed-out outcome when the workflow aborts while the timed-out command is still being terminated", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-host-command-timeout-then-abort-"));
 		roots.push(root);
-		// Ignoring SIGTERM keeps the process alive through the termination grace window on POSIX.
 		const command = commandFor(root, `process.on("SIGTERM", () => {}); setTimeout(() => {}, 10000);`);
 		const controller = new AbortController();
 		const timeoutMs = 150;

@@ -100,7 +100,6 @@ function isPlausibleDateStamp(year: string, month: string, day: string): boolean
 	return yyyy >= 1900 && yyyy <= 2099 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31;
 }
 
-/** Drop a trailing date stamp (`-20251001` or `-2025-10-01`) so dated and undated ids match. */
 function stripTrailingDateStamp(segment: string): string {
 	const dashed = /^(.*)-(\d{4})-(\d{2})-(\d{2})$/.exec(segment);
 	if (dashed && isPlausibleDateStamp(dashed[2]!, dashed[3]!, dashed[4]!)) return dashed[1]!;
@@ -114,11 +113,6 @@ function isRegisteredProvider(provider: string, availableModels: AvailableModelI
 	return availableModels.some((entry) => normalizeModelSegment(entry.provider) === normalized);
 }
 
-/**
- * Split `provider/id` only when the first path segment is a registered provider.
- * Hugging Face-style `owner/name` ids therefore stay intact unless `owner` is
- * itself a provider in the active registry. `:` and `.` keep the same rule.
- */
 function splitQualifiedModelQuery(
 	baseModel: string,
 	availableModels: AvailableModelInfo[],
@@ -172,7 +166,7 @@ function resolveBaseModelCandidate(
 
 	const fuzzy = fuzzyResolveModel(baseModel, availableModels, preferredProvider);
 	if (fuzzy || queryProvider === undefined) return fuzzy;
-	// Some catalogs (OpenRouter's `openrouter/auto-beta`) repeat the provider inside the id.
+	// external: Some OpenRouter model IDs repeat the provider name.
 	const queryId = normalizeModelSegment(baseModel);
 	const prefixedIdMatches = availableModels.filter((entry) => normalizeModelSegment(entry.id) === queryId && normalizeModelSegment(entry.provider) === queryProvider);
 	return prefixedIdMatches.length === 1 ? prefixedIdMatches[0]!.fullId : undefined;
@@ -269,7 +263,6 @@ function suggestAlternateProviderModel(
 
 const MAX_MODEL_CANDIDATES = 5;
 
-/** Exact registry ids for an unresolved request: the same id under any provider first, then near spellings. */
 function closestModelCandidates(model: string, availableModels: AvailableModelInfo[] | undefined): string[] {
 	if (!availableModels || availableModels.length === 0) return [];
 	const { baseModel, thinkingSuffix } = splitThinkingSuffix(model);
@@ -498,10 +491,6 @@ function selectConfiguredModel(
 	return { ...(resolved ? { model: resolved } : {}), ...(requestedModel ? { requestedModel } : {}) };
 }
 
-/**
- * A configured or inherited model follows the parent's account failover; an explicit pick never
- * moves. The replacement must be a model this session knows and inside every enforced scope.
- */
 function acceptableRoute(model: string, availableModels: AvailableModelInfo[] | undefined, scopes: ModelScopeCheckRule[]): LaunchModelRoute | undefined {
 	const route = routeLaunchModel(model);
 	if (!route) return undefined;
@@ -510,7 +499,6 @@ function acceptableRoute(model: string, availableModels: AvailableModelInfo[] | 
 	if (scopes.some((scope) => scope.enforce === true && checkModelScope(route.model, scope, "inherited") !== undefined)) return undefined;
 	return route;
 }
-/** Context-overflow signals used to surface a clear input-too-large error. */
 const CONTEXT_OVERFLOW_PATTERNS = [
 	/context(?: length| window| limit)? (?:exceed|overflow|too long)/i,
 	/maximum context length/i,

@@ -1,18 +1,3 @@
-/**
- * Cross-OS control channel for async subagent runs.
- *
- * Background runs use a detached runner process. Unix detaches it from the parent process.
- * The original control path delivered an interrupt with
- * `process.kill(pid, SIGUSR2|SIGBREAK)`, but Windows cannot
- * deliver those signals cross-process via `process.kill` and throws `ENOSYS`,
- * which left async runs uninterruptible (no stop, no live steer) on Windows.
- *
- * This module adds a portable, file-based control inbox inside the run directory.
- * The parent drops an interrupt request file; the runner watches the inbox and
- * routes the request into its existing graceful `interruptRunner()` (pause +
- * resumable), identically on every platform. The file inbox is authoritative and
- * avoids signaling a PID that the extension cannot prove belongs to the runner.
- */
 
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
@@ -335,7 +320,6 @@ export function consumeSteerRequestsFromDir(dir: string, fsImpl: Pick<typeof fs,
 	try {
 		entries = fsImpl.readdirSync(dir).filter((name) => name.endsWith(".json")).sort();
 	} catch (error) {
-		// Leave requests in place so the periodic poll can retry the scan.
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") onError(error);
 		return [];
 	}
@@ -358,7 +342,6 @@ export function consumeSteerRequestsFromDir(dir: string, fsImpl: Pick<typeof fs,
 		try {
 			fsImpl.rmSync(requestPath, { recursive: true });
 		} catch (error) {
-			// Already removed by a concurrent check — do not execute it twice.
 			if ((error as NodeJS.ErrnoException).code !== "ENOENT") onError(error);
 			continue;
 		}
@@ -405,7 +388,6 @@ export function consumeInterruptRequest(
 	try {
 		fsImpl.rmSync(requestPath, { force: true, recursive: true });
 	} catch {
-		// Already removed by a concurrent check — still counts as consumed.
 	}
 	return true;
 }
@@ -419,7 +401,6 @@ export function consumeTimeoutRequest(
 	try {
 		fsImpl.rmSync(requestPath, { force: true, recursive: true });
 	} catch {
-		// Already removed by a concurrent check — still counts as consumed.
 	}
 	return true;
 }
@@ -468,7 +449,6 @@ function consumeStopRequestFile(
 	try {
 		fsImpl.rmSync(requestPath, { force: true, recursive: true });
 	} catch (error) {
-		// Execute only after successful removal.
 		if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) onError?.(error);
 		return undefined;
 	}
@@ -579,7 +559,6 @@ export function watchAsyncControlInbox(
 			console.error("Control inbox error reporter failed:", reportError);
 		}
 	};
-	// A scan failing the same way (a Windows EPERM wrote gigabytes of identical traces) is reported once, then one count per interval, until a clean scan.
 	const repeatedScanErrors = new Map<string, { suppressed: number; since: number }>();
 	let scanFailed = false;
 	const reportScan = (error: unknown): void => {
@@ -637,7 +616,6 @@ export function watchAsyncControlInbox(
 		if (!scanFailed) repeatedScanErrors.clear();
 	};
 
-	// Handle a request that may have arrived before the watcher started.
 	check();
 
 	const watchers: fs.FSWatcher[] = [];
@@ -673,7 +651,6 @@ export function watchAsyncControlInbox(
 			try {
 				watcher.close();
 			} catch {
-				// ignore
 			}
 		}
 		if (interval) timers.clearInterval(interval);

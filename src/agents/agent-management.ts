@@ -193,8 +193,6 @@ function diagnosticsForScope(diagnostics: AgentDiscoveryDiagnostic[] | undefined
 
 const AGENT_SOURCE_PRECEDENCE: Record<AgentSource, number> = { builtin: 0, package: 1, user: 2, project: 3, runtime: 4 };
 
-// Returns the highest-precedence definition for a resolved canonical name (project > user > package > builtin),
-// matching mergeAgentsForScope for "both", including disabled agents so disable/enable can locate hidden targets.
 function resolveEffectiveAgent(d: ReturnType<typeof discoverAgentsAll>, name: string): { agent?: AgentConfig; error?: string } {
 	const raw = name.trim();
 	const candidates = allAgents(d);
@@ -690,7 +688,6 @@ function externalJobProviderSuffix(provider: string, names: Set<string> | undefi
 
 type ExternalCliAvailabilityByCommand = ReadonlyMap<string, ExternalCliBinaryAvailability>;
 
-/** A placed agent checks only local ssh; machine catalog and remote CLI validation happen at launch. */
 function externalCliAvailabilityKey(command: string, machine: string | undefined): string {
 	return machine ? `ssh@${machine}` : command;
 }
@@ -1202,7 +1199,6 @@ export function handleUpdate(params: ManagementParams, ctx: ManagementContext): 
 	const cfg = parsedConfig.value;
 	if (hasKey(cfg, "steps")) return result("Durable chain definitions were removed; use a workflow script or /prompt-workflow for repeatable workflows.", true);
 	const warnings: string[] = [];
-	// agentScope only picks between same-named agents here, so a misspelled value must not silently widen the target.
 	const parsedScope = params.agentScope === undefined ? {} : actionScope(params.agentScope, "update");
 	if (parsedScope.error) return parsedScope.error;
 	const scopeHint = parsedScope.scope;

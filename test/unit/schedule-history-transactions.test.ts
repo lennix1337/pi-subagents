@@ -181,8 +181,6 @@ it("does not release a replacement owner's claim when an unlaunched claim is cle
 	try {
 		await manager.handleToolCall({ action: "schedule.create", id: "check", every: "1h", workflowScript: "return 1" }, ctx);
 		nodeFs.mkdirSync = ((file: nodeFs.PathLike, ...args: unknown[]) => {
-			// After run-1's claim is saved and before its receipt exists, another session
-			// restores the claim as abandoned and launches run-2.
 			if (!replacementRun && String(file) === path.join(dir, "runs") && read("schedule.json").activeRunId === "run-1") {
 				replacement.bindSession(ctx);
 				replacementRun = replacement.handleToolCall({ action: "schedule.run", id: "check" }, ctx);

@@ -1,42 +1,3 @@
-/**
- * `bg_wait` tool: block the current turn until outstanding async runs
- * or a named remembered detached foreground run finishes.
- *
- * Background subagent runs are detached. In an interactive session the parent
- * can end its turn and Pi will wake it with a completion notification. That
- * does not work when the parent is a skill that must run to completion, and it
- * cannot work at all non-interactively (`pi -p ...`), where the run is a single
- * turn: once the turn ends there is nothing left to receive the notification.
- *
- * `bg_wait` closes that gap. It keeps the turn alive until a tracked async
- * run for this session reaches a terminal state (complete / failed / paused),
- * the caller-supplied timeout elapses, or the turn is aborted. Because it awaits
- * inside the turn, the completion the model was told to wait for is actually
- * observed before the tool returns.
- *
- * By default `bg_wait` returns as soon as ONE run finishes, so a fleet
- * manager can use it in a rolling-replacement loop: launch N workers, wait for
- * the next one to finish, spawn its replacement, then call `bg_wait`
- * again — keeping N in flight instead of draining to zero between batches.
- * Pass `all: true` to block until every tracked async run is terminal, or `id`
- * to block on one specific async or remembered detached foreground run.
- *
- * `bg_wait` also returns when a run needs attention — not just on
- * completion. A child that goes idle or blocks for a decision surfaces
- * `needs_attention` (the same signal Pi shows as a control notice and,
- * interactively, wakes the parent with). Since `bg_wait` is used exactly
- * where there is no next turn to receive that notice, it must break on it too,
- * or a stuck child would stall the loop until the timeout. Attention runs are
- * reported so the caller can inspect / nudge / resume / interrupt them.
- *
- * Wake mechanism: when given Pi's event bus (`deps.events`), `bg_wait`
- * subscribes to the subagent completion/control channels and wakes the instant
- * any fires, rather than waiting out a fixed poll interval. A poll still runs
- * on the interval as a reconciliation fallback (crashed runners, missed
- * events), and the poll is the source of truth for what actually changed — the
- * event only ends the sleep early. With no bus, `bg_wait` degrades to pure
- * polling.
- */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -70,10 +31,9 @@ import { formatResumeFirstFailedRunsNote } from "./resume-guidance.ts";
 import { formatTimeoutRecoveryLines } from "../shared/mutation-evidence.ts";
 export { WAIT_TOOL_DEFAULT_TIMEOUT_MS_ENV, WAIT_TOOL_ENABLED_ENV, resolveWaitToolConfig, type ResolvedWaitToolConfig } from "./wait-config.ts";
 
-/** States that mean a run is still in flight (not yet resolved). */
 const ACTIVE_STATES: ReadonlyArray<AsyncRunSummary["state"]> = ["queued", "running"];
 
-const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const MIN_POLL_INTERVAL_MS = 250;
 const DEFAULT_POLL_INTERVAL_MS = 1000;
 
@@ -142,7 +102,6 @@ export interface SubagentWaitDeps {
 	events?: WaitEventBus;
 }
 
-/** Bus channels that indicate a run changed state or needs attention. */
 const WAKE_CHANNELS = [
 	INTERCOM_DETACH_REQUEST_EVENT,
 	SUBAGENT_ASYNC_COMPLETE_EVENT,
@@ -170,11 +129,6 @@ function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
 	});
 }
 
-/**
- * Sleep up to `ms`, but wake early if a subagent event fires on the bus (or the
- * turn aborts). Returns when the first of those happens. With no bus this is a
- * plain sleep, so the poll interval alone drives progress.
- */
 function waitForWake(ms: number, signal: AbortSignal | undefined, deps: SubagentWaitDeps): Promise<void> {
 	const sleep = deps.sleep ?? defaultSleep;
 	const events = deps.events;
@@ -190,7 +144,7 @@ function waitForWake(ms: number, signal: AbortSignal | undefined, deps: Subagent
 			wakeController.abort();
 			signal?.removeEventListener("abort", done);
 			for (const u of unsubs) {
-				try { u(); } catch { /* best effort */ }
+				try { u(); } catch {  }
 			}
 			resolve();
 		};
@@ -206,18 +160,15 @@ function waitForWake(ms: number, signal: AbortSignal | undefined, deps: Subagent
 		} catch (error) {
 			signal?.removeEventListener("abort", done);
 			for (const unsubscribe of unsubs) {
-				try { unsubscribe(); } catch { /* best effort cleanup */ }
+				try { unsubscribe(); } catch {  }
 			}
 			reject(error);
 			return;
 		}
-		// Poll-interval fallback so we still reconcile even if no event arrives.
-		// The local signal cancels that fallback timer when an event wakes us first.
 		void sleep(ms, wakeController.signal).then(done);
 	});
 }
 
-/** Signal that wakes the poll sleep on turn abort or a user message. */
 function wakeSignal(signal: AbortSignal | undefined, deps: SubagentWaitDeps): AbortSignal | undefined {
 	if (!deps.userInputSignal) return signal;
 	return signal ? AbortSignal.any([signal, deps.userInputSignal]) : deps.userInputSignal;
@@ -257,7 +208,6 @@ function formatForegroundAttention(run: ForegroundResumeRun, children: ReturnTyp
 	);
 }
 
-/** A running run that has flagged it needs the parent's attention. */
 function needsAttention(run: AsyncRunSummary): boolean {
 	return run.activityState === "needs_attention" || run.steps.some((step) => step.activityState === "needs_attention");
 }
@@ -275,7 +225,6 @@ function backgroundWorkIdentity(item: RegisteredBackgroundWorkItem): string {
 function backgroundWorkForSession(deps: SubagentWaitDeps, nowMs: number): BackgroundWorkSnapshot {
 	const sessionId = deps.state.currentSessionId;
 	if (!sessionId) throw new Error("bg_wait requires an active session identity to scope background work safely.");
-	// Providers may key items by the session file path or by getSessionId(); accept both.
 	const piSessionId = deps.state.supervisorOwnerSessionId;
 	const sessionIds = piSessionId ? [sessionId, piSessionId] : [sessionId];
 	return deps.backgroundWork?.snapshot(sessionIds, nowMs) ?? snapshotBackgroundWork(sessionIds, nowMs);
@@ -296,7 +245,6 @@ function collectScopedCompletions(terminal: AsyncRunSummary[], deps: SubagentWai
 	return completions.length ? completions : undefined;
 }
 
-/** Immediate-session runs only; named lookups can also recover already-terminal results. */
 function runsForSession(params: SubagentWaitParams, deps: SubagentWaitDeps, activeOnly = true): AsyncRunSummary[] {
 	const runs = waitRunScopes(deps).flatMap(({ asyncDirRoot, resultsDir }) => listAsyncRuns(asyncDirRoot, {
 		states: activeOnly ? [...ACTIVE_STATES] : undefined,
@@ -314,12 +262,10 @@ function activeRunsForSession(params: SubagentWaitParams, deps: SubagentWaitDeps
 	return runsForSession(params, deps);
 }
 
-/** Runs (from the initial set) currently flagged needs_attention, for reporting. */
 function attentionRunsForSession(params: SubagentWaitParams, deps: SubagentWaitDeps, initialIds: Set<string>): AsyncRunSummary[] {
 	return activeRunsForSession(params, deps).filter((run) => needsAttention(run) && initialIds.has(run.id));
 }
 
-/** Exact initial runs in any state, for the final summary. */
 function runsForIds(runIds: Iterable<string>, deps: SubagentWaitDeps): AsyncRunSummary[] {
 	return waitRunScopes(deps).flatMap(({ asyncDirRoot, resultsDir }) => [...runIds].flatMap((runId) => listAsyncRuns(asyncDirRoot, {
 		sessionId: deps.state.currentSessionId ?? undefined,
@@ -366,7 +312,6 @@ function completionUsage(completions: WaitCompletion[] | undefined): Usage | und
 	return projected ? usage : undefined;
 }
 
-// A full UUID or its leading groups, down to the 8-char form shell notices show.
 const UUID_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){0,3}(?:-[0-9a-f]{12})?$/i;
 const SHELL_ID_HINT = " If this id came from shell_start, it is a background shell, not a subagent run: its end arrives as a [shell ID] message; read more output with shell_status.";
 
@@ -464,7 +409,6 @@ function yieldForScope(reason: WaitYieldReason, scope: InitialWaitScope, params:
 	}
 }
 
-/** Build the live status shown while async work keeps bg_wait blocked. */
 function asyncWaitUpdate(runs: AsyncRunSummary[], providerCount: number, elapsedMs: number): AgentToolResult<Details> {
 	const activity = runs.flatMap((run) => {
 		const activeSteps = run.steps.filter((step) => step.status === "pending" || step.status === "running");
@@ -513,7 +457,7 @@ function readTranscriptActivity(transcriptPath: string | undefined): TranscriptA
 		fd = fs.openSync(transcriptPath, "r");
 		const bytesRead = fs.readSync(fd, buffer, 0, length, start);
 		let lines = buffer.subarray(0, bytesRead).toString("utf-8").split(/\r?\n/);
-		if (start > 0) lines = lines.slice(1); // The first tail line may be partial JSON.
+		if (start > 0) lines = lines.slice(1);
 
 		let currentTool: string | undefined;
 		let currentToolArgs: string | undefined;
@@ -525,7 +469,7 @@ function readTranscriptActivity(transcriptPath: string | undefined): TranscriptA
 			try {
 				record = JSON.parse(line) as Record<string, unknown>;
 			} catch {
-				continue; // Concurrent append can leave the final line temporarily incomplete.
+				continue;
 			}
 			if (typeof record.ts === "number" && Number.isFinite(record.ts)) latestAt = record.ts;
 			if (record.recordType === "tool_start" && typeof record.toolName === "string") {
@@ -556,7 +500,7 @@ function readTranscriptActivity(transcriptPath: string | undefined): TranscriptA
 		return undefined;
 	} finally {
 		if (fd !== undefined) {
-			try { fs.closeSync(fd); } catch { /* best-effort close */ }
+			try { fs.closeSync(fd); } catch {  }
 		}
 	}
 }

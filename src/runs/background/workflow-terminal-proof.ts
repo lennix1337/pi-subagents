@@ -65,10 +65,6 @@ export function readWorkflowChildProcessEvidence(workflowAsyncDir: string, steps
 	return { state: "observed", children };
 }
 
-/**
- * The host records an async child's run id before launching it, so a launch that fails before any runner
- * exists leaves a failed roster step whose run directory has no status and no runner artifacts.
- */
 function launchFailedBeforeRunner(step: NonNullable<AsyncStatus["steps"]>[number], childDir?: string): boolean {
 	if (step.status !== "failed" || !step.error) return false;
 	return !childDir || !["process-terminal.json", "runner-startup.json"].some((file) => fs.existsSync(path.join(childDir, file)));
@@ -87,7 +83,6 @@ export function readWorkflowChildEvidence(workflowAsyncDir: string, step: NonNul
 	if (!isTerminalAsyncState(childStatus.state)) return { state: "pending", reason: `async workflow child ${label} is still ${childStatus.state}` };
 	const recorded = childStatus.processTerminal;
 	if (!recorded?.runnerProcessInstanceId) return { state: "unknown", reason: `async workflow child ${label} has no runner process identity` };
-	// A runner startup failure records `not-started` in status and never writes a process-terminal sidecar.
 	if (recorded.state === "not-started" && recorded.runId === step.runId && typeof childStatus.error === "string" && childStatus.error) {
 		return { state: "resolved", proof: recorded };
 	}
