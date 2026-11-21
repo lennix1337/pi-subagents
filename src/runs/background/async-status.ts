@@ -30,7 +30,7 @@ import type { RawDrainStatusObserver } from "../shared/readonly-drain-observatio
 import { childWatchdogProgressForModel } from "../../watchdog/child-status.ts";
 import { ownerSessionIds } from "../shared/run-ownership.ts";
 
-interface AsyncRunStepSummary {
+export interface AsyncRunStepSummary {
 	index: number;
 	childId?: string;
 	agent: string;
@@ -152,7 +152,7 @@ export interface AsyncRunSummary {
 	preflight?: WorkflowPreflight;
 }
 
-interface AsyncRunListOptions {
+export interface AsyncRunListOptions {
 	states?: Array<AsyncRunSummary["state"]>;
 	sessionId?: string;
 	limit?: number;

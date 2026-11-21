@@ -1001,7 +1001,7 @@ export interface ToolCallSummary {
 	expandedText: string;
 }
 
-interface ProgressSummary {
+export interface ProgressSummary {
 	index?: number;
 	agent?: string;
 	/** Human-readable display name for the child's session, when derived at launch. */

@@ -161,7 +161,7 @@ function supportsNativeRunner(nodeExecutable: string): boolean {
 	&& !sourceUnderNodeModules();
 }
 
-interface AsyncExecutionContext {
+export interface AsyncExecutionContext {
 	pi: ExtensionAPI;
 	cwd: string;
 	currentSessionId: string;
@@ -189,7 +189,7 @@ interface AsyncExecutionContext {
 
 export const DEFAULT_ASYNC_TIMEOUT_MS = 30 * 60 * 1000;
 
-interface AsyncChainParams {
+export interface AsyncChainParams {
 	chain: ChainStep[];
 	task?: string;
 	/** Raw caller-facing goal used only by the started event. */
@@ -254,7 +254,7 @@ interface AsyncChainParams {
 	activeAsyncCapacity?: ActiveAsyncCapacityHandle;
 }
 
-interface AsyncSingleParams {
+export interface AsyncSingleParams {
 	/** Originating executor invocation, distinct from the async run id. */
 	toolCallId?: string;
 	agent: string;

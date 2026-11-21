@@ -1451,7 +1451,7 @@ function runVerifyCommand(command: AcceptanceVerifyCommand, defaultCwd: string, 
 	});
 }
 
-export async function evaluateAcceptance(input: {
+export interface EvaluateAcceptanceInput {
 	acceptance: ResolvedAcceptanceConfig;
 	output: string;
 	cwd: string;
@@ -1473,7 +1473,9 @@ export async function evaluateAcceptance(input: {
 	artifactsDir?: string;
 	runId?: string;
 	watchdog?: ChildWatchdogProgress;
-}): Promise<AcceptanceLedger> {
+}
+
+export async function evaluateAcceptance(input: EvaluateAcceptanceInput): Promise<AcceptanceLedger> {
 	const acceptance = input.acceptance;
 	const initialStatus = acceptance.level === "none" ? "not-required" : "claimed";
 	const ledger: AcceptanceLedger = {

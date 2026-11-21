@@ -37,7 +37,7 @@ import { OWNING_SESSION_COMPLETION_OWNER } from "../../shared/completion-owner.t
 import type { ResultDeliveryOwnership } from "./result-delivery-ownership.ts";
 import { isSettledAsyncRunState } from "../shared/async-run-state.ts";
 
-interface AsyncJobTrackerOptions {
+export interface AsyncJobTrackerOptions {
 	completionRetentionMs?: number;
 	/** Slow safety sweep for liveness repair when filesystem events are missed. */
 	pollIntervalMs?: number;

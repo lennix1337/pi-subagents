@@ -14,7 +14,7 @@ function interruptedElsewhereLine(reopenId: string, count: number): string {
 		: `${count} subagent runs were interrupted in another session. Reopen it to resume them: ${command}`;
 }
 
-interface InterruptedElsewhereCollector {
+export interface InterruptedElsewhereCollector {
 	/** Observer for the async statuses session start already reads; keeps foreign ones that may be interrupted. */
 	observeStatus: RawDrainStatusObserver;
 	/** Receives the foreground records of other sessions that session start already reads. */

@@ -44,7 +44,7 @@ type ResultWatcherTimers = {
 	clearInterval: typeof clearInterval;
 };
 
-type ResultWatcherDeps = {
+export type ResultWatcherDeps = {
 	fs?: ResultWatcherFs;
 	timers?: ResultWatcherTimers;
 	notifier?: Pick<CompletionNotifier, "deliver"> & Partial<Pick<CompletionNotifier, "flush">>;

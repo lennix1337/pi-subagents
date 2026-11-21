@@ -442,7 +442,7 @@ function rememberParentModel(state: { currentSessionId?: string | null; lastPare
 	return parentModel ?? state.lastParentModel;
 }
 
-interface ExecutorDeps {
+export interface ExecutorDeps {
 	pi: ExtensionAPI;
 	parentWake?: Pick<ExtensionAPI, "sendMessage">;
 	state: SubagentState;

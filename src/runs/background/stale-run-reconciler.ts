@@ -38,7 +38,7 @@ interface StartedRunMetadata {
 	sessionName?: string;
 }
 
-interface ReconcileAsyncRunOptions {
+export interface ReconcileAsyncRunOptions {
 	resultsDir?: string;
 	kill?: KillFn;
 	now?: () => number;
