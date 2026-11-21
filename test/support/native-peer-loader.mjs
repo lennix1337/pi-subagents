@@ -1,4 +1,3 @@
-// Opt-in native SDK tests use one installed Pi package and its own peer modules.
 import { registerHooks } from "node:module";
 import { pathToFileURL } from "node:url";
 import { resolveHostPeerAliases } from "../../src/runs/background/runner-aliases.ts";

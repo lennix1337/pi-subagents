@@ -15,8 +15,6 @@ export async function verifySharedRun(
 	waitForFile: (file: string, predicate: (text: string) => boolean) => Promise<void>,
 	completed: Promise<unknown>,
 ): Promise<void> {
-	// Public workflows create independent runs. Use the existing private execution
-	// seam to exercise two real SDK sessions inside ONE configured runner.
 	const launch = executeAsyncChain(randomUUID(), {
 		chain: [{ parallel: ["LEFT", "RIGHT"].map((task) => ({ agent: "binary-smoke", task, output: false, acceptance: false })) }],
 		agents: discoverAgents(ctx.cwd, "project").agents,
@@ -38,7 +36,6 @@ export async function verifySharedRun(
 	const active = JSON.parse(fs.readFileSync(`${asyncDir}/status.json`, "utf8"));
 	assert.equal(active.steps.length, 2);
 	assert.equal(active.state, "running");
-	// Held requests witness execution even if status projection lags them.
 	const held = fs.readFileSync("/stage/lifecycle.jsonl", "utf8").trim().split("\n").map((line) => JSON.parse(line)).filter((event) => event.pid === active.pid);
 	assert.equal(held.filter((event) => event.event === "request").length, 2);
 	assert.equal(held.filter((event) => event.event === "shutdown").length, 0);

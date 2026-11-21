@@ -1,11 +1,3 @@
-/**
- * Integration tests for async (background) agent execution.
- *
- * Tests the async support utilities: jiti availability check,
- * status file reading/caching.
- *
- * Requires pi packages to be importable. Skips gracefully if unavailable.
- */
 
 import { after, afterEach, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
@@ -148,11 +140,9 @@ interface MockPiCallRecord {
 	systemPrompts?: Array<{ mode?: string; path?: string; text?: string; error?: string }>;
 	requiredChildTools?: string[];
 	launch?: { tools?: string[]; builtinMcpTools?: Array<{ name: string; selector: string }>; ambientExtensions?: boolean; processEnv?: Record<string, string> };
-	/** The `ChildRuntimeConfig` the scripted child session was launched with. */
 	runtime?: Record<string, unknown>;
 }
 
-/** Recorded child runtime config of the mock call at `index`, once it exists. */
 async function waitForMockPiRuntime(mockPi: MockPi, index: number, timeoutMs = 30_000): Promise<Record<string, unknown>> {
 	const deadline = Date.now() + timeoutMs;
 	for (;;) {
@@ -339,9 +329,7 @@ async function waitForAsyncResultFile(id: string, timeoutMs = 15_000): Promise<s
 	while (!fs.existsSync(resultPath)) {
 		if (Date.now() > deadline) {
 			const asyncDir = path.join(ASYNC_DIR, id);
-			// Summarize before teardown; never print free-form output, prompts or tokens.
 			const evidence = asyncResultTimeoutEvidence(asyncDir, id);
-			// The current fixture queue proves prompt entry, not per-run identity or settlement.
 			const queueDir = process.env.MOCK_PI_QUEUE_DIR;
 			let mockEvidence = "mock queue: not configured";
 			if (queueDir) {
@@ -364,7 +352,6 @@ async function waitForAsyncResultFile(id: string, timeoutMs = 15_000): Promise<s
 	return resultPath;
 }
 
-// #1906 only: observation, never a terminality predicate or process controller.
 export function observeSharedCwdRunner(id: string) {
 	const number = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
 	const known = (value: unknown, values: string[]) => typeof value === "string" && values.includes(value) ? value : undefined;
@@ -426,7 +413,6 @@ export function observeSharedCwdRunner(id: string) {
 			const matched = processes.filter(({ proc }) => pid !== undefined && proc.pid === pid);
 			return { id, pid, marks, notifications, capturedProcesses: processes.length, correlatedProcesses: matched.length, processEvents: matched.map(({ events }) => events) };
 		},
-		// One bounded read per known file, only after failure. No arbitrary text escapes.
 		snapshot() {
 			const snapshotAt = Date.now();
 			const matched = processes.filter(({ proc }) => pid !== undefined && proc.pid === pid);
@@ -434,7 +420,6 @@ export function observeSharedCwdRunner(id: string) {
 				exitCode: proc.exitCode,
 				signalCode: proc.signalCode === null ? null : known(proc.signalCode, ["SIGTERM", "SIGKILL", "SIGINT", "SIGABRT", "SIGSEGV"]) ?? "other",
 			}));
-			// PID presence is not identity or cleanup authority. Probe at most once.
 			if (!signalZero && matched.length === 1 && pid !== undefined) {
 				const at = Date.now();
 				try { process.kill(pid, 0); signalZero = { at, state: "present" }; }
@@ -484,7 +469,6 @@ export function observeSharedCwdRunner(id: string) {
 			});
 			return { snapshotAt, finishedAt: Date.now(), waitElapsedMs: typeof marks.waitStartedAt === "number" ? snapshotAt - marks.waitStartedAt : undefined, processState, signalZero, files };
 		},
-		// Called only at the failing assertion boundary, before fixture cleanup.
 		reportFailure(diagnostic: (message: string) => void) {
 			if (reported) return;
 			reported = true;
@@ -495,7 +479,6 @@ export function observeSharedCwdRunner(id: string) {
 			const directory = process.env.PI_SUBAGENTS_TERMINAL_EVIDENCE_DIR;
 			if (!directory) return;
 			try {
-				// Persist only the existing allowlisted projection, never copy run files.
 				if (Buffer.byteLength(text) > 65536) throw new Error("snapshot exceeds bound");
 				fs.mkdirSync(directory, { recursive: true });
 				fs.writeFileSync(path.join(directory, "shared-cwd-terminal.json"), text, { mode: 0o600 });
@@ -601,8 +584,6 @@ function readMockPiArgsMatching(mockPi: MockPi, text: string): string[] {
 	assert.fail(`expected recorded call containing ${text}`);
 }
 
-// Each physical suite installs these hooks inside its describe callback.
-// Mutable bindings stay live and process-local under the default test isolation.
 let tempDir: string;
 let mockPi: MockPi;
 const sentMessages: Array<{ message: { customType?: string; content?: string; details?: unknown }; options?: { triggerTurn?: boolean } }> = [];

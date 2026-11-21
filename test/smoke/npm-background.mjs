@@ -1,5 +1,3 @@
-// Real npm CLI -> public subagent tool -> detached Node runner -> SDK session.
-// Reuse clean-install.mjs provisioning; no installs during this check.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

@@ -29,7 +29,6 @@ export default function askingChildSessionFactory(): ChildSessionFactory {
 				subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
 				async prompt() {
 					const partial = "Verified finding before the decision";
-					// A tool-use turn must not arm the runner's final-assistant drain timer.
 					emit({ type: "message_end", message: {
 						role: "assistant", model: "mock/test-model", stopReason: "toolUse",
 						content: [{ type: "text", text: partial }, { type: "toolCall", id: "decision", name: "contact_supervisor", arguments: { reason: "need_decision", message: "Choose the next approach" } }],

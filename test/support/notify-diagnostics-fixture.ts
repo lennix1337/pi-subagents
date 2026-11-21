@@ -41,9 +41,9 @@ assert.equal(notifier.hasPendingDelivery(), true);
 flush();
 assert.equal(await firstDelivery, true);
 assert.equal(await secondDelivery, true);
-assert.equal(sent.length, 1); // grouped, not dropped
+assert.equal(sent.length, 1);
 now = 600_000;
-assert.equal(await notifier.deliver(first), true); // inclusive TTL boundary
+assert.equal(await notifier.deliver(first), true);
 assert.equal(sent.length, 1);
 now++;
 const expired = notifier.deliver(first);
@@ -60,21 +60,18 @@ assert.equal(await notifier.deliver(result("retry", { success: false })), false)
 failSend = false;
 assert.equal(await notifier.deliver(result("retry", { success: false })), true);
 assert.equal(await notifier.deliver(result("foreground", { source: "foreground" })), true);
-// Attention still flushes held successes before its own immediate send.
 const held = notifier.deliver(result("held"));
 assert.equal(await notifier.deliver(result("attention", { success: false })), true);
 assert.equal(await held, true);
 const abandoned = notifier.deliver(result("abandoned"));
 notifier.dispose();
 assert.equal(await abandoned, false);
-assert.equal(notifier.hasPendingDelivery(), true); // Accepted wakes survive notifier disposal for reload.
+assert.equal(notifier.hasPendingDelivery(), true);
 for (const { message } of sent) notifier.messageStarted({ role: "custom", ...message });
-assert.equal(notifier.hasPendingDelivery(), false); // Pi has now started every accepted wake.
+assert.equal(notifier.hasPendingDelivery(), false);
 assert.equal(callbacks.size, 0);
 assert.equal(await notifier.deliver(result("after-dispose")), false);
-// Malformed/large identity cannot create multiline or unbounded trace records.
 await notifier.deliver(result("unsafe\n\u001b[31m" + "x".repeat(10_000)));
-// Disabled diagnostics must not even read diagnostic identity fields at a guard.
 if (!process.env.NODE_DEBUG) {
 	const unread = result("unread");
 	Object.defineProperty(unread, "runId", { get() { throw new Error("diagnostic metadata read while disabled"); } });

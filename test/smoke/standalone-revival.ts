@@ -23,7 +23,6 @@ export async function verifyRevival(
 	const root = path.dirname(source.asyncDir);
 	const before = new Set(fs.readdirSync(root));
 	const completed = nextCompletion("standalone child response verified REVIVAL_");
-	// Establish a real owner first, then challenge it while its provider call holds the lease.
 	const winnerLaunch = await tool.execute(
 		"REVIVAL_A", { action: "resume", id: source.asyncId, message: "REVIVAL_A", options: { acceptance: false, timeoutMs: 20000 } },
 		new AbortController().signal, undefined, ctx,

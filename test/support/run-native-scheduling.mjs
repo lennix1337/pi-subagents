@@ -1,7 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-// Real installed SDK, synthetic HTTP only; no dependency installation or provider calls.
 const cwd = fileURLToPath(new URL("../../", import.meta.url));
 const result = spawnSync(process.execPath, [
 	"--experimental-strip-types",

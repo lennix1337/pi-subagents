@@ -18,7 +18,6 @@ function waitForFile(file: string, predicate: (text: string) => boolean): Promis
 	});
 }
 
-// Capture only public tool/notification boundaries, never the runner/session factory.
 export default function registerSmoke(pi: ExtensionAPI) {
 	let tool: Parameters<ExtensionAPI["registerTool"]>[0] | undefined;
 	let notifications = 0;
@@ -34,7 +33,6 @@ export default function registerSmoke(pi: ExtensionAPI) {
 				target.sendMessage(args[0], { ...args[1], triggerTurn: false });
 				if (args[0].customType === "subagent-notify") { notifications++; notify(args[0]); }
 			};
-			// Drop user messages too, so nothing starts a parent turn.
 			if (key === "sendUserMessage") return () => {};
 			return Reflect.get(target, key);
 		},
@@ -47,7 +45,6 @@ export default function registerSmoke(pi: ExtensionAPI) {
 			const mode = process.env.PI_STANDALONE_SMOKE_MODE ?? "single";
 			assert.ok(["single", "workflow", "targeted-controls", "steer", "interrupt", "stop", "child-stop", "child-timeout", "run-timeout", "tool-timeout", "sdk-init-failure", "persistence-failure", "authorization-failure", "missing-bootstrap", "revival", "shared-run", "parallel-stop"].includes(mode), `unimplemented parent smoke mode: ${mode}`);
 			const expectedDeclaredTools = mode === "tool-timeout" ? ["bash"] : [];
-			// The default bridge adds upward coordination to nonempty menus, not explicit empty ones.
 			const expectedRuntimeTools = mode === "tool-timeout" ? ["bash", "contact_supervisor"] : [];
 			const profile = parseFrontmatter(fs.readFileSync("/stage/work/.pi/agents/binary-smoke.md", "utf8"));
 			assert.deepEqual(parseFrontmatterList(profile.frontmatter.tools), expectedDeclaredTools);
@@ -141,7 +138,6 @@ export default function registerSmoke(pi: ExtensionAPI) {
 				const terminalPath = `${runDir}/process-terminal.json`;
 				const atNotification = JSON.parse(fs.readFileSync(terminalPath, "utf8"));
 				fs.appendFileSync("/stage/notification-terminal.jsonl", JSON.stringify({ runId, state: atNotification.state }) + "\n");
-				// Notification can precede disposal: read shutdown evidence only after observed close.
 				if (atNotification.state !== "observed") await waitForFile(terminalPath, (text) => JSON.parse(text).state === "observed");
 				const terminal = JSON.parse(fs.readFileSync(terminalPath, "utf8"));
 				assert.equal(terminal.state, "observed");

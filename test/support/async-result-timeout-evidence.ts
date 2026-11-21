@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-// Failure-only observations, not terminality predicates. Never expose free-form fields.
 export function asyncResultTimeoutEvidence(asyncDir: string, id: string): string[] {
 	const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 	const number = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : undefined;

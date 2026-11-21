@@ -4,7 +4,7 @@ import path from "node:path";
 import { mock } from "bun:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-// Bun's named fs binding requires mock.module; fault only atomic rename after real spawn.
+// external: Bun requires mock.module to mock the named fs binding.
 export default function injectStartupFailure(pi: ExtensionAPI) {
 	const mode = process.env.PI_STANDALONE_SMOKE_MODE;
 	if (!["persistence-failure", "authorization-failure", "revival"].includes(mode ?? "")) throw new Error("unsupported startup hook mode");

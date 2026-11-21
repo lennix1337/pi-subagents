@@ -1,12 +1,3 @@
-/**
- * Scripted child sessions for tests.
- *
- * `install()` replaces the process-wide foreground `ChildSessionFactory` with
- * a scripted one and names the runner-side scripted factory module for
- * background launches. Both replay the responses queued with `onCall()` from
- * one directory, so a test scripts a child the same way whichever launch path
- * it exercises.
- */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

@@ -100,7 +100,6 @@ test("native Pi exposes the full subagent schema on the request immediately afte
 			const tools = getCurrentTools(context.messages);
 			captured.push(serializedCharacters(tools));
 			sizes.push(perToolSizes(tools));
-			// Replay on resume relies on the first declared tool set recording the loader.
 			const firstDeclared = context.messages.find((message) => message.role === "system" && message.toolsAdded?.length);
 			assert.ok(firstDeclared?.role === "system" && firstDeclared.toolsAdded?.some((tool) => tool.name === "subagents_enable"));
 			const subagent = tools.find((tool) => tool.name === "subagent");
@@ -113,7 +112,6 @@ test("native Pi exposes the full subagent schema on the request immediately afte
 	], ["Use the authorized delegation tools."]);
 
 	assert.equal(captured.length, 2);
-	// Every package tool definition is sent on every request. Raising these budgets needs owner approval (#2770; raised 5500 -> 6000 by the fork owner for the fork's model/thinking/context guidance).
 	assert.ok(captured[0]! <= 500, `cold package tool text exceeded budget: ${captured[0]} (${sizes[0]})`);
 	assert.ok(captured[1]! <= 6_000, `activated package tool text exceeded budget: ${captured[1]} (${sizes[1]})`);
 	assert.ok(captured[1]! - captured[0]! >= 3_000, "lazy activation should remove the full subagent schema from cold requests");
@@ -121,10 +119,8 @@ test("native Pi exposes the full subagent schema on the request immediately afte
 });
 
 test("native Pi starts auto sessions with subagent and no loader when the model cannot add tools", { timeout: 30_000 }, async () => {
-	// The faux model sets no compat flags.
 	const requests: string[][] = [];
 	const record: FauxResponseFactory = (context) => {
-		// One tool declaration across both prompts: the tool list never changed.
 		assert.equal(context.messages.filter((message) => message.role === "system" && (message.toolsAdded?.length || message.toolsRemoved?.length)).length, 1);
 		requests.push(getCurrentTools(context.messages).map((tool) => tool.name));
 		return fauxAssistantMessage("ok");

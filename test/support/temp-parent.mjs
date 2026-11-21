@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-// Entries that Node's bare-specifier resolution or a Pi project walk would pick up from any ancestor directory.
 const LEAKY_ENTRIES = ["node_modules", "package.json", ".pi"];
 
 /** The ancestors of `dir` (itself included) holding an entry that a test fixture below it would inherit. */
