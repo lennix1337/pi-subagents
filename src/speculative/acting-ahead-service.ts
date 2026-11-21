@@ -1,9 +1,3 @@
-/**
- * Composition of acting ahead with PR thread subscriptions. A CI failure on an
- * admitted PR starts one speculative child; that child subscribes to the PR's
- * events, so later CI results reach it instead of the parent. The launcher is
- * injected: the caller decides how a background child starts in its own worktree.
- */
 import { execFile } from "node:child_process";
 import { requestAsyncStop } from "../runs/background/control-channel.ts";
 import { PR_WATCH_EVENT_CHANNEL, PrThreadRegistry, bindPrWatchEvents, parsePrWatchEvent, steerChildWithPrEvent, type PrThreadSubscription, type PrWatchEventBus, type PrWatchBinding, type PrWatchEvent } from "../integrations/pr-thread-subscriptions.ts";
@@ -32,6 +26,7 @@ export interface ActingAheadService {
 	dispose(): void;
 }
 
+// external: execFile avoids shell re-quoting of the configured command.
 function runArgv(cwd: string, argv: string[], timeoutMs: number): Promise<{ exitCode: number }> {
 	return new Promise((resolve, reject) => {
 		execFile(argv[0]!, argv.slice(1), { cwd, windowsHide: true, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 }, (error) => {
@@ -42,7 +37,6 @@ function runArgv(cwd: string, argv: string[], timeoutMs: number): Promise<{ exit
 	});
 }
 
-/** Real executors: argv without a shell, so the operator's configured command cannot be re-quoted by a child. */
 const TEST_TIMEOUT_MS = 15 * 60_000;
 export const defaultSpeculativeGit: SpeculativeGit = {
 	run: (cwd, args) => new Promise((resolve, reject) => {
@@ -76,7 +70,7 @@ export function startActingAhead(input: ActingAheadServiceInput): ActingAheadSer
 		},
 		verify,
 		report: input.report,
-		// unref: a pending cap must not keep the parent process alive.
+		// external: an unref'ed Node timer does not keep the process alive.
 		setTimer: (fire, ms) => {
 			const handle = setTimeout(fire, ms);
 			handle.unref();

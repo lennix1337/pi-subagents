@@ -48,7 +48,6 @@ export function evidenceProblem(evidence: SpeculativeEvidence): string | undefin
 
 type RunOutcome = { exitCode: number } | { error: string };
 
-/** Never throws: an execution failure becomes a refusal reason, not a lost restore. */
 async function runTests(tests: SpeculativeTests, cwd: string, argv: string[]): Promise<RunOutcome> {
 	try {
 		return await tests.run(cwd, argv);
@@ -61,7 +60,6 @@ function failure(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-/** Returns a problem, or undefined when the revert succeeded. Never throws. */
 async function revertFix(git: SpeculativeGit, baseRef: string, worktreePath: string, fixFiles: string[]): Promise<string | undefined> {
 	try {
 		const result = await git.run(worktreePath, ["checkout", baseRef, "--", ...fixFiles]);
@@ -71,7 +69,6 @@ async function revertFix(git: SpeculativeGit, baseRef: string, worktreePath: str
 	}
 }
 
-/** Returns a problem, or undefined when the fix is back and the worktree is clean. Never throws. */
 async function restoreFix(git: SpeculativeGit, worktreePath: string, fixFiles: string[]): Promise<string | undefined> {
 	try {
 		const restored = await git.run(worktreePath, ["checkout", "HEAD", "--", ...fixFiles]);

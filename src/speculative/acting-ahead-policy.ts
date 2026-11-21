@@ -1,9 +1,3 @@
-/**
- * Acting ahead: admission and configuration. Off by default. A CI failure may
- * start a speculative attempt only when the operator enabled it, the repo's owner
- * is allowlisted, the repo has a test command, and the caps and cooldowns allow it.
- * The rules are one declarative table, so each refusal reads as one line.
- */
 import type { PrWatchEvent } from "../integrations/pr-thread-subscriptions.ts";
 
 export interface ActingAheadConfig {
